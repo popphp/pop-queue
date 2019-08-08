@@ -1,2 +1,5 @@
-# pop-queue
-Pop Queue Componentt
+pop-queue
+=========
+
+Pop Queue Component
+
