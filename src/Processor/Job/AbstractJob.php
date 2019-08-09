@@ -41,12 +41,6 @@ abstract class AbstractJob implements JobInterface
     protected $params = null;
 
     /**
-     * Job instance
-     * @var mixed
-     */
-    protected $instance = null;
-
-    /**
      * Job ID
      * @var string
      */
@@ -59,10 +53,16 @@ abstract class AbstractJob implements JobInterface
     protected $processor = null;
 
     /**
-     * Job status (0 - opened, 1 - running, 2 - complete)
-     * @var int
+     * Job running flag
+     * @var boolean
      */
-    protected $status = 0;
+    protected $running = false;
+
+    /**
+     * Job completed flag
+     * @var boolean
+     */
+    protected $completed = false;
 
     /**
      * Job failed flag
@@ -158,29 +158,45 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Set job status
+     * Set job as running
      *
-     * @param  int $status
-     * @return AbstractJob
+     * @return JobInterface
      */
-    public function setStatus($status)
+    public function setAsRunning()
     {
-        $status = (int)$status;
-        if (($status >= 0) && ($status <= 2)) {
-            $this->status = $status;
-        }
-
+        $this->running = true;
         return $this;
     }
 
     /**
-     * Get job status
+     * Is job running
      *
-     * @return int
+     * @return boolean
      */
-    public function getStatus()
+    public function isRunning()
     {
-        return $this->status;
+        return $this->running;
+    }
+
+    /**
+     * Set job as completed
+     *
+     * @return JobInterface
+     */
+    public function setAsCompleted()
+    {
+        $this->completed = true;
+        return $this;
+    }
+
+    /**
+     * Is job complete
+     *
+     * @return boolean
+     */
+    public function isComplete()
+    {
+        return $this->completed;
     }
 
     /**
@@ -205,56 +221,14 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Is job open
-     *
-     * @return boolean
-     */
-    public function isOpen()
-    {
-        return ($this->status == 0);
-    }
-
-    /**
-     * Is job running
-     *
-     * @return boolean
-     */
-    public function isRunning()
-    {
-        return ($this->status == 1);
-    }
-
-    /**
-     * Is job complete
-     *
-     * @return boolean
-     */
-    public function isComplete()
-    {
-        return ($this->status == 2);
-    }
-
-    /**
-     * Start job
-     *
-     * @return void
-     */
-    abstract public function start();
-
-    /**
      * Run job
      *
-     * @return void
+     * @return mixed
      */
-    abstract public function run();
-
-    /**
-     * Stop job
-     *
-     * @return void
-     */
-    abstract public function stop();
-
+    public function run()
+    {
+        return $this->loadCallable();
+    }
 
     /**
      * Load callable
@@ -264,8 +238,13 @@ abstract class AbstractJob implements JobInterface
      */
     protected function loadCallable()
     {
+        if (null === $this->callable) {
+            throw new Exception('Error: The callable for this job was not set.');
+        }
+
         $callable = $this->callable;
         $params   = $this->params;
+        $result   = null;
 
         if ((null !== $params) && !is_array($params)) {
             $params = [$params];
@@ -273,24 +252,25 @@ abstract class AbstractJob implements JobInterface
 
         // If the callable is a closure
         if ($callable instanceof \Closure) {
-            $this->instance = (!empty($params)) ? call_user_func_array($callable, $params) : $callable();
+            $result = (!empty($params)) ? call_user_func_array($callable, $params) : $callable();
         // If the callable is a string
         } else if (is_string($callable)) {
             if (strpos($callable, '->') !== false) {
                 list($class, $method) = explode('->', $callable);
                 if (class_exists($class) && method_exists($class, $method)) {
-                    $this->instance = (!empty($params)) ?
+                    $result = (!empty($params)) ?
                         call_user_func_array([new $class(), $method], $params) : call_user_func([new $class(), $method]);
                 }
             } else if (strpos($callable, '::') !== false) {
-                $this->instance = (!empty($params)) ?
+                $result = (!empty($params)) ?
                     call_user_func_array($callable, $params) : call_user_func($callable);
             } else if (class_exists($callable)) {
-                $this->instance = (!empty($params)) ?
+                $result = (!empty($params)) ?
                     (new \ReflectionClass($callable))->newInstanceArgs($params) : new $callable();
             }
         }
 
-        return $this->instance;
+        return $result;
     }
+
 }

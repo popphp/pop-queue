@@ -111,44 +111,12 @@ class Worker extends AbstractProcessor
         if (!$job->hasProcessor()) {
             $job->setProcessor($this);
         }
-        $this->jobs[] = $job;
-        return $this;
-    }
-
-    /**
-     * Add jobs
-     *
-     * @param  array $jobs
-     * @return AbstractProcessor
-     */
-    public function addJobs(array $jobs)
-    {
-        foreach ($jobs as $job) {
-            $this->addJob($job);
+        if ($this->isFilo()) {
+            array_unshift($this->jobs, $job);
+        } else {
+            $this->jobs[] = $job;
         }
         return $this;
-    }
-
-    /**
-     * Get job
-     *
-     * @param  int $index
-     * @return Job\AbstractJob
-     */
-    public function getJob($index)
-    {
-        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
-    }
-
-    /**
-     * Has job
-     *
-     * @param  int $index
-     * @return boolean
-     */
-    public function hasJob($index)
-    {
-        return (isset($this->jobs[$index]));
     }
 
     /**
@@ -158,9 +126,8 @@ class Worker extends AbstractProcessor
      */
     public function hasNextJob()
     {
-        $nextIndex = $this->getNextIndex();
-        prev($this->jobs);
-        return (null !== $nextIndex);
+        $current = key($this->jobs);
+        return ((null !== $current) && ($current < count($this->jobs)));
     }
 
     /**
@@ -171,7 +138,16 @@ class Worker extends AbstractProcessor
     public function processNext()
     {
         $nextIndex = $this->getNextIndex();
-        //$this->job[$nextIndex]->run();
+        if ($this->hasJob($nextIndex)) {
+            try {
+                $this->jobs[$nextIndex]->run();
+                $this->jobs[$nextIndex]->setAsCompleted();
+            } catch (\Exception $e) {
+                $this->jobs[$nextIndex]->setAsFailed();
+                $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
+                $this->failedExceptions[$nextIndex] = $e;
+            }
+        }
         return $nextIndex;
     }
 

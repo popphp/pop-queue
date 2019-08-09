@@ -73,21 +73,6 @@ interface JobInterface
     public function hasProcessor();
 
     /**
-     * Set job status
-     *
-     * @param  int $status
-     * @return JobInterface
-     */
-    public function setStatus($status);
-
-    /**
-     * Get job status
-     *
-     * @return int
-     */
-    public function getStatus();
-
-    /**
      * Set job as failed
      *
      * @return JobInterface
@@ -100,13 +85,6 @@ interface JobInterface
      * @return boolean
      */
     public function hasFailed();
-
-    /**
-     * Is job open
-     *
-     * @return boolean
-     */
-    public function isOpen();
 
     /**
      * Is job running
@@ -123,24 +101,9 @@ interface JobInterface
     public function isComplete();
 
     /**
-     * Start job
-     *
-     * @return void
-     */
-    public function start();
-
-    /**
      * Run job
      *
      * @return void
      */
     public function run();
-
-    /**
-     * Stop job
-     *
-     * @return void
-     */
-    public function stop();
-
 }

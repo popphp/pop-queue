@@ -14,6 +14,7 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
+use Pop\Queue\Processor\Job\AbstractJob;
 
 /**
  * Abstract process class
@@ -45,6 +46,12 @@ abstract class AbstractProcessor implements ProcessorInterface
      * @var array
      */
     protected $failed = [];
+
+    /**
+     * Failed jobs exceptions
+     * @var array
+     */
+    protected $failedExceptions = [];
 
     /**
      * Constructor
@@ -93,12 +100,26 @@ abstract class AbstractProcessor implements ProcessorInterface
     }
 
     /**
+     * Add job
+     *
+     * @param  Job\AbstractJob $job
+     * @return Worker
+     */
+    abstract public function addJob(Job\AbstractJob $job);
+
+    /**
      * Add jobs
      *
      * @param  array $jobs
      * @return AbstractProcessor
      */
-    abstract public function addJobs(array $jobs);
+    public function addJobs(array $jobs)
+    {
+        foreach ($jobs as $job) {
+            $this->addJob($job);
+        }
+        return $this;
+    }
 
     /**
      * Get jobs
@@ -108,6 +129,17 @@ abstract class AbstractProcessor implements ProcessorInterface
     public function getJobs()
     {
         return $this->jobs;
+    }
+
+    /**
+     * Get job
+     *
+     * @param  int $index
+     * @return Job\AbstractJob
+     */
+    public function getJob($index)
+    {
+        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
     }
 
     /**
@@ -121,6 +153,17 @@ abstract class AbstractProcessor implements ProcessorInterface
     }
 
     /**
+     * Has job
+     *
+     * @param  int $index
+     * @return boolean
+     */
+    public function hasJob($index)
+    {
+        return (isset($this->jobs[$index]));
+    }
+
+    /**
      * Get failed jobs
      *
      * @return array
@@ -131,6 +174,17 @@ abstract class AbstractProcessor implements ProcessorInterface
     }
 
     /**
+     * Get failed job
+     *
+     * @param  mixed $index
+     * @return AbstractJob
+     */
+    public function getFailedJob($index)
+    {
+        return (isset($this->failed[$index])) ? $this->failed[$index] : null;
+    }
+
+    /**
      * Has failed jobs
      *
      * @return boolean
@@ -138,6 +192,37 @@ abstract class AbstractProcessor implements ProcessorInterface
     public function hasFailedJobs()
     {
         return !empty($this->failed);
+    }
+
+    /**
+     * Get failed exceptions
+     *
+     * @return array
+     */
+    public function getFailedExceptions()
+    {
+        return $this->failedExceptions;
+    }
+
+    /**
+     * Get failed exception
+     *
+     * @param  mixed $index
+     * @return AbstractJob
+     */
+    public function getFailedException($index)
+    {
+        return (isset($this->failedExceptions[$index])) ? $this->failedExceptions[$index] : null;
+    }
+
+    /**
+     * Has failed exceptions
+     *
+     * @return boolean
+     */
+    public function hasFailedExceptions()
+    {
+        return !empty($this->failedExceptions);
     }
 
     /**

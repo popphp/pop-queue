@@ -29,55 +29,135 @@ class Schedule extends AbstractProcessor
 {
 
     /**
+     * Job schedules
+     * @var array
+     */
+    protected $schedules = [];
+
+    /**
      * Add job
      *
      * @param  Job\AbstractJob $job
-     * @param  int             $timestamp
      * @return Schedule
      */
-    public function addJob(Job\AbstractJob $job, $timestamp)
+    public function addJob(Job\AbstractJob $job)
     {
         if (!$job->hasProcessor()) {
             $job->setProcessor($this);
         }
-        $this->jobs[$timestamp] = $job;
+
+        $this->jobs[] = $job;
+
         return $this;
     }
 
     /**
-     * Add jobs
+     * Set job schedule to custom cron schedule
      *
-     * @param  array $jobs
-     * @return AbstractProcessor
+     * @param  mixed $cronSchedule
+     * @return Schedule
      */
-    public function addJobs(array $jobs)
+    public function cron($cronSchedule)
     {
-        foreach ($jobs as $timestamp => $job) {
-            $this->addJob($job, $timestamp);
-        }
         return $this;
     }
 
     /**
-     * Get job
+     * Set job schedule to every minute
      *
-     * @param  int $timestamp
-     * @return Job\AbstractJob
+     * @return Schedule
      */
-    public function getJob($timestamp)
+    public function everyMinute()
     {
-        return (isset($this->jobs[$timestamp])) ? $this->jobs[$timestamp] : null;
+        return $this;
     }
 
     /**
-     * Has job
+     * Set job schedule to every X minutes
      *
-     * @param  int $timestamp
-     * @return boolean
+     * @param  mixed $minutes
+     * @return Schedule
      */
-    public function hasJob($timestamp)
+    public function everyMinutesBy($minutes)
     {
-        return (isset($this->jobs[$timestamp]));
+        return $this;
+    }
+
+    /**
+     * Set job schedule to hourly
+     *
+     * @param  mixed $minute
+     * @return Schedule
+     */
+    public function hourly($minute = null)
+    {
+        return $this;
+    }
+
+    /**
+     * Set job schedule to daily
+     *
+     * @return Schedule
+     */
+    public function daily()
+    {
+        // use func args to get multiple daily scenarios (multiple times, certain times, etc.)
+        return $this;
+    }
+
+    /**
+     * Set job schedule to weekly
+     *
+     * @param  mixed $day
+     * @param  mixed $time
+     * @return Schedule
+     */
+    public function weekly($day = null, $time = null)
+    {
+        return $this;
+    }
+
+    /**
+     * Set job schedule to monthly
+     *
+     * @param  mixed $day
+     * @param  mixed $time
+     * @return Schedule
+     */
+    public function monthly($day = null, $time = null)
+    {
+        return $this;
+    }
+
+    /**
+     * Set job schedule to quarterly
+     *
+     * @return Schedule
+     */
+    public function quarterly()
+    {
+        return $this;
+    }
+
+    /**
+     * Set job schedule to yearly
+     *
+     * @return Schedule
+     */
+    public function yearly()
+    {
+        return $this;
+    }
+
+    /**
+     * Set job timezone
+     *
+     * @param  string $timezone
+     * @return Schedule
+     */
+    public function timezone($timezone)
+    {
+        return $this;
     }
 
     /**
