@@ -11,10 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Process\Job;
 
 /**
- * Abstract job class
+ * Job class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -23,90 +23,65 @@ namespace Pop\Queue\Process;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-abstract class AbstractJob implements JobInterface
+interface JobInterface
 {
 
-    /**
-     * Job status
-     * @var int
-     */
-    protected $status = 0; // 0 - opened, 1 - running, 2 - complete
 
     /**
      * Set job status
      *
      * @param  int $status
-     * @return AbstractJob
+     * @return JobInterface
      */
-    public function setStatus($status)
-    {
-        $status = (int)$status;
-        if (($status >= 0) && ($status <= 2)) {
-            $this->status = $status;
-        }
-
-        return $this;
-    }
+    public function setStatus($status);
 
     /**
      * Get job status
      *
      * @return int
      */
-    public function getStatus()
-    {
-        return $this->status;
-    }
+    public function getStatus();
 
     /**
      * Is job open
      *
      * @return boolean
      */
-    public function isOpen()
-    {
-        return ($this->status == 0);
-    }
+    public function isOpen();
 
     /**
      * Is job running
      *
      * @return boolean
      */
-    public function isRunning()
-    {
-        return ($this->status == 1);
-    }
+    public function isRunning();
 
     /**
      * Is job complete
      *
      * @return boolean
      */
-    public function isComplete()
-    {
-        return ($this->status == 2);
-    }
+    public function isComplete();
 
     /**
      * Start job
      *
      * @return void
      */
-    abstract public function start();
+    public function start();
 
     /**
      * Run job
      *
      * @return void
      */
-    abstract public function run();
+    public function run();
 
     /**
      * Stop job
      *
      * @return void
      */
-    abstract public function stop();
+    public function stop();
 
 }

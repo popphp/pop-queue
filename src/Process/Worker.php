@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Process;
 
+use Pop\Queue\Process\Job;
+
 /**
  * Worker class
  *
@@ -35,7 +37,7 @@ class Worker extends AbstractProcess
 
     /**
      * Worker type
-     * @var array
+     * @var string
      */
     protected $priority = 'FIFO';
 
@@ -66,12 +68,42 @@ class Worker extends AbstractProcess
     }
 
     /**
+     * Get worker priority
+     *
+     * @return string
+     */
+    public function getPriority()
+    {
+        return $this->priority;
+    }
+
+    /**
+     * Is worker fifo
+     *
+     * @return boolean
+     */
+    public function isFifo()
+    {
+        return ($this->priority == self::FIFO);
+    }
+
+    /**
+     * Is worker filo
+     *
+     * @return boolean
+     */
+    public function isFilo()
+    {
+        return ($this->priority == self::FILO);
+    }
+
+    /**
      * Add job
      *
-     * @param  AbstractJob $job
+     * @param  Job\AbstractJob $job
      * @return Worker
      */
-    public function addJob(AbstractJob $job)
+    public function addJob(Job\AbstractJob $job)
     {
         $this->jobs[] = $job;
         return $this;
@@ -95,7 +127,7 @@ class Worker extends AbstractProcess
      * Get job
      *
      * @param  int $index
-     * @return AbstractJob
+     * @return Job\AbstractJob
      */
     public function getJob($index)
     {

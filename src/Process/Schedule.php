@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Process;
 
+use Pop\Queue\Process\Job;
+
 /**
  * Schedule class
  *
@@ -29,11 +31,11 @@ class Schedule extends AbstractProcess
     /**
      * Add job
      *
-     * @param  AbstractJob $job
-     * @param  int         $timestamp
+     * @param  Job\AbstractJob $job
+     * @param  int             $timestamp
      * @return Schedule
      */
-    public function addJob(AbstractJob $job, $timestamp)
+    public function addJob(Job\AbstractJob $job, $timestamp)
     {
         $this->jobs[$timestamp] = $job;
         return $this;
@@ -57,7 +59,7 @@ class Schedule extends AbstractProcess
      * Get job
      *
      * @param  int $timestamp
-     * @return AbstractJob
+     * @return Job\AbstractJob
      */
     public function getJob($timestamp)
     {
