@@ -26,6 +26,7 @@
         "pda/pheanstalk" : "^4.0.0"
     },
     "require-dev": {
+        "popphp/pop-kettle": "^1.0.1",
         "phpunit/phpunit": "^7.0.0"
     },
     "autoload": {
