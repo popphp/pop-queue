@@ -152,13 +152,39 @@ class Worker extends AbstractProcessor
     }
 
     /**
-     * Process next job
+     * Has next job
      *
      * @return boolean
      */
+    public function hasNextJob()
+    {
+        $nextIndex = $this->getNextIndex();
+        prev($this->jobs);
+        return (null !== $nextIndex);
+    }
+
+    /**
+     * Process next job
+     *
+     * @return int
+     */
     public function processNext()
     {
-        return true;
+        $nextIndex = $this->getNextIndex();
+        //$this->job[$nextIndex]->run();
+        return $nextIndex;
+    }
+
+    /**
+     * Get next index
+     *
+     * @return int
+     */
+    public function getNextIndex()
+    {
+        $index = key($this->jobs);
+        next($this->jobs);
+        return $index;
     }
 
 }

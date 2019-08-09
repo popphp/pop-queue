@@ -66,6 +66,13 @@ interface ProcessorInterface
     public function getJobs();
 
     /**
+     * Has jobs
+     *
+     * @return array
+     */
+    public function hasJobs();
+
+    /**
      * Get failed jobs
      *
      * @return array

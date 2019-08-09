@@ -111,6 +111,16 @@ abstract class AbstractProcessor implements ProcessorInterface
     }
 
     /**
+     * Has jobs
+     *
+     * @return boolean
+     */
+    public function hasJobs()
+    {
+        return (count($this->jobs) > 0);
+    }
+
+    /**
      * Get failed jobs
      *
      * @return array
