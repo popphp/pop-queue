@@ -20,10 +20,12 @@
         }
     ],
     "require": {
-        "php": ">=7.1.0"
+        "php": ">=7.1.0",
+        "popphp/popphp": "^3.3.0",
+        "popphp/pop-db": "^4.5.4",
+        "pda/pheanstalk" : "^4.0.0"
     },
     "require-dev": {
-        "popphp/popphp": "^3.3.0",
         "phpunit/phpunit": "^7.0.0"
     },
     "autoload": {

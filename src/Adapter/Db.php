@@ -11,10 +11,12 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Adapter;
+
+use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
 
 /**
- * Queue process exception class
+ * Database queue adapter class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -23,4 +25,35 @@ namespace Pop\Queue\Process;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Exception extends \Exception {}
+class Db extends AbstractAdapter
+{
+
+    /**
+     * Database adapter
+     * @var DbAdapter
+     */
+    protected $db = null;
+
+    /**
+     * Constructor
+     *
+     * Instantiate the database queue object
+     *
+     * @param  DbAdapter $db
+     */
+    public function __construct(DbAdapter $db)
+    {
+        $this->db = $db;
+    }
+
+    /**
+     * Get the redis object.
+     *
+     * @return DbAdapter
+     */
+    public function db()
+    {
+        return $this->db;
+    }
+
+}

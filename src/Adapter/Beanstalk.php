@@ -13,6 +13,9 @@
  */
 namespace Pop\Queue\Adapter;
 
+use Pheanstalk\Connection;
+use Pheanstalk\Pheanstalk;
+
 /**
  * Redis queue adapter class
  *
@@ -23,44 +26,40 @@ namespace Pop\Queue\Adapter;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Redis extends AbstractAdapter
+class Beanstalk extends AbstractAdapter
 {
 
     /**
-     * Redis object
-     * @var \Redis
+     * Pheanstalk object
+     * @var Pheanstalk
      */
-    protected $redis = null;
+    protected $pheanstalk = null;
 
     /**
      * Constructor
      *
-     * Instantiate the redis queue object
+     * Instantiate the memcache cache object
      *
      * @param  string $host
      * @param  int    $port
-     * @throws Exception
+     * @param  int    $timeout
      */
-    public function __construct($host = 'localhost', $port = 6379)
+    public function __construct($host = 'localhost', $port = null, $timeout = null)
     {
-        if (!class_exists('Redis', false)) {
-            throw new Exception('Error: Redis is not available.');
-        }
+        $port    = $port ?? Pheanstalk::DEFAULT_PORT;
+        $timeout = $timeout ?? Connection::DEFAULT_CONNECT_TIMEOUT;
 
-        $this->redis = new \Redis();
-        if (!$this->redis->connect($host, (int)$port)) {
-            throw new Exception('Error: Unable to connect to the redis server.');
-        }
+        $this->pheanstalk = Pheanstalk::create($host, $port, $timeout);
     }
 
     /**
-     * Get the redis object.
+     * Get the pheanstalk object.
      *
-     * @return \Redis
+     * @return Pheanstalk
      */
-    public function redis()
+    public function pheanstalk()
     {
-        return $this->redis;
+        return $this->pheanstalk;
     }
 
 }

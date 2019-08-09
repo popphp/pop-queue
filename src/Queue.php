@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use Pop\Queue\Adapter\AdapterInterface;
+use Pop\Application;
 
 /**
  * Queue class
@@ -35,6 +36,12 @@ class Queue
     protected $adapter = null;
 
     /**
+     * Application object
+     * @var Application
+     */
+    protected $application = null;
+
+    /**
      * Queue workers
      * @var array
      */
@@ -52,10 +59,12 @@ class Queue
      * Instantiate the queue object
      *
      * @param  Adapter\AdapterInterface $adapter
+     * @param  Application              $application
      */
-    public function __construct(Adapter\AdapterInterface $adapter)
+    public function __construct(Adapter\AdapterInterface $adapter, Application $application)
     {
-        $this->adapter = $adapter;
+        $this->adapter     = $adapter;
+        $this->application = $application;
     }
 
     /**
@@ -66,6 +75,16 @@ class Queue
     public function adapter()
     {
         return $this->adapter;
+    }
+
+    /**
+     * Get the application
+     *
+     * @return Application
+     */
+    public function application()
+    {
+        return $this->application;
     }
 
     /**

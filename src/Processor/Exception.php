@@ -11,10 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Processor;
 
 /**
- * Abstract process class
+ * Queue processor exception class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -23,22 +23,4 @@ namespace Pop\Queue\Process;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-interface ProcessInterface
-{
-
-    /**
-     * Add jobs
-     *
-     * @param  array $jobs
-     * @return AbstractProcess
-     */
-    public function addJobs(array $jobs);
-
-    /**
-     * Get jobs
-     *
-     * @return array
-     */
-    public function getJobs();
-
-}
+class Exception extends \Exception {}

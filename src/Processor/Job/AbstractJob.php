@@ -11,7 +11,9 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process\Job;
+namespace Pop\Queue\Processor\Job;
+
+use Pop\Queue\Processor\AbstractProcessor;
 
 /**
  * Abstract job class
@@ -27,10 +29,52 @@ abstract class AbstractJob implements JobInterface
 {
 
     /**
-     * Job status
+     * The processor the job belongs to (Worker or Schedule)
+     * @var AbstractProcessor
+     */
+    protected $processor = null;
+
+    /**
+     * Job status (0 - opened, 1 - running, 2 - complete)
      * @var int
      */
-    protected $status = 0; // 0 - opened, 1 - running, 2 - complete
+    protected $status = 0;
+
+    /**
+     * Constructor
+     *
+     * Instantiate the job object
+     *
+     * @param  AbstractProcessor $processor
+     */
+    public function __construct(AbstractProcessor $processor = null)
+    {
+        if (null !== $processor) {
+            $this->setProcessor($processor);
+        }
+    }
+
+    /**
+     * Set processor
+     *
+     * @param  AbstractProcessor $processor
+     * @return AbstractJob
+     */
+    public function setProcessor(AbstractProcessor $processor)
+    {
+        $this->processor = $processor;
+        return $this;
+    }
+
+    /**
+     * Get processor
+     *
+     * @return AbstractProcessor
+     */
+    public function getProcessor()
+    {
+        return $this->processor;
+    }
 
     /**
      * Set job status

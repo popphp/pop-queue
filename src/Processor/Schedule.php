@@ -11,9 +11,9 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Processor;
 
-use Pop\Queue\Process\Job;
+use Pop\Queue\Processor\Job;
 
 /**
  * Schedule class
@@ -25,7 +25,7 @@ use Pop\Queue\Process\Job;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Schedule extends AbstractProcess
+class Schedule extends AbstractProcessor
 {
 
     /**
@@ -45,7 +45,7 @@ class Schedule extends AbstractProcess
      * Add jobs
      *
      * @param  array $jobs
-     * @return AbstractProcess
+     * @return AbstractProcessor
      */
     public function addJobs(array $jobs)
     {
@@ -75,6 +75,16 @@ class Schedule extends AbstractProcess
     public function hasJob($timestamp)
     {
         return (isset($this->jobs[$timestamp]));
+    }
+
+    /**
+     * Process next job
+     *
+     * @return boolean
+     */
+    public function processNext()
+    {
+        return true;
     }
 
 }

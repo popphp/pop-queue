@@ -11,10 +11,12 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Processor;
+
+use Pop\Queue\Queue;
 
 /**
- * Abstract process class
+ * Abstract processor class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -23,31 +25,58 @@ namespace Pop\Queue\Process;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-abstract class AbstractProcess implements ProcessInterface
+interface ProcessorInterface
 {
 
     /**
-     * Worker jobs
-     * @var array
+     * Set queue
+     *
+     * @param  Queue $queue
+     * @return AbstractProcessor
      */
-    protected $jobs = [];
+    public function setQueue(Queue $queue);
+
+    /**
+     * Get queue
+     *
+     * @return Queue
+     */
+    public function getQueue();
 
     /**
      * Add jobs
      *
      * @param  array $jobs
-     * @return AbstractProcess
+     * @return AbstractProcessor
      */
-    abstract public function addJobs(array $jobs);
+    public function addJobs(array $jobs);
 
     /**
      * Get jobs
      *
      * @return array
      */
-    public function getJobs()
-    {
-        return $this->jobs;
-    }
+    public function getJobs();
+
+    /**
+     * Get failed jobs
+     *
+     * @return array
+     */
+    public function getFailedJobs();
+
+    /**
+     * Has failed jobs
+     *
+     * @return boolean
+     */
+    public function hasFailedJobs();
+
+    /**
+     * Processor next job
+     *
+     * @return boolean
+     */
+    public function processNext();
 
 }

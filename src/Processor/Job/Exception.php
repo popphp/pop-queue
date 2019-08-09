@@ -11,10 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process\Job;
+namespace Pop\Queue\Processor\Job;
 
 /**
- * Queue process job exception class
+ * Queue processor job exception class
  *
  * @category   Pop
  * @package    Pop\Queue

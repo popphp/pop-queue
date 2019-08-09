@@ -11,9 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Process;
+namespace Pop\Queue\Processor;
 
-use Pop\Queue\Process\Job;
+use Pop\Queue\Queue;
+use Pop\Queue\Processor\Job;
 
 /**
  * Worker class
@@ -25,7 +26,7 @@ use Pop\Queue\Process\Job;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Worker extends AbstractProcess
+class Worker extends AbstractProcessor
 {
 
 
@@ -47,9 +48,11 @@ class Worker extends AbstractProcess
      * Instantiate the worker object
      *
      * @param  string $priority
+     * @param  Queue  $queue
      */
-    public function __construct($priority = 'FIFO')
+    public function __construct($priority = 'FIFO', Queue $queue = null)
     {
+        parent::__construct($queue);
         $this->setPriority($priority);
     }
 
@@ -113,7 +116,7 @@ class Worker extends AbstractProcess
      * Add jobs
      *
      * @param  array $jobs
-     * @return AbstractProcess
+     * @return AbstractProcessor
      */
     public function addJobs(array $jobs)
     {
@@ -143,6 +146,16 @@ class Worker extends AbstractProcess
     public function hasJob($index)
     {
         return (isset($this->jobs[$index]));
+    }
+
+    /**
+     * Process next job
+     *
+     * @return boolean
+     */
+    public function processNext()
+    {
+        return true;
     }
 
 }
