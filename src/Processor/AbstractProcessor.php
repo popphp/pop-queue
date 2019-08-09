@@ -83,6 +83,16 @@ abstract class AbstractProcessor implements ProcessorInterface
     }
 
     /**
+     * Has queue
+     *
+     * @return boolean
+     */
+    public function hasQueue()
+    {
+        return (null !== $this->queue);
+    }
+
+    /**
      * Add jobs
      *
      * @param  array $jobs

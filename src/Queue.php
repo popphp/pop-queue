@@ -61,7 +61,7 @@ class Queue
      * @param  Adapter\AdapterInterface $adapter
      * @param  Application              $application
      */
-    public function __construct(Adapter\AdapterInterface $adapter, Application $application)
+    public function __construct(Adapter\AdapterInterface $adapter, Application $application = null)
     {
         $this->adapter     = $adapter;
         $this->application = $application;
@@ -90,11 +90,14 @@ class Queue
     /**
      * Add a worker
      *
-     * @param  Process\Worker $worker
+     * @param  Processor\Worker $worker
      * @return Queue
      */
-    public function addWorker(Process\Worker $worker)
+    public function addWorker(Processor\Worker $worker)
     {
+        if (!$worker->hasQueue()) {
+            $worker->setQueue($this);
+        }
         $this->workers[] = $worker;
         return $this;
     }
@@ -114,13 +117,36 @@ class Queue
     }
 
     /**
+     * Get workers
+     *
+     * @return array
+     */
+    public function getWorkers()
+    {
+        return $this->workers;
+    }
+
+    /**
+     * Has workers
+     *
+     * @return boolean
+     */
+    public function hasWorkers()
+    {
+        return !empty($this->workers);
+    }
+
+    /**
      * Add a schedule
      *
-     * @param  Process\Schedule $schedule
+     * @param  Processor\Schedule $schedule
      * @return Queue
      */
-    public function addSchedule(Process\Schedule $schedule)
+    public function addSchedule(Processor\Schedule $schedule)
     {
+        if (!$schedule->hasQueue()) {
+            $schedule->setQueue($this);
+        }
         $this->schedules[] = $schedule;
         return $this;
     }
@@ -137,6 +163,26 @@ class Queue
             $this->addSchedule($schedule);
         }
         return $this;
+    }
+
+    /**
+     * Get schedules
+     *
+     * @return array
+     */
+    public function getSchedules()
+    {
+        return $this->schedules;
+    }
+
+    /**
+     * Has schedules
+     *
+     * @return boolean
+     */
+    public function hasSchedules()
+    {
+        return !empty($this->schedules);
     }
 
 }

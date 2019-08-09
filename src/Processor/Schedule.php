@@ -37,6 +37,9 @@ class Schedule extends AbstractProcessor
      */
     public function addJob(Job\AbstractJob $job, $timestamp)
     {
+        if (!$job->hasProcessor()) {
+            $job->setProcessor($this);
+        }
         $this->jobs[$timestamp] = $job;
         return $this;
     }

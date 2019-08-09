@@ -44,6 +44,13 @@ interface ProcessorInterface
     public function getQueue();
 
     /**
+     * Has queue
+     *
+     * @return boolean
+     */
+    public function hasQueue();
+
+    /**
      * Add jobs
      *
      * @param  array $jobs

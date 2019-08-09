@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Processor\Job;
 
+use Pop\Queue\Processor\AbstractProcessor;
+
 /**
  * Job class
  *
@@ -26,6 +28,27 @@ namespace Pop\Queue\Processor\Job;
 interface JobInterface
 {
 
+    /**
+     * Set processor
+     *
+     * @param  AbstractProcessor $processor
+     * @return AbstractJob
+     */
+    public function setProcessor(AbstractProcessor $processor);
+
+    /**
+     * Get processor
+     *
+     * @return AbstractProcessor
+     */
+    public function getProcessor();
+
+    /**
+     * Has processor
+     *
+     * @return boolean
+     */
+    public function hasProcessor();
 
     /**
      * Set job status

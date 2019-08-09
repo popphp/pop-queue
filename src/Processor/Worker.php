@@ -108,6 +108,9 @@ class Worker extends AbstractProcessor
      */
     public function addJob(Job\AbstractJob $job)
     {
+        if (!$job->hasProcessor()) {
+            $job->setProcessor($this);
+        }
         $this->jobs[] = $job;
         return $this;
     }

@@ -77,6 +77,16 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
+     * Has processor
+     *
+     * @return boolean
+     */
+    public function hasProcessor()
+    {
+        return (null !== $this->processor);
+    }
+
+    /**
      * Set job status
      *
      * @param  int $status
