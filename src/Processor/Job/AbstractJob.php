@@ -29,6 +29,30 @@ abstract class AbstractJob implements JobInterface
 {
 
     /**
+     * Job callable
+     * @var mixed
+     */
+    protected $callable = null;
+
+    /**
+     * Job parameters
+     * @var mixed
+     */
+    protected $params = null;
+
+    /**
+     * Job instance
+     * @var mixed
+     */
+    protected $instance = null;
+
+    /**
+     * Job ID
+     * @var string
+     */
+    protected $id = null;
+
+    /**
      * The processor the job belongs to (Worker or Schedule)
      * @var AbstractProcessor
      */
@@ -41,17 +65,64 @@ abstract class AbstractJob implements JobInterface
     protected $status = 0;
 
     /**
+     * Job failed flag
+     * @var boolean
+     */
+    protected $failed = false;
+
+    /**
      * Constructor
      *
      * Instantiate the job object
      *
+     * @param  mixed             $callable
+     * @param  mixed             $params
      * @param  AbstractProcessor $processor
+     * @param  string            $id
      */
-    public function __construct(AbstractProcessor $processor = null)
+    public function __construct($callable, $params = null, AbstractProcessor $processor = null, $id = null)
     {
+        $this->callable = $callable;
+        $this->params   = $params;
+
         if (null !== $processor) {
             $this->setProcessor($processor);
         }
+        if (null !== $id) {
+            $this->setJobId($id);
+        }
+    }
+
+    /**
+     * Set job ID
+     *
+     * @param  string $id
+     * @return AbstractJob
+     */
+    public function setJobId($id)
+    {
+        $this->id = $id;
+        return $this;
+    }
+
+    /**
+     * Get job ID
+     *
+     * @return string
+     */
+    public function getJobId()
+    {
+        return $this->id;
+    }
+
+    /**
+     * Has job ID
+     *
+     * @return boolean
+     */
+    public function hasJobId()
+    {
+        return (null !== $this->id);
     }
 
     /**
@@ -113,6 +184,27 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
+     * Set job as failed
+     *
+     * @return JobInterface
+     */
+    public function setAsFailed()
+    {
+        $this->failed = true;
+        return $this;
+    }
+
+    /**
+     * Has job failed
+     *
+     * @return boolean
+     */
+    public function hasFailed()
+    {
+        return $this->failed;
+    }
+
+    /**
      * Is job open
      *
      * @return boolean
@@ -163,4 +255,42 @@ abstract class AbstractJob implements JobInterface
      */
     abstract public function stop();
 
+
+    /**
+     * Load callable
+     *
+     * @throws \ReflectionException
+     * @return mixed
+     */
+    protected function loadCallable()
+    {
+        $callable = $this->callable;
+        $params   = $this->params;
+
+        if ((null !== $params) && !is_array($params)) {
+            $params = [$params];
+        }
+
+        // If the callable is a closure
+        if ($callable instanceof \Closure) {
+            $this->instance = (!empty($params)) ? call_user_func_array($callable, $params) : $callable();
+        // If the callable is a string
+        } else if (is_string($callable)) {
+            if (strpos($callable, '->') !== false) {
+                list($class, $method) = explode('->', $callable);
+                if (class_exists($class) && method_exists($class, $method)) {
+                    $this->instance = (!empty($params)) ?
+                        call_user_func_array([new $class(), $method], $params) : call_user_func([new $class(), $method]);
+                }
+            } else if (strpos($callable, '::') !== false) {
+                $this->instance = (!empty($params)) ?
+                    call_user_func_array($callable, $params) : call_user_func($callable);
+            } else if (class_exists($callable)) {
+                $this->instance = (!empty($params)) ?
+                    (new \ReflectionClass($callable))->newInstanceArgs($params) : new $callable();
+            }
+        }
+
+        return $this->instance;
+    }
 }

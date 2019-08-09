@@ -29,10 +29,32 @@ interface JobInterface
 {
 
     /**
+     * Set job ID
+     *
+     * @param  string $id
+     * @return JobInterface
+     */
+    public function setJobId($id);
+
+    /**
+     * Get job ID
+     *
+     * @return string
+     */
+    public function getJobId();
+
+    /**
+     * Has job ID
+     *
+     * @return boolean
+     */
+    public function hasJobId();
+
+    /**
      * Set processor
      *
      * @param  AbstractProcessor $processor
-     * @return AbstractJob
+     * @return JobInterface
      */
     public function setProcessor(AbstractProcessor $processor);
 
@@ -64,6 +86,20 @@ interface JobInterface
      * @return int
      */
     public function getStatus();
+
+    /**
+     * Set job as failed
+     *
+     * @return JobInterface
+     */
+    public function setAsFailed();
+
+    /**
+     * Has job failed
+     *
+     * @return boolean
+     */
+    public function hasFailed();
 
     /**
      * Is job open
