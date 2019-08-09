@@ -26,6 +26,43 @@ namespace Pop\Queue\Process;
 interface JobInterface
 {
 
+
+    /**
+     * Set job status
+     *
+     * @param  int $status
+     * @return JobInterface
+     */
+    public function setStatus($status);
+
+    /**
+     * Get job status
+     *
+     * @return int
+     */
+    public function getStatus();
+
+    /**
+     * Is job open
+     *
+     * @return boolean
+     */
+    public function isOpen();
+
+    /**
+     * Is job running
+     *
+     * @return boolean
+     */
+    public function isRunning();
+
+    /**
+     * Is job complete
+     *
+     * @return boolean
+     */
+    public function isComplete();
+
     /**
      * Start job
      *

@@ -26,4 +26,91 @@ namespace Pop\Queue\Process;
 class Worker extends AbstractProcess
 {
 
+
+    /**
+     * Worker priority constants
+     */
+    const FIFO = 'FIFO'; // Same as LILO
+    const FILO = 'FILO'; // Same as LIFO
+
+    /**
+     * Worker type
+     * @var array
+     */
+    protected $priority = 'FIFO';
+
+    /**
+     * Constructor
+     *
+     * Instantiate the worker object
+     *
+     * @param  string $priority
+     */
+    public function __construct($priority = 'FIFO')
+    {
+        $this->setPriority($priority);
+    }
+
+    /**
+     * Set worker priority
+     *
+     * @param  string $priority
+     * @return Worker
+     */
+    public function setPriority($priority = 'FIFO')
+    {
+        if (defined('self::' . $priority)) {
+            $this->priority = $priority;
+        }
+        return $this;
+    }
+
+    /**
+     * Add job
+     *
+     * @param  AbstractJob $job
+     * @return Worker
+     */
+    public function addJob(AbstractJob $job)
+    {
+        $this->jobs[] = $job;
+        return $this;
+    }
+
+    /**
+     * Add jobs
+     *
+     * @param  array $jobs
+     * @return AbstractProcess
+     */
+    public function addJobs(array $jobs)
+    {
+        foreach ($jobs as $job) {
+            $this->addJob($job);
+        }
+        return $this;
+    }
+
+    /**
+     * Get job
+     *
+     * @param  int $index
+     * @return AbstractJob
+     */
+    public function getJob($index)
+    {
+        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
+    }
+
+    /**
+     * Has job
+     *
+     * @param  int $index
+     * @return boolean
+     */
+    public function hasJob($index)
+    {
+        return (isset($this->jobs[$index]));
+    }
+
 }

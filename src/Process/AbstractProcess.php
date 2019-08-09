@@ -33,29 +33,21 @@ abstract class AbstractProcess implements ProcessInterface
     protected $jobs = [];
 
     /**
-     * Add job
-     *
-     * @param  AbstractJob $job
-     * @return AbstractProcess
-     */
-    public function addJob(AbstractJob $job)
-    {
-        $this->jobs[] = $job;
-        return $this;
-    }
-
-    /**
      * Add jobs
      *
      * @param  array $jobs
      * @return AbstractProcess
      */
-    public function addJobs(array $jobs)
+    abstract public function addJobs(array $jobs);
+
+    /**
+     * Get jobs
+     *
+     * @return array
+     */
+    public function getJobs()
     {
-        foreach ($jobs as $job) {
-            $this->addJob($job);
-        }
-        return $this;
+        return $this->jobs;
     }
 
 }

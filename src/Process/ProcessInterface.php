@@ -27,19 +27,18 @@ interface ProcessInterface
 {
 
     /**
-     * Add job
-     *
-     * @param  AbstractJob $job
-     * @return ProcessInterface
-     */
-    public function addJob(AbstractJob $job);
-
-    /**
      * Add jobs
      *
      * @param  array $jobs
-     * @return ProcessInterface
+     * @return AbstractProcess
      */
     public function addJobs(array $jobs);
+
+    /**
+     * Get jobs
+     *
+     * @return array
+     */
+    public function getJobs();
 
 }
