@@ -14,6 +14,7 @@
 namespace Pop\Queue\Processor\Jobs;
 
 use Pop\Queue\Processor\AbstractProcessor;
+use Pop\Application;
 
 /**
  * Abstract job class
@@ -41,13 +42,25 @@ abstract class AbstractJob implements JobInterface
     protected $params = null;
 
     /**
+     * Job application command
+     * @var string
+     */
+    protected $command = null;
+
+    /**
+     * Job CLI executable command
+     * @var string
+     */
+    protected $exec = null;
+
+    /**
      * Job ID
      * @var string
      */
     protected $id = null;
 
     /**
-     * The processor the job belongs to (Worker or Schedule)
+     * The processor the job belongs to (Worker or Scheduler)
      * @var AbstractProcessor
      */
     protected $processor = null;
@@ -80,17 +93,138 @@ abstract class AbstractJob implements JobInterface
      * @param  AbstractProcessor $processor
      * @param  string            $id
      */
-    public function __construct($callable, $params = null, AbstractProcessor $processor = null, $id = null)
+    public function __construct($callable = null, $params = null, AbstractProcessor $processor = null, $id = null)
     {
-        $this->callable = $callable;
-        $this->params   = $params;
-
+        if (null !== $callable) {
+            $this->setCallable($callable, $params);
+        }
         if (null !== $processor) {
             $this->setProcessor($processor);
         }
         if (null !== $id) {
             $this->setJobId($id);
         }
+    }
+
+    /**
+     * Set job callable
+     *
+     * @param  mixed $callable
+     * @param  mixed $params
+     * @return AbstractJob
+     */
+    public function setCallable($callable, $params = null)
+    {
+        $this->callable = $callable;
+        $this->params   = $params;
+
+        return $this;
+    }
+
+    /**
+     * Set job application command (alias)
+     *
+     * @param  string $command
+     * @return JobInterface
+     */
+    public function command($command)
+    {
+        return $this->setCommand($command);
+    }
+
+    /**
+     * Set job application command
+     *
+     * @param  string $command
+     * @return JobInterface
+     */
+    public function setCommand($command)
+    {
+        $this->command = $command;
+        return $this;
+    }
+
+    /**
+     * Set job CLI executable command (alias)
+     *
+     * @param  string $command
+     * @return JobInterface
+     */
+    public function exec($command)
+    {
+        return $this->setExec($command);
+    }
+
+    /**
+     * Set job CLI executable command
+     *
+     * @param  string executable
+     * @return JobInterface
+     */
+    public function setExec($command)
+    {
+        $this->exec = $command;
+        return $this;
+    }
+
+    /**
+     * Get job callable
+     *
+     * @return mixed
+     */
+    public function getCallable()
+    {
+        return $this->callable;
+    }
+
+    /**
+     * Get job application command
+     *
+     * @return string
+     */
+    public function getCommand()
+    {
+        return $this->command;
+    }
+
+    /**
+     * Get job CLI executable command
+     *
+     * @return string
+     */
+    public function getExec()
+    {
+        return $this->exec;
+    }
+
+    /**
+     * Has job callable
+     *
+     * @return boolean
+     */
+    public function hasCallable()
+    {
+        return (null !== $this->callable);
+    }
+
+    /**
+     * Has job application command
+     *
+     * @return boolean
+     */
+    public function hasCommand()
+    {
+        return (null !== $this->command);
+    }
+
+    /**
+     * Has job CLI executable command
+     *
+     * @return boolean
+     */
+    public function hasExec()
+    {
+        return (null !== $this->exec);
     }
 
     /**
@@ -227,7 +361,18 @@ abstract class AbstractJob implements JobInterface
      */
     public function run()
     {
-        return $this->loadCallable();
+        if ($this->hasCallable()) {
+            return $this->loadCallable();
+        }
+        if ($this->hasCommand() && ($this->hasProcessor()) && ($this->getProcessor()->hasQueue()) &&
+            ($this->getProcessor()->getQueue()->hasApplication())) {
+            return $this->runCommand($this->getProcessor()->getQueue()->application());
+        }
+        if ($this->hasExec()) {
+            return $this->runExec();
+        }
+
+        return null;
     }
 
     /**
@@ -271,6 +416,36 @@ abstract class AbstractJob implements JobInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Run application command
+     *
+     * @param Application $app
+     * @return mixed
+     */
+    protected function runCommand(Application $app)
+    {
+        $result = null;
+
+        $routes = $app->router()->getRouteMatch()->getRoutes();
+
+        if (isset($routes[$this->command])) {
+
+        }
+        return $result;
+    }
+
+    /**
+     * Run CLI executable command
+     *
+     * @return mixed
+     */
+    protected function runExec()
+    {
+        $output = [];
+        exec($this->exec, $output);
+        return $output;
     }
 
 }

@@ -29,6 +29,73 @@ interface JobInterface
 {
 
     /**
+     * Set job callable
+     *
+     * @param  mixed $callable
+     * @param  mixed $params
+     * @return JobInterface
+     */
+    public function setCallable($callable, $params = null);
+
+    /**
+     * Set job application command
+     *
+     * @param  string $command
+     * @return JobInterface
+     */
+    public function setCommand($command);
+
+    /**
+     * Set job CLI executable command
+     *
+     * @param  string executable
+     * @return JobInterface
+     */
+    public function setExec($command);
+
+    /**
+     * Get job callable
+     *
+     * @return mixed
+     */
+    public function getCallable();
+
+    /**
+     * Get job application command
+     *
+     * @return string
+     */
+    public function getCommand();
+
+    /**
+     * Get job CLI executable command
+     *
+     * @return string
+     */
+    public function getExec();
+
+    /**
+     * Has job callable
+     *
+     * @return boolean
+     */
+    public function hasCallable();
+
+    /**
+     * Has job application command
+     *
+     * @return boolean
+     */
+    public function hasCommand();
+
+    /**
+     * Has job CLI executable command
+     *
+     * @return boolean
+     */
+    public function hasExec();
+
+    /**
      * Set job ID
      *
      * @param  string $id

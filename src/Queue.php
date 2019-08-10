@@ -88,6 +88,16 @@ class Queue
     }
 
     /**
+     * Has application
+     *
+     * @return boolean
+     */
+    public function hasApplication()
+    {
+        return (null !== $this->application);
+    }
+
+    /**
      * Add a worker
      *
      * @param  Processor\Worker $worker
