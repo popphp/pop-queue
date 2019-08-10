@@ -30,7 +30,7 @@ class Schedule extends AbstractProcessor
 
     /**
      * Job schedules
-     * @var array
+     * @var Job\Schedule[]
      */
     protected $schedules = [];
 
@@ -38,7 +38,7 @@ class Schedule extends AbstractProcessor
      * Add job
      *
      * @param  Job\AbstractJob $job
-     * @return Schedule
+     * @return Job\Schedule
      */
     public function addJob(Job\AbstractJob $job)
     {
@@ -46,19 +46,33 @@ class Schedule extends AbstractProcessor
             $job->setProcessor($this);
         }
 
-        $this->jobs[] = $job;
+        $schedule = new Job\Schedule(($job));
 
-        return $this;
+        $this->jobs[]      = $job;
+        $this->schedules[] = $schedule;
+
+        return $schedule;
     }
 
     /**
      * Process next job
      *
-     * @return boolean
+     * @return void
      */
     public function processNext()
     {
-        return true;
+        foreach ($this->schedules as $key => $schedule) {
+            if ($schedule->isDue()) {
+                try {
+                    $schedule->getJob()->run();
+                    $schedule->getJob()->setAsCompleted();
+                } catch (\Exception $e) {
+                    $schedule->getJob()->setAsFailed();
+                    $this->failed[$key]           = $schedule->getJob();
+                    $this->failedExceptions[$key] = $e;
+                }
+            }
+        }
     }
 
 }

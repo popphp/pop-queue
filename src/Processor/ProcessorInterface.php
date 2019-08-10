@@ -51,7 +51,6 @@ interface ProcessorInterface
      */
     public function hasQueue();
 
-
     /**
      * Add job
      *

@@ -29,7 +29,6 @@ use Pop\Queue\Processor\Job;
 class Worker extends AbstractProcessor
 {
 
-
     /**
      * Worker priority constants
      */
@@ -138,6 +137,7 @@ class Worker extends AbstractProcessor
     public function processNext()
     {
         $nextIndex = $this->getNextIndex();
+
         if ($this->hasJob($nextIndex)) {
             try {
                 $this->jobs[$nextIndex]->run();
@@ -148,6 +148,7 @@ class Worker extends AbstractProcessor
                 $this->failedExceptions[$nextIndex] = $e;
             }
         }
+
         return $nextIndex;
     }
 

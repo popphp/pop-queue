@@ -43,13 +43,13 @@ class Queue
 
     /**
      * Queue workers
-     * @var array
+     * @var Processor\Worker[]
      */
     protected $workers = [];
 
     /**
      * Queue schedules
-     * @var array
+     * @var Processor\Schedule[]
      */
     protected $schedules = [];
 

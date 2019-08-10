@@ -27,6 +27,12 @@ class Schedule
 {
 
     /**
+     * The job the schedule belongs to
+     * @var AbstractJob
+     */
+    protected $job = null;
+
+    /**
      * Minutes
      * @var array
      */
@@ -60,7 +66,50 @@ class Schedule
      * Timezone
      * @var string
      */
-    protected $timezone = 'America/Chicago';
+    protected $timezone = null;
+
+    /**
+     * Constructor
+     *
+     * Instantiate the job schedule object
+     *
+     * @param  AbstractJob $job
+     * @param  string      $timezone
+     */
+    public function __construct(AbstractJob $job = null, $timezone = null)
+    {
+        if (null !== $job) {
+            $this->setJob($job);
+        }
+
+        if (null !== $timezone) {
+            $this->setTimezone($timezone);
+        } else {
+            $this->setTimezone(date('e'));
+        }
+    }
+
+    /**
+     * Set job
+     *
+     * @param  AbstractJob $job
+     * @return Schedule
+     */
+    public function setJob(AbstractJob $job)
+    {
+        $this->job = $job;
+        return $this;
+    }
+
+    /**
+     * Get job
+     *
+     * @return AbstractJob
+     */
+    public function getJob()
+    {
+        return $this->job;
+    }
 
     /**
      * Set job schedule to custom cron schedule
@@ -511,7 +560,6 @@ class Schedule
         return $this->timezone;
     }
 
-
     /**
      * Determine if the schedule is due
      *
@@ -519,11 +567,48 @@ class Schedule
      */
     public function isDue()
     {
-        $minute = (int)date('i');
-        $hour   = (int)date('G');
-        $dom    = (int)date('j');
-        $month  = (int)date('n');
-        $dow    = (int)date('w');
+        $minuteSatisfied = $this->isSatisfied($this->minutes, (int)date('i'));
+        $hourSatisfied   = $this->isSatisfied($this->hours, (int)date('G'));
+        $domSatisfied    = $this->isSatisfied($this->daysOfTheMonth, (int)date('j'));
+        $monthSatisfied  = $this->isSatisfied($this->months, (int)date('n'));
+        $dowSatisfied    = $this->isSatisfied($this->daysOfTheWeek, (int)date('w'));
+
+        return ($minuteSatisfied && $hourSatisfied && $domSatisfied && $monthSatisfied && $dowSatisfied);
+    }
+
+    /**
+     * Determine if the value satisfies the expression
+     *
+     * @param  array $values
+     * @param  mixed $value
+     * @return boolean
+     */
+    protected function isSatisfied($values, $value)
+    {
+        if (!empty($values)) {
+            if (in_array('*', $values)) {
+                return true;
+            }
+            if (in_array($value, $values)) {
+                return true;
+            }
+            foreach ($values as $expression) {
+                if (strpos($expression, '-') !== false) {
+                    list($min, $max) = explode('-', $expression);
+                    if (($value >= $min) || ($value <= $max)) {
+                        return true;
+                    }
+                }
+                if (strpos($expression, '/') !== false) {
+                    $step = (int)substr($expression, (strpos($expression, '/') + 1));
+                    if (($value % $step) == 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
 }

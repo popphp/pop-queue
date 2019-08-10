@@ -37,19 +37,19 @@ abstract class AbstractProcessor implements ProcessorInterface
 
     /**
      * Worker jobs
-     * @var array
+     * @var AbstractJob[]
      */
     protected $jobs = [];
 
     /**
      * Failed jobs
-     * @var array
+     * @var AbstractJob[]
      */
     protected $failed = [];
 
     /**
      * Failed jobs exceptions
-     * @var array
+     * @var \Exception[]
      */
     protected $failedExceptions = [];
 
@@ -208,7 +208,7 @@ abstract class AbstractProcessor implements ProcessorInterface
      * Get failed exception
      *
      * @param  mixed $index
-     * @return AbstractJob
+     * @return \Exception
      */
     public function getFailedException($index)
     {
