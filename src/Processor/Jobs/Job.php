@@ -11,10 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Job;
+namespace Pop\Queue\Processor\Jobs;
 
 /**
- * Queue processor job exception class
+ * Job class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -23,4 +23,7 @@ namespace Pop\Queue\Processor\Job;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Exception extends \Exception {}
+class Job extends AbstractJob
+{
+
+}

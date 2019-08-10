@@ -14,7 +14,7 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Worker class
@@ -40,6 +40,12 @@ class Worker extends AbstractProcessor
      * @var string
      */
     protected $priority = 'FIFO';
+
+    /**
+     * Worker jobs
+     * @var AbstractJob[]
+     */
+    protected $jobs = [];
 
     /**
      * Constructor
@@ -102,10 +108,10 @@ class Worker extends AbstractProcessor
     /**
      * Add job
      *
-     * @param  Job\AbstractJob $job
+     * @param  AbstractJob $job
      * @return Worker
      */
-    public function addJob(Job\AbstractJob $job)
+    public function addJob(AbstractJob $job)
     {
         if (!$job->hasProcessor()) {
             $job->setProcessor($this);
@@ -116,6 +122,62 @@ class Worker extends AbstractProcessor
             $this->jobs[] = $job;
         }
         return $this;
+    }
+
+    /**
+     * Add jobs
+     *
+     * @param  array $jobs
+     * @return Worker
+     */
+    public function addJobs(array $jobs)
+    {
+        foreach ($jobs as $job) {
+            $this->addJob($job);
+        }
+        return $this;
+    }
+
+    /**
+     * Get jobs
+     *
+     * @return array
+     */
+    public function getJobs()
+    {
+        return $this->jobs;
+    }
+
+    /**
+     * Get job
+     *
+     * @param  int $index
+     * @return AbstractJob
+     */
+    public function getJob($index)
+    {
+        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
+    }
+
+    /**
+     * Has jobs
+     *
+     * @return boolean
+     */
+    public function hasJobs()
+    {
+        return (count($this->jobs) > 0);
+    }
+
+    /**
+     * Has job
+     *
+     * @param  int $index
+     * @return boolean
+     */
+    public function hasJob($index)
+    {
+        return (isset($this->jobs[$index]));
     }
 
     /**

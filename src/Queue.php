@@ -48,10 +48,10 @@ class Queue
     protected $workers = [];
 
     /**
-     * Queue schedules
-     * @var Processor\Schedule[]
+     * Queue schedulers
+     * @var Processor\Scheduler[]
      */
-    protected $schedules = [];
+    protected $schedulers = [];
 
     /**
      * Constructor
@@ -137,52 +137,52 @@ class Queue
     }
 
     /**
-     * Add a schedule
+     * Add a scheduler
      *
-     * @param  Processor\Schedule $schedule
+     * @param  Processor\Scheduler $scheduler
      * @return Queue
      */
-    public function addSchedule(Processor\Schedule $schedule)
+    public function addScheduler(Processor\Scheduler $scheduler)
     {
-        if (!$schedule->hasQueue()) {
-            $schedule->setQueue($this);
+        if (!$scheduler->hasQueue()) {
+            $scheduler->setQueue($this);
         }
-        $this->schedules[] = $schedule;
+        $this->schedulers[] = $scheduler;
         return $this;
     }
 
     /**
-     * Add schedules
+     * Add schedulers
      *
-     * @param  array $schedules
+     * @param  array $schedulers
      * @return Queue
      */
-    public function addSchedules(array $schedules)
+    public function addSchedulers(array $schedulers)
     {
-        foreach ($schedules as $schedule) {
-            $this->addSchedule($schedule);
+        foreach ($schedulers as $scheduler) {
+            $this->addScheduler($scheduler);
         }
         return $this;
     }
 
     /**
-     * Get schedules
+     * Get schedulers
      *
      * @return array
      */
-    public function getSchedules()
+    public function getSchedulers()
     {
-        return $this->schedules;
+        return $this->schedulers;
     }
 
     /**
-     * Has schedules
+     * Has schedulers
      *
      * @return boolean
      */
-    public function hasSchedules()
+    public function hasSchedulers()
     {
-        return !empty($this->schedules);
+        return !empty($this->schedulers);
     }
 
 }

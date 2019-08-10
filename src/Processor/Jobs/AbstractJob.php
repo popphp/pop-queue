@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Job;
+namespace Pop\Queue\Processor\Jobs;
 
 use Pop\Queue\Processor\AbstractProcessor;
 

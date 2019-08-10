@@ -14,7 +14,7 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Job\AbstractJob;
+use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Abstract process class
@@ -34,12 +34,6 @@ abstract class AbstractProcessor implements ProcessorInterface
      * @var Queue
      */
     protected $queue = null;
-
-    /**
-     * Worker jobs
-     * @var AbstractJob[]
-     */
-    protected $jobs = [];
 
     /**
      * Failed jobs
@@ -97,70 +91,6 @@ abstract class AbstractProcessor implements ProcessorInterface
     public function hasQueue()
     {
         return (null !== $this->queue);
-    }
-
-    /**
-     * Add job
-     *
-     * @param  Job\AbstractJob $job
-     * @return Worker
-     */
-    abstract public function addJob(Job\AbstractJob $job);
-
-    /**
-     * Add jobs
-     *
-     * @param  array $jobs
-     * @return AbstractProcessor
-     */
-    public function addJobs(array $jobs)
-    {
-        foreach ($jobs as $job) {
-            $this->addJob($job);
-        }
-        return $this;
-    }
-
-    /**
-     * Get jobs
-     *
-     * @return array
-     */
-    public function getJobs()
-    {
-        return $this->jobs;
-    }
-
-    /**
-     * Get job
-     *
-     * @param  int $index
-     * @return Job\AbstractJob
-     */
-    public function getJob($index)
-    {
-        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
-    }
-
-    /**
-     * Has jobs
-     *
-     * @return boolean
-     */
-    public function hasJobs()
-    {
-        return (count($this->jobs) > 0);
-    }
-
-    /**
-     * Has job
-     *
-     * @param  int $index
-     * @return boolean
-     */
-    public function hasJob($index)
-    {
-        return (isset($this->jobs[$index]));
     }
 
     /**

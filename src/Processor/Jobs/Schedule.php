@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Job;
+namespace Pop\Queue\Processor\Jobs;
 
 /**
  * Job schedule class
@@ -109,6 +109,16 @@ class Schedule
     public function getJob()
     {
         return $this->job;
+    }
+
+    /**
+     * Has job
+     *
+     * @return boolean
+     */
+    public function hasJob()
+    {
+        return (null !== $this->job);
     }
 
     /**
