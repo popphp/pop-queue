@@ -511,4 +511,19 @@ class Schedule
         return $this->timezone;
     }
 
+
+    /**
+     * Determine if the schedule is due
+     *
+     * @return boolean
+     */
+    public function isDue()
+    {
+        $minute = (int)date('i');
+        $hour   = (int)date('G');
+        $dom    = (int)date('j');
+        $month  = (int)date('n');
+        $dow    = (int)date('w');
+    }
+
 }
