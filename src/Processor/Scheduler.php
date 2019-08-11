@@ -143,10 +143,6 @@ class Scheduler extends AbstractProcessor
                     $schedule->getJob()->setAsFailed();
                     $this->failed[$key]           = $schedule->getJob();
                     $this->failedExceptions[$key] = $e;
-
-                    if ($schedule->getJob()->isAttemptOnce()) {
-                        unset($this->schedules[$key]);
-                    }
                 }
             }
         }

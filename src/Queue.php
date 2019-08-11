@@ -195,4 +195,25 @@ class Queue
         return !empty($this->schedulers);
     }
 
+    /**
+     * Process queue
+     *
+     * @return void
+     */
+    public function process()
+    {
+        if ($this->hasSchedulers()) {
+            foreach ($this->schedulers as $scheduler) {
+                $scheduler->processNext();
+            }
+        }
+        if ($this->hasWorkers()) {
+            foreach ($this->workers as $worker) {
+                while ($worker->hasNextJob()) {
+                    $worker->processNext();
+                }
+            }
+        }
+    }
+
 }
