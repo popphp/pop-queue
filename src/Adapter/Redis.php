@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Adapter;
 
+use Pop\Queue\Processor\Jobs\AbstractJob;
+
 /**
  * Redis queue adapter class
  *
@@ -51,6 +53,27 @@ class Redis extends AbstractAdapter
         if (!$this->redis->connect($host, (int)$port)) {
             throw new Exception('Error: Unable to connect to the redis server.');
         }
+    }
+
+    /**
+     * Push job onto queue stack
+     *
+     * @param  AbstractJob $job
+     * @return void
+     */
+    public function push(AbstractJob $job)
+    {
+
+    }
+
+    /**
+     * Pop job off of queue stack
+     *
+     * @return void
+     */
+    public function pop()
+    {
+
     }
 
     /**

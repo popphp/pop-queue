@@ -15,6 +15,7 @@ namespace Pop\Queue\Adapter;
 
 use Pheanstalk\Connection;
 use Pheanstalk\Pheanstalk;
+use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Redis queue adapter class
@@ -50,6 +51,27 @@ class Beanstalk extends AbstractAdapter
         $timeout = $timeout ?? Connection::DEFAULT_CONNECT_TIMEOUT;
 
         $this->pheanstalk = Pheanstalk::create($host, $port, $timeout);
+    }
+
+    /**
+     * Push job onto queue stack
+     *
+     * @param  AbstractJob $job
+     * @return void
+     */
+    public function push(AbstractJob $job)
+    {
+
+    }
+
+    /**
+     * Pop job off of queue stack
+     *
+     * @return void
+     */
+    public function pop()
+    {
+
     }
 
     /**

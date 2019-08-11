@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
+use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Database queue adapter class
@@ -65,6 +66,27 @@ class Db extends AbstractAdapter
         if (!$this->db->hasTable($failedTable)) {
             $this->createFailedTable($failedTable);
         }
+    }
+
+    /**
+     * Push job onto queue stack
+     *
+     * @param  AbstractJob $job
+     * @return void
+     */
+    public function push(AbstractJob $job)
+    {
+
+    }
+
+    /**
+     * Pop job off of queue stack
+     *
+     * @return void
+     */
+    public function pop()
+    {
+
     }
 
     /**

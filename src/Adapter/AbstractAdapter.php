@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Adapter;
 
+use Pop\Queue\Processor\Jobs\AbstractJob;
+
 /**
  * Queue adapter abstract class
  *
@@ -25,5 +27,20 @@ namespace Pop\Queue\Adapter;
  */
 abstract class AbstractAdapter implements AdapterInterface
 {
+
+    /**
+     * Push job onto queue stack
+     *
+     * @param  AbstractJob $job
+     * @return void
+     */
+    abstract public function push(AbstractJob $job);
+
+    /**
+     * Pop job off of queue stack
+     *
+     * @return void
+     */
+    abstract public function pop();
 
 }
