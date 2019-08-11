@@ -36,6 +36,12 @@ abstract class AbstractProcessor implements ProcessorInterface
     protected $queue = null;
 
     /**
+     * Job results
+     * @var array
+     */
+    protected $results = [];
+
+    /**
      * Failed jobs
      * @var AbstractJob[]
      */
@@ -91,6 +97,37 @@ abstract class AbstractProcessor implements ProcessorInterface
     public function hasQueue()
     {
         return (null !== $this->queue);
+    }
+
+    /**
+     * Get job results
+     *
+     * @return array
+     */
+    public function getJobResults()
+    {
+        return $this->results;
+    }
+
+    /**
+     * Get job result
+     *
+     * @param  mixed $index
+     * @return mixed
+     */
+    public function getJobResult($index)
+    {
+        return (isset($this->results[$index])) ? $this->results[$index] : null;
+    }
+
+    /**
+     * Has job results
+     *
+     * @return boolean
+     */
+    public function hasJobResults()
+    {
+        return !empty($this->results);
     }
 
     /**

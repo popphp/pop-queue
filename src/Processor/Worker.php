@@ -202,7 +202,7 @@ class Worker extends AbstractProcessor
 
         if ($this->hasJob($nextIndex)) {
             try {
-                $this->jobs[$nextIndex]->run();
+                $this->results[$nextIndex] = $this->jobs[$nextIndex]->run();
                 $this->jobs[$nextIndex]->setAsCompleted();
             } catch (\Exception $e) {
                 $this->jobs[$nextIndex]->setAsFailed();

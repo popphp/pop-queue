@@ -13,6 +13,8 @@
  */
 namespace Pop\Queue\Processor\Jobs;
 
+use Pop\Queue\Processor\AbstractProcessor;
+
 /**
  * Job class
  *
@@ -25,5 +27,31 @@ namespace Pop\Queue\Processor\Jobs;
  */
 class Job extends AbstractJob
 {
+
+    /**
+     * Create a job object with an application command
+     *
+     * @param  string            $command
+     * @param  AbstractProcessor $processor
+     * @param  string            $id
+     * @return AbstractJob
+     */
+    public static function command($command, AbstractProcessor $processor = null, $id = null)
+    {
+        return (new static(null, null, $processor, $id))->setCommand($command);
+    }
+
+    /**
+     * Create a job object with a CLI executable command
+     *
+     * @param  string            $command
+     * @param  AbstractProcessor $processor
+     * @param  string            $id
+     * @return AbstractJob
+     */
+    public static function exec($command, AbstractProcessor $processor = null, $id = null)
+    {
+        return (new static(null, null, $processor, $id))->setExec($command);
+    }
 
 }

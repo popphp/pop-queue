@@ -122,21 +122,10 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Set job application command (alias)
-     *
-     * @param  string $command
-     * @return JobInterface
-     */
-    public function command($command)
-    {
-        return $this->setCommand($command);
-    }
-
-    /**
      * Set job application command
      *
      * @param  string $command
-     * @return JobInterface
+     * @return AbstractJob
      */
     public function setCommand($command)
     {
@@ -145,21 +134,10 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Set job CLI executable command (alias)
-     *
-     * @param  string $command
-     * @return JobInterface
-     */
-    public function exec($command)
-    {
-        return $this->setExec($command);
-    }
-
-    /**
      * Set job CLI executable command
      *
      * @param  string executable
-     * @return JobInterface
+     * @return AbstractJob
      */
     public function setExec($command)
     {
@@ -426,14 +404,17 @@ abstract class AbstractJob implements JobInterface
      */
     protected function runCommand(Application $app)
     {
-        $result = null;
+        if (array_key_exists($this->command, $app->router()->getRouteMatch()->getRoutes())) {
+            $output = null;
 
-        $routes = $app->router()->getRouteMatch()->getRoutes();
+            ob_start();
+            $app->run(true, $this->command);
+            $output = ob_get_clean();
 
-        if (isset($routes[$this->command])) {
-
+            return array_filter(explode(PHP_EOL, $output));
         }
-        return $result;
+
+        return false;
     }
 
     /**

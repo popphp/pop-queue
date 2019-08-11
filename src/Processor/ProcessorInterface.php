@@ -52,6 +52,28 @@ interface ProcessorInterface
     public function hasQueue();
 
     /**
+     * Get job results
+     *
+     * @return array
+     */
+    public function getJobResults();
+
+    /**
+     * Get job result
+     *
+     * @param  mixed $index
+     * @return mixed
+     */
+    public function getJobResult($index);
+
+    /**
+     * Has job results
+     *
+     * @return boolean
+     */
+    public function hasJobResults();
+
+    /**
      * Get failed jobs
      *
      * @return array
