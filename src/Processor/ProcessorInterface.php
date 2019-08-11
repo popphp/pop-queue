@@ -74,6 +74,28 @@ interface ProcessorInterface
     public function hasJobResults();
 
     /**
+     * Get completed jobs
+     *
+     * @return array
+     */
+    public function getCompletedJobs();
+
+    /**
+     * Get completed job
+     *
+     * @param  mixed $index
+     * @return AbstractJob
+     */
+    public function getCompletedJob($index);
+
+    /**
+     * Has completed jobs
+     *
+     * @return boolean
+     */
+    public function hasCompletedJobs();
+
+    /**
      * Get failed jobs
      *
      * @return array

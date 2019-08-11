@@ -140,6 +140,21 @@ interface JobInterface
     public function hasProcessor();
 
     /**
+     * Set job to only attempt once
+     *
+     * @param  boolean $run
+     * @return JobInterface
+     */
+    public function attemptOnce($run = true);
+
+    /**
+     * Set job to only attempt to run once
+     *
+     * @return boolean
+     */
+    public function isAttemptOnce();
+
+    /**
      * Set job as failed
      *
      * @return JobInterface

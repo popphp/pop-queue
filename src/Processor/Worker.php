@@ -204,10 +204,16 @@ class Worker extends AbstractProcessor
             try {
                 $this->results[$nextIndex] = $this->jobs[$nextIndex]->run();
                 $this->jobs[$nextIndex]->setAsCompleted();
+                $this->completed[$nextIndex] = $this->jobs[$nextIndex];
+                unset($this->jobs[$nextIndex]);
             } catch (\Exception $e) {
                 $this->jobs[$nextIndex]->setAsFailed();
                 $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
                 $this->failedExceptions[$nextIndex] = $e;
+
+                if ($this->jobs[$nextIndex]->isAttemptOnce()) {
+                    unset($this->jobs[$nextIndex]);
+                }
             }
         }
 

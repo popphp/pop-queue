@@ -84,6 +84,12 @@ abstract class AbstractJob implements JobInterface
     protected $failed = false;
 
     /**
+     * Attempt once flag
+     * @var boolean
+     */
+    protected $attemptOnce = false;
+
+    /**
      * Constructor
      *
      * Instantiate the job object
@@ -267,6 +273,28 @@ abstract class AbstractJob implements JobInterface
     public function hasProcessor()
     {
         return (null !== $this->processor);
+    }
+
+    /**
+     * Set job to only attempt once
+     *
+     * @param  boolean $run
+     * @return JobInterface
+     */
+    public function attemptOnce($run = true)
+    {
+        $this->attemptOnce = (bool)$run;
+        return $this;
+    }
+
+    /**
+     * Set job to only attempt to run once
+     *
+     * @return boolean
+     */
+    public function isAttemptOnce()
+    {
+        return $this->attemptOnce;
     }
 
     /**

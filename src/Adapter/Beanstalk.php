@@ -38,7 +38,7 @@ class Beanstalk extends AbstractAdapter
     /**
      * Constructor
      *
-     * Instantiate the memcache cache object
+     * Instantiate the beanstalk queue object
      *
      * @param  string $host
      * @param  int    $port
