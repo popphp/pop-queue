@@ -14,7 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
-use Pop\Queue\Processor\Jobs\AbstractJob;
+use Pop\Queue\Queue;
 
 /**
  * Database queue adapter class
@@ -60,6 +60,7 @@ class Db extends AbstractAdapter
     {
         $this->db    = $db;
         $this->table = $table;
+
         if (!$this->db->hasTable($table)) {
             $this->createTable($table);
         }
@@ -69,14 +70,130 @@ class Db extends AbstractAdapter
     }
 
     /**
+     * Get queue object
+     *
+     * @param  string $queueName
+     * @return Queue
+     */
+    public function loadQueue($queueName)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where("queue = '" . $queueName . "'")
+            ->where("completed IS NULL")
+            ->limit(1);
+
+        $this->db->query($sql);
+
+        $row     = $this->db->fetch();
+        $queue   = null;
+        $payload = unserialize($row['payload']);
+
+        if (($payload->hasProcessor()) && ($payload->getProcessor()->hasQueue())) {
+            $queue = $payload->getProcessor()->getQueue();
+        }
+
+        return $queue;
+    }
+
+    /**
+     * Check if queue adapter has jobs
+     *
+     * @param  string $queueName
+     * @return boolean
+     */
+    public function hasJobs($queueName)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where("queue = '" . $queueName . "'" )
+            ->where("completed IS NULL");
+
+        $this->db->query($sql);
+
+        return (count($this->db->fetchAll()) > 0);
+    }
+
+    /**
+     * Get queue jobs
+     *
+     * @param  string $queueName
+     * @return array
+     */
+    public function getJobs($queueName)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where("queue = '" . $queueName . "'")
+            ->where("completed IS NULL");
+
+        $this->db->query($sql);
+
+
+        $rows = $this->db->fetchAll();
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['payload'] = unserialize($row['payload']);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Check if queue adapter has failed jobs
+     *
+     * @param  string $queueName
+     * @return boolean
+     */
+    public function hasFailedJobs($queueName)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->failedTable)->where("queue = '" . $queueName . "'" );
+
+        $this->db->query($sql);
+
+        return (count($this->db->fetchAll()) > 0);
+    }
+
+    /**
+     * Get queue jobs
+     *
+     * @param  string $queueName
+     * @return array
+     */
+    public function getFailedJobs($queueName)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->failedTable)->where("queue = '" . $queueName . "'" );
+
+        $this->db->query($sql);
+
+        $rows = $this->db->fetchAll();
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['payload'] = unserialize($row['payload']);
+        }
+
+        return $rows;
+    }
+
+    /**
      * Push job onto queue stack
      *
-     * @param  AbstractJob $job
+     * @param  string $queueName
+     * @param  mixed  $job
      * @return void
      */
-    public function push(AbstractJob $job)
+    public function push($queueName, $job)
     {
+        $sql = $this->db->createSql();
+        $sql->insert($this->table)->values([
+            'queue'    => $queueName,
+            'payload'  => serialize(clone $job),
+            'attempts' => 0
+        ]);
 
+        $this->db->query($sql);
     }
 
     /**
@@ -131,7 +248,7 @@ class Db extends AbstractAdapter
 
         $schema->create($table)
             ->int('id', 16)->increment()
-            ->text('queue')
+            ->varchar('queue', 255)
             ->text('payload')
             ->int('attempts', 16)
             ->datetime('completed')
@@ -154,7 +271,7 @@ class Db extends AbstractAdapter
 
         $schema->create($failedTable)
             ->int('id', 16)->increment()
-            ->text('queue')
+            ->varchar('queue', 255)
             ->text('payload')
             ->text('exception')
             ->datetime('failed')

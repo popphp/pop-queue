@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use Pop\Queue\Adapter\AdapterInterface;
+use Pop\Queue\Processor\Jobs;
 use Pop\Application;
 
 /**
@@ -28,6 +29,12 @@ use Pop\Application;
  */
 class Queue
 {
+
+    /**
+     * Queue name
+     * @var string
+     */
+    protected $name = null;
 
     /**
      * Queue adapter
@@ -58,13 +65,25 @@ class Queue
      *
      * Instantiate the queue object
      *
+     * @param  string                   $name
      * @param  Adapter\AdapterInterface $adapter
      * @param  Application              $application
      */
-    public function __construct(Adapter\AdapterInterface $adapter, Application $application = null)
+    public function __construct($name, Adapter\AdapterInterface $adapter, Application $application = null)
     {
+        $this->name        = $name;
         $this->adapter     = $adapter;
         $this->application = $application;
+    }
+
+    /**
+     * Get the queue name
+     *
+     * @return string
+     */
+    public function getName()
+    {
+        return $this->name;
     }
 
     /**
@@ -101,14 +120,21 @@ class Queue
      * Add a worker
      *
      * @param  Processor\Worker $worker
+     * @param  boolean          $loaded
      * @return Queue
      */
-    public function addWorker(Processor\Worker $worker)
+    public function addWorker(Processor\Worker $worker, $loaded = false)
     {
         if (!$worker->hasQueue()) {
             $worker->setQueue($this);
         }
         $this->workers[] = $worker;
+
+        if (!($loaded) && ($worker->hasJobs())) {
+            foreach ($worker->getJobs() as $job) {
+                $this->adapter->push($this->name, $job);
+            }
+        }
         return $this;
     }
 
@@ -150,14 +176,21 @@ class Queue
      * Add a scheduler
      *
      * @param  Processor\Scheduler $scheduler
+     * @param  boolean             $loaded
      * @return Queue
      */
-    public function addScheduler(Processor\Scheduler $scheduler)
+    public function addScheduler(Processor\Scheduler $scheduler, $loaded = false)
     {
         if (!$scheduler->hasQueue()) {
             $scheduler->setQueue($this);
         }
         $this->schedulers[] = $scheduler;
+
+        if (!($loaded) && ($scheduler->hasSchedules())) {
+            foreach ($scheduler->getSchedules() as $schedule) {
+                $this->adapter->push($this->name, $schedule);
+            }
+        }
         return $this;
     }
 

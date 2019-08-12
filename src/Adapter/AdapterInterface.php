@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Processor\Jobs\AbstractJob;
+use Pop\Queue\Queue;
 
 /**
  * Queue adapter interface
@@ -29,12 +30,53 @@ interface AdapterInterface
 {
 
     /**
+     * Get queue object
+     *
+     * @param  string $queueName
+     * @return Queue
+     */
+    public function loadQueue($queueName);
+
+    /**
+     * Check if queue adapter has jobs
+     *
+     * @param  string $queueName
+     * @return boolean
+     */
+    public function hasJobs($queueName);
+
+    /**
+     * Get queue jobs
+     *
+     * @param  string $queueName
+     * @return array
+     */
+    public function getJobs($queueName);
+
+    /**
+     * Check if queue adapter has failed jobs
+     *
+     * @param  string $queueName
+     * @return boolean
+     */
+    public function hasFailedJobs($queueName);
+
+    /**
+     * Get queue jobs
+     *
+     * @param  string $queueName
+     * @return array
+     */
+    public function getFailedJobs($queueName);
+
+    /**
      * Push job onto queue stack
      *
-     * @param  AbstractJob $job
+     * @param  string $queueName
+     * @param  mixed  $job
      * @return void
      */
-    public function push(AbstractJob $job);
+    public function push($queueName, $job);
 
     /**
      * Pop job off of queue stack
