@@ -135,6 +135,7 @@ class Queue
                 $this->adapter->push($this->name, $job);
             }
         }
+
         return $this;
     }
 
@@ -149,6 +150,7 @@ class Queue
         foreach ($workers as $worker) {
             $this->addWorker($worker);
         }
+
         return $this;
     }
 
@@ -191,6 +193,7 @@ class Queue
                 $this->adapter->push($this->name, $schedule);
             }
         }
+
         return $this;
     }
 
@@ -205,6 +208,7 @@ class Queue
         foreach ($schedulers as $scheduler) {
             $this->addScheduler($scheduler);
         }
+
         return $this;
     }
 
@@ -229,17 +233,28 @@ class Queue
     }
 
     /**
-     * Process queue
+     * Process schedulers in the queue
      *
-     * @return void
+     * @return Queue
      */
-    public function process()
+    public function processSchedulers()
     {
         if ($this->hasSchedulers()) {
             foreach ($this->schedulers as $scheduler) {
                 $scheduler->processNext();
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * Process schedulers in the queue
+     *
+     * @return Queue
+     */
+    public function processWorkers()
+    {
         if ($this->hasWorkers()) {
             foreach ($this->workers as $worker) {
                 while ($worker->hasNextJob()) {
@@ -247,6 +262,21 @@ class Queue
                 }
             }
         }
+
+        return $this;
+    }
+
+    /**
+     * Process all schedulers and workers in the queue
+     *
+     * @return Queue
+     */
+    public function processAll()
+    {
+        $this->processSchedulers();
+        $this->processWorkers();
+
+        return $this;
     }
 
 }

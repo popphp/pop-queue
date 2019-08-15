@@ -15,6 +15,7 @@ namespace Pop\Queue\Processor\Jobs;
 
 use Pop\Queue\Processor\AbstractProcessor;
 use Pop\Application;
+use SuperClosure\Serializer;
 
 /**
  * Abstract job class
@@ -88,6 +89,12 @@ abstract class AbstractJob implements JobInterface
      * @var boolean
      */
     protected $attemptOnce = false;
+
+    /**
+     * Serialize callable
+     * @var mixed
+     */
+    protected $serializedCallable = null;
 
     /**
      * Constructor
@@ -385,6 +392,7 @@ abstract class AbstractJob implements JobInterface
      * Load callable
      *
      * @throws \ReflectionException
+     * @throws Exception
      * @return mixed
      */
     protected function loadCallable()
@@ -455,6 +463,34 @@ abstract class AbstractJob implements JobInterface
         $output = [];
         exec($this->exec, $output);
         return $output;
+    }
+
+    /**
+     * Sleep magic method
+     *
+     * @return array
+     */
+    public function __sleep()
+    {
+        if (!empty($this->callable) && ($this->callable instanceof \Closure)) {
+            $this->serializedCallable = (new Serializer())->serialize($this->callable);
+            $this->callable = null;
+        }
+
+        return array_keys(get_object_vars($this));
+    }
+
+    /**
+     * Wakeup magic method
+     *
+     * @return void
+     */
+    public function __wakeup()
+    {
+        if (!empty($this->serializedCallable)) {
+            $this->callable = (new Serializer())->unserialize($this->serializedCallable);
+            $this->serializedCallable = null;
+        }
     }
 
 }
