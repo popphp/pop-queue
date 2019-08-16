@@ -46,6 +46,17 @@ interface AdapterInterface
     public function getJob($jobId);
 
     /**
+     * Update job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @param  mixed $job
+     * @param  mixed $completed
+     * @param  mixed $increment
+     * @return void
+     */
+    public function updateJob($jobId, $job, $completed = false, $increment = false);
+
+    /**
      * Check if queue adapter has jobs
      *
      * @param  mixed $queue
@@ -94,6 +105,17 @@ interface AdapterInterface
     public function getFailedJob($jobId);
 
     /**
+     * Update failed job from queue stack by job ID
+     *
+     * @param  mixed      $jobId
+     * @param  mixed      $failedJob
+     * @param  mixed      $failed
+     * @param  \Exception $exception
+     * @return void
+     */
+    public function updateFailedJob($jobId, $failedJob, $failed = false, \Exception $exception = null);
+
+    /**
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
@@ -118,6 +140,16 @@ interface AdapterInterface
      * @return void
      */
     public function push($queue, $job, $priority = null);
+
+    /**
+     * Move failed job to failed queue stack
+     *
+     * @param  mixed      $queue
+     * @param  mixed      $failedJob
+     * @param  \Exception $exception
+     * @return void
+     */
+    public function failed($queue, $failedJob, \Exception $exception = null);
 
     /**
      * Pop job off of queue stack

@@ -111,19 +111,35 @@ class Db extends AbstractAdapter
      * Update job from queue stack by job ID
      *
      * @param  mixed $jobId
-     * @return array
+     * @param  mixed $job
+     * @param  mixed $completed
+     * @param  mixed $increment
+     * @return void
      */
-    public function updateJob($jobId)
+    public function updateJob($jobId, $job, $completed = false, $increment = false)
     {
+        $jobRecord = $this->getJob($jobId);
+        $values    = ['payload' => ':payload'];
+        $params    = ['payload' => serialize(clone $job)];
+
+        if ($completed !== false) {
+            $values['completed'] = ':completed';
+            $params['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+        }
+        if ($increment !== false) {
+            $values['attempts'] = ':attempts';
+            $params['attempts'] = ($increment === true) && isset($jobRecord['attempts']) ?
+                $jobRecord['attempts']++ : (int)$increment;
+        }
+
+        $params['job_id'] = $jobId;
+
         $sql = $this->db->createSql();
-        $sql->update($this->table)->from($this->table)->where('job_id = :job_id')->limit(1);
+        $sql->update($this->table)->values($values)->where('job_id = :job_id');
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->bindParams($params);
         $this->db->execute();
-
-        $rows = $this->db->fetchAll();
-        return (isset($rows[0])) ? $rows[0] : null;
     }
 
     /**
@@ -264,6 +280,39 @@ class Db extends AbstractAdapter
     }
 
     /**
+     * Update failed job from queue stack by job ID
+     *
+     * @param  mixed      $jobId
+     * @param  mixed      $failedJob
+     * @param  mixed      $failed
+     * @param  \Exception $exception
+     * @return void
+     */
+    public function updateFailedJob($jobId, $failedJob, $failed = false, \Exception $exception = null)
+    {
+        $values = ['payload' => ':payload'];
+        $params = ['payload' => serialize(clone $failedJob)];
+
+        if ($failed !== false) {
+            $values['failed'] = ':failed';
+            $params['failed'] = ($failed === true) ? date('Y-m-d H:i:s') : $failed;
+        }
+        if (null !== $exception) {
+            $values['exception'] = ':exception';
+            $params['exception'] = $exception->getMessage();
+        }
+
+        $params['job_id'] = $jobId;
+
+        $sql = $this->db->createSql();
+        $sql->update($this->failedTable)->values($values)->where('job_id = :job_id');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams($params);
+        $this->db->execute();
+    }
+
+    /**
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
@@ -349,6 +398,50 @@ class Db extends AbstractAdapter
         ]);
 
         $this->db->execute();
+    }
+
+    /**
+     * Move failed job to failed queue stack
+     *
+     * @param  mixed      $queue
+     * @param  mixed      $failedJob
+     * @param  \Exception $exception
+     * @return void
+     */
+    public function failed($queue, $failedJob, \Exception $exception = null)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $jobId     = null;
+
+        $sql = $this->db->createSql();
+        $sql->insert($this->failedTable)->values([
+            'job_id'    => ':job_id',
+            'queue'     => ':queue',
+            'payload'   => ':payload',
+            'exception' => ':exception',
+            'failed'    => ':failed'
+        ]);
+
+        if ($failedJob instanceof Jobs\Schedule) {
+            $jobId = ($failedJob->getJob()->hasJobId()) ? $failedJob->getJob()->getJobId() :$failedJob->getJob()->generateJobId();
+        } else if ($failedJob instanceof Jobs\Job) {
+            $jobId = ($failedJob->hasJobId()) ? $failedJob->getJobId() : $failedJob->generateJobId();
+        }
+
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'job_id'    => $jobId,
+            'queue'     => $queueName,
+            'payload'   => serialize(clone $failedJob),
+            'exception' => (null !== $exception) ? $exception->getMessage() : null,
+            'failed'    => date('Y-m-d H:i:s')
+        ]);
+
+        $this->db->execute();
+
+        if (!empty($jobId)) {
+            $this->pop($jobId);
+        }
     }
 
     /**

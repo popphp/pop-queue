@@ -46,6 +46,17 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getJob($jobId);
 
     /**
+     * Update job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @param  mixed $job
+     * @param  mixed $completed
+     * @param  mixed $increment
+     * @return void
+     */
+    abstract public function updateJob($jobId, $job, $completed = false, $increment = false);
+
+    /**
      * Check if queue adapter has jobs
      *
      * @param  mixed $queue
@@ -62,12 +73,12 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getJobs($queue);
 
     /**
-     * Check if queue stack has completed job
+     * Check if queue adapter has completed jobs
      *
-     * @param  mixed $jobId
+     * @param  mixed $queue
      * @return boolean
      */
-    abstract public function hasCompletedJob($jobId);
+    abstract public function hasCompletedJobs($queue);
 
     /**
      * Get queue completed jobs
@@ -94,6 +105,17 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getFailedJob($jobId);
 
     /**
+     * Update failed job from queue stack by job ID
+     *
+     * @param  mixed      $jobId
+     * @param  mixed      $failedJob
+     * @param  mixed      $failed
+     * @param  \Exception $exception
+     * @return void
+     */
+    abstract public function updateFailedJob($jobId, $failedJob, $failed = false, \Exception $exception = null);
+
+    /**
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
@@ -118,6 +140,16 @@ abstract class AbstractAdapter implements AdapterInterface
      * @return void
      */
     abstract public function push($queue, $job, $priority = null);
+
+    /**
+     * Move failed job to failed queue stack
+     *
+     * @param  mixed      $queue
+     * @param  mixed      $failedJob
+     * @param  \Exception $exception
+     * @return void
+     */
+    abstract public function failed($queue, $failedJob, \Exception $exception = null);
 
     /**
      * Pop job off of queue stack
