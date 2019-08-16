@@ -30,59 +30,118 @@ interface AdapterInterface
 {
 
     /**
-     * Get queue object
+     * Check if queue stack has job
      *
-     * @param  string $queueName
-     * @return Queue
+     * @param  mixed $jobId
+     * @return boolean
      */
-    public function loadQueue($queueName);
+    public function hasJob($jobId);
+
+    /**
+     * Get job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    public function getJob($jobId);
 
     /**
      * Check if queue adapter has jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return boolean
      */
-    public function hasJobs($queueName);
+    public function hasJobs($queue);
 
     /**
      * Get queue jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    public function getJobs($queueName);
+    public function getJobs($queue);
+
+    /**
+     * Check if queue adapter has completed jobs
+     *
+     * @param  mixed $queue
+     * @return boolean
+     */
+    public function hasCompletedJobs($queue);
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed $queue
+     * @return array
+     */
+    public function getCompletedJobs($queue);
+
+    /**
+     * Check if queue stack has failed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasFailedJob($jobId);
+
+    /**
+     * Get failed job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    public function getFailedJob($jobId);
 
     /**
      * Check if queue adapter has failed jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return boolean
      */
-    public function hasFailedJobs($queueName);
+    public function hasFailedJobs($queue);
 
     /**
      * Get queue jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    public function getFailedJobs($queueName);
+    public function getFailedJobs($queue);
 
     /**
      * Push job onto queue stack
      *
-     * @param  string $queueName
-     * @param  mixed  $job
+     * @param  mixed $queue
+     * @param  mixed $job
+     * @param  mixed $priority
      * @return void
      */
-    public function push($queueName, $job);
+    public function push($queue, $job, $priority = null);
 
     /**
      * Pop job off of queue stack
      *
+     * @param  mixed $jobId
      * @return void
      */
-    public function pop();
+    public function pop($jobId);
+
+    /**
+     * Clear completed jobs off of the queue stack
+     *
+     * @param  mixed   $queue
+     * @param  boolean $all
+     * @return void
+     */
+    public function clear($queue, $all = false);
+
+    /**
+     * Flush all jobs off of the queue stack
+     *
+     * @param  boolean $all
+     * @return void
+     */
+    public function flush($all = false);
 
 }

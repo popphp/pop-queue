@@ -77,6 +77,48 @@ class Queue
     }
 
     /**
+     * Load queue from adapter
+     *
+     * @param  string                   $name
+     * @param  Adapter\AdapterInterface $adapter
+     * @param  Application              $application
+     * @return Queue
+     */
+    public static function load($name, Adapter\AdapterInterface $adapter, Application $application = null)
+    {
+        $queue = new static($name, $adapter, $application);
+
+        if ($adapter->hasJobs($name)) {
+            $jobs       = $adapter->getJobs($name);
+            $fifoWorker = new Processor\Worker();
+            $filoWorker = new Processor\Worker(Processor\Worker::FILO);
+            $scheduler  = new Processor\Scheduler();
+
+            foreach ($jobs as $job) {
+                if ($job['payload'] instanceof Jobs\Schedule) {
+                    $scheduler->addSchedule($job['payload']);
+                } else if ($job['priority'] == Processor\Worker::FILO) {
+                    $filoWorker->addJob($job['payload']);
+                } else {
+                    $fifoWorker->addJob($job['payload']);
+                }
+            }
+
+            if ($scheduler->hasSchedules()) {
+                $queue->addScheduler($scheduler);
+            }
+            if ($fifoWorker->hasJobs()) {
+                $queue->addWorker($fifoWorker);
+            }
+            if ($filoWorker->hasJobs()) {
+                $queue->addWorker($filoWorker);
+            }
+        }
+
+        return $queue;
+    }
+
+    /**
      * Get the queue name
      *
      * @return string
@@ -120,22 +162,11 @@ class Queue
      * Add a worker
      *
      * @param  Processor\Worker $worker
-     * @param  boolean          $loaded
      * @return Queue
      */
-    public function addWorker(Processor\Worker $worker, $loaded = false)
+    public function addWorker(Processor\Worker $worker)
     {
-        if (!$worker->hasQueue()) {
-            $worker->setQueue($this);
-        }
         $this->workers[] = $worker;
-
-        if (!($loaded) && ($worker->hasJobs())) {
-            foreach ($worker->getJobs() as $job) {
-                $this->adapter->push($this->name, $job);
-            }
-        }
-
         return $this;
     }
 
@@ -178,22 +209,11 @@ class Queue
      * Add a scheduler
      *
      * @param  Processor\Scheduler $scheduler
-     * @param  boolean             $loaded
      * @return Queue
      */
-    public function addScheduler(Processor\Scheduler $scheduler, $loaded = false)
+    public function addScheduler(Processor\Scheduler $scheduler)
     {
-        if (!$scheduler->hasQueue()) {
-            $scheduler->setQueue($this);
-        }
         $this->schedulers[] = $scheduler;
-
-        if (!($loaded) && ($scheduler->hasSchedules())) {
-            foreach ($scheduler->getSchedules() as $schedule) {
-                $this->adapter->push($this->name, $schedule);
-            }
-        }
-
         return $this;
     }
 
@@ -233,6 +253,55 @@ class Queue
     }
 
     /**
+     * Push scheduled jobs to queue adapter
+     *
+     * @return Queue
+     */
+    public function pushSchedulers()
+    {
+        foreach ($this->schedulers as $scheduler) {
+            if ($scheduler->hasSchedules()) {
+                foreach ($scheduler->getSchedules() as $schedule) {
+                    $this->adapter->push($this, $schedule);
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Push worker jobs to queue adapter
+     *
+     * @return Queue
+     */
+    public function pushWorkers()
+    {
+        foreach ($this->workers as $worker) {
+            if ($worker->hasJobs()) {
+                foreach ($worker->getJobs() as $job) {
+                    $this->adapter->push($this, $job, $worker->getPriority());
+                }
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Push all jobs to queue adapter
+     *
+     * @return Queue
+     */
+    public function pushAll()
+    {
+        $this->pushSchedulers();
+        $this->pushWorkers();
+
+        return $this;
+    }
+
+    /**
      * Process schedulers in the queue
      *
      * @return Queue
@@ -241,7 +310,7 @@ class Queue
     {
         if ($this->hasSchedulers()) {
             foreach ($this->schedulers as $scheduler) {
-                $scheduler->processNext();
+                $scheduler->processNext($this);
             }
         }
 
@@ -258,7 +327,7 @@ class Queue
         if ($this->hasWorkers()) {
             foreach ($this->workers as $worker) {
                 while ($worker->hasNextJob()) {
-                    $worker->processNext();
+                    $worker->processNext($this);
                 }
             }
         }

@@ -13,7 +13,6 @@
  */
 namespace Pop\Queue\Processor\Jobs;
 
-use Pop\Queue\Processor\AbstractProcessor;
 use Pop\Application;
 use SuperClosure\Serializer;
 
@@ -29,6 +28,12 @@ use SuperClosure\Serializer;
  */
 abstract class AbstractJob implements JobInterface
 {
+
+    /**
+     * Job ID
+     * @var string
+     */
+    protected $id = null;
 
     /**
      * Job callable
@@ -53,18 +58,6 @@ abstract class AbstractJob implements JobInterface
      * @var string
      */
     protected $exec = null;
-
-    /**
-     * Job ID
-     * @var string
-     */
-    protected $id = null;
-
-    /**
-     * The processor the job belongs to (Worker or Scheduler)
-     * @var AbstractProcessor
-     */
-    protected $processor = null;
 
     /**
      * Job running flag
@@ -101,22 +94,61 @@ abstract class AbstractJob implements JobInterface
      *
      * Instantiate the job object
      *
-     * @param  mixed             $callable
-     * @param  mixed             $params
-     * @param  AbstractProcessor $processor
-     * @param  string            $id
+     * @param  mixed  $callable
+     * @param  mixed  $params
+     * @param  string $id
      */
-    public function __construct($callable = null, $params = null, AbstractProcessor $processor = null, $id = null)
+    public function __construct($callable = null, $params = null, $id = null)
     {
         if (null !== $callable) {
             $this->setCallable($callable, $params);
         }
-        if (null !== $processor) {
-            $this->setProcessor($processor);
-        }
         if (null !== $id) {
             $this->setJobId($id);
         }
+    }
+
+    /**
+     * Generate job ID
+     *
+     * @return string
+     */
+    public function generateJobId()
+    {
+        $this->id = sha1(uniqid(rand()) . time());
+        return $this->id;
+    }
+
+    /**
+     * Set job ID
+     *
+     * @param  string $id
+     * @return AbstractJob
+     */
+    public function setJobId($id)
+    {
+        $this->id = $id;
+        return $this;
+    }
+
+    /**
+     * Get job ID
+     *
+     * @return string
+     */
+    public function getJobId()
+    {
+        return $this->id;
+    }
+
+    /**
+     * Has job ID
+     *
+     * @return boolean
+     */
+    public function hasJobId()
+    {
+        return (null !== $this->id);
     }
 
     /**
@@ -219,78 +251,14 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Set job ID
-     *
-     * @param  string $id
-     * @return AbstractJob
-     */
-    public function setJobId($id)
-    {
-        $this->id = $id;
-        return $this;
-    }
-
-    /**
-     * Get job ID
-     *
-     * @return string
-     */
-    public function getJobId()
-    {
-        return $this->id;
-    }
-
-    /**
-     * Has job ID
-     *
-     * @return boolean
-     */
-    public function hasJobId()
-    {
-        return (null !== $this->id);
-    }
-
-    /**
-     * Set processor
-     *
-     * @param  AbstractProcessor $processor
-     * @return AbstractJob
-     */
-    public function setProcessor(AbstractProcessor $processor)
-    {
-        $this->processor = $processor;
-        return $this;
-    }
-
-    /**
-     * Get processor
-     *
-     * @return AbstractProcessor
-     */
-    public function getProcessor()
-    {
-        return $this->processor;
-    }
-
-    /**
-     * Has processor
-     *
-     * @return boolean
-     */
-    public function hasProcessor()
-    {
-        return (null !== $this->processor);
-    }
-
-    /**
      * Set job to only attempt once
      *
-     * @param  boolean $run
+     * @param  boolean $attemptOnce
      * @return JobInterface
      */
-    public function attemptOnce($run = true)
+    public function attemptOnce($attemptOnce = true)
     {
-        $this->attemptOnce = (bool)$run;
+        $this->attemptOnce = (bool)$attemptOnce;
         return $this;
     }
 
@@ -370,16 +338,16 @@ abstract class AbstractJob implements JobInterface
     /**
      * Run job
      *
+     * @param  Application $application
      * @return mixed
      */
-    public function run()
+    public function run(Application $application = null)
     {
         if ($this->hasCallable()) {
-            return $this->loadCallable();
+            return $this->loadCallable($application);
         }
-        if ($this->hasCommand() && ($this->hasProcessor()) && ($this->getProcessor()->hasQueue()) &&
-            ($this->getProcessor()->getQueue()->hasApplication())) {
-            return $this->runCommand($this->getProcessor()->getQueue()->application());
+        if (($this->hasCommand()) && (null !== $application)) {
+            return $this->runCommand($application);
         }
         if ($this->hasExec()) {
             return $this->runExec();
@@ -391,11 +359,12 @@ abstract class AbstractJob implements JobInterface
     /**
      * Load callable
      *
+     * @param  Application $application
      * @throws \ReflectionException
      * @throws Exception
      * @return mixed
      */
-    protected function loadCallable()
+    protected function loadCallable(Application $application = null)
     {
         if (null === $this->callable) {
             throw new Exception('Error: The callable for this job was not set.');
@@ -407,6 +376,10 @@ abstract class AbstractJob implements JobInterface
 
         if ((null !== $params) && !is_array($params)) {
             $params = [$params];
+        }
+
+        if (!empty($params) && !empty($application)) {
+            array_unshift($params, $application);
         }
 
         // If the callable is a closure
@@ -435,16 +408,16 @@ abstract class AbstractJob implements JobInterface
     /**
      * Run application command
      *
-     * @param Application $app
+     * @param Application $application
      * @return mixed
      */
-    protected function runCommand(Application $app)
+    protected function runCommand(Application $application)
     {
-        if (array_key_exists($this->command, $app->router()->getRouteMatch()->getRoutes())) {
+        if (array_key_exists($this->command, $application->router()->getRouteMatch()->getRoutes())) {
             $output = null;
 
             ob_start();
-            $app->run(true, $this->command);
+            $application->run(true, $this->command);
             $output = ob_get_clean();
 
             return array_filter(explode(PHP_EOL, $output));

@@ -30,59 +30,118 @@ abstract class AbstractAdapter implements AdapterInterface
 {
 
     /**
-     * Get queue object
+     * Check if queue stack has job
      *
-     * @param  string $queueName
-     * @return Queue
+     * @param  mixed $jobId
+     * @return boolean
      */
-    abstract public function loadQueue($queueName);
+    abstract public function hasJob($jobId);
+
+    /**
+     * Get job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    abstract public function getJob($jobId);
 
     /**
      * Check if queue adapter has jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return boolean
      */
-    abstract public function hasJobs($queueName);
+    abstract public function hasJobs($queue);
 
     /**
      * Get queue jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    abstract public function getJobs($queueName);
+    abstract public function getJobs($queue);
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    abstract public function hasCompletedJob($jobId);
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed $queue
+     * @return array
+     */
+    abstract public function getCompletedJobs($queue);
+
+    /**
+     * Check if queue stack has failed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    abstract public function hasFailedJob($jobId);
+
+    /**
+     * Get failed job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    abstract public function getFailedJob($jobId);
 
     /**
      * Check if queue adapter has failed jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return boolean
      */
-    abstract public function hasFailedJobs($queueName);
+    abstract public function hasFailedJobs($queue);
 
     /**
-     * Get queue jobs
+     * Get queue failed jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    abstract public function getFailedJobs($queueName);
+    abstract public function getFailedJobs($queue);
 
     /**
      * Push job onto queue stack
      *
-     * @param  string $queueName
-     * @param  mixed  $job
+     * @param  mixed $queue
+     * @param  mixed $job
+     * @param  mixed $priority
      * @return void
      */
-    abstract public function push($queueName, $job);
+    abstract public function push($queue, $job, $priority = null);
 
     /**
      * Pop job off of queue stack
      *
+     * @param  mixed $jobId
      * @return void
      */
-    abstract public function pop();
+    abstract public function pop($jobId);
+
+    /**
+     * Clear completed jobs off of the queue stack
+     *
+     * @param  mixed   $queue
+     * @param  boolean $all
+     * @return void
+     */
+    abstract public function clear($queue, $all = false);
+
+    /**
+     * Flush all jobs off of the queue stack
+     *
+     * @param  boolean $all
+     * @return void
+     */
+    abstract public function flush($all = false);
 
 }

@@ -29,6 +29,35 @@ interface JobInterface
 {
 
     /**
+     * Generate job ID
+     *
+     * @return string
+     */
+    public function generateJobId();
+
+    /**
+     * Set job ID
+     *
+     * @param  string $id
+     * @return JobInterface
+     */
+    public function setJobId($id);
+
+    /**
+     * Get job ID
+     *
+     * @return string
+     */
+    public function getJobId();
+
+    /**
+     * Has job ID
+     *
+     * @return boolean
+     */
+    public function hasJobId();
+
+    /**
      * Set job callable
      *
      * @param  mixed $callable
@@ -94,58 +123,13 @@ interface JobInterface
      * @return boolean
      */
     public function hasExec();
-
-    /**
-     * Set job ID
-     *
-     * @param  string $id
-     * @return JobInterface
-     */
-    public function setJobId($id);
-
-    /**
-     * Get job ID
-     *
-     * @return string
-     */
-    public function getJobId();
-
-    /**
-     * Has job ID
-     *
-     * @return boolean
-     */
-    public function hasJobId();
-
-    /**
-     * Set processor
-     *
-     * @param  AbstractProcessor $processor
-     * @return JobInterface
-     */
-    public function setProcessor(AbstractProcessor $processor);
-
-    /**
-     * Get processor
-     *
-     * @return AbstractProcessor
-     */
-    public function getProcessor();
-
-    /**
-     * Has processor
-     *
-     * @return boolean
-     */
-    public function hasProcessor();
-
     /**
      * Set job to only attempt once
      *
-     * @param  boolean $run
+     * @param  boolean $attemptOnce
      * @return JobInterface
      */
-    public function attemptOnce($run = true);
+    public function attemptOnce($attemptOnce = true);
 
     /**
      * Set job to only attempt to run once

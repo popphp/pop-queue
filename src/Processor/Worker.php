@@ -53,11 +53,9 @@ class Worker extends AbstractProcessor
      * Instantiate the worker object
      *
      * @param  string $priority
-     * @param  Queue  $queue
      */
-    public function __construct($priority = 'FIFO', Queue $queue = null)
+    public function __construct($priority = 'FIFO')
     {
-        parent::__construct($queue);
         $this->setPriority($priority);
     }
 
@@ -113,9 +111,6 @@ class Worker extends AbstractProcessor
      */
     public function addJob(AbstractJob $job)
     {
-        if (!$job->hasProcessor()) {
-            $job->setProcessor($this);
-        }
         if ($this->isFilo()) {
             array_unshift($this->jobs, $job);
         } else {
@@ -194,9 +189,10 @@ class Worker extends AbstractProcessor
     /**
      * Process next job
      *
+     * @param  Queue $queue
      * @return int
      */
-    public function processNext()
+    public function processNext(Queue $queue = null)
     {
         $nextIndex = $this->getNextIndex();
 
@@ -205,6 +201,11 @@ class Worker extends AbstractProcessor
                 $this->results[$nextIndex] = $this->jobs[$nextIndex]->run();
                 $this->jobs[$nextIndex]->setAsCompleted();
                 $this->completed[$nextIndex] = $this->jobs[$nextIndex];
+
+                if ((null !== $queue) && ($this->jobs[$nextIndex]->hasJobId()) &&
+                    ($queue->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
+
+                }
             } catch (\Exception $e) {
                 $this->jobs[$nextIndex]->setAsFailed();
                 $this->failed[$nextIndex]           = $this->jobs[$nextIndex];

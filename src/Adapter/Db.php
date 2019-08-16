@@ -15,6 +15,7 @@ namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
 use Pop\Queue\Queue;
+use Pop\Queue\Processor\Jobs;
 
 /**
  * Database queue adapter class
@@ -70,46 +71,79 @@ class Db extends AbstractAdapter
     }
 
     /**
-     * Get queue object
+     * Check if queue stack has job
      *
-     * @param  string $queueName
-     * @return Queue
+     * @param  mixed $jobId
+     * @return boolean
      */
-    public function loadQueue($queueName)
+    public function hasJob($jobId)
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->table)
-            ->where("queue = '" . $queueName . "'")
-            ->where("completed IS NULL")
-            ->limit(1);
+        $sql->select()->from($this->table)->where('job_id = :job_id');
 
-        $this->db->query($sql);
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
 
-        $row     = $this->db->fetch();
-        $queue   = null;
-        $payload = unserialize($row['payload']);
-
-        if (($payload->hasProcessor()) && ($payload->getProcessor()->hasQueue())) {
-            $queue = $payload->getProcessor()->getQueue();
-        }
-
-        return $queue;
+        return (count($this->db->fetchAll()) > 0);
     }
 
     /**
-     * Check if queue adapter has jobs
+     * Get job from queue stack by job ID
      *
-     * @param  string $queueName
-     * @return boolean
+     * @param  mixed $jobId
+     * @return array
      */
-    public function hasJobs($queueName)
+    public function getJob($jobId)
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->table)
-            ->where("queue = '" . $queueName . "'" )
-            ->where("completed IS NULL");
+        $sql->select()->from($this->table)->where('job_id = :job_id')->limit(1);
 
-        $this->db->query($sql);
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        $rows = $this->db->fetchAll();
+        return (isset($rows[0])) ? $rows[0] : null;
+    }
+
+    /**
+     * Update job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    public function updateJob($jobId)
+    {
+        $sql = $this->db->createSql();
+        $sql->update($this->table)->from($this->table)->where('job_id = :job_id')->limit(1);
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        $rows = $this->db->fetchAll();
+        return (isset($rows[0])) ? $rows[0] : null;
+    }
+
+    /**
+     * Check if queue has jobs
+     *
+     * @param  mixed $queue
+     * @return boolean
+     */
+    public function hasJobs($queue)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where('queue = :queue')
+            ->where('completed IS NULL');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
 
         return (count($this->db->fetchAll()) > 0);
     }
@@ -117,18 +151,21 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    public function getJobs($queueName)
+    public function getJobs($queue)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)
-            ->where("queue = '" . $queueName . "'")
-            ->where("completed IS NULL");
+            ->where('queue = :queue')
+            ->where('completed IS NULL');
 
-        $this->db->query($sql);
-
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
 
         $rows = $this->db->fetchAll();
 
@@ -140,17 +177,108 @@ class Db extends AbstractAdapter
     }
 
     /**
-     * Check if queue adapter has failed jobs
+     * Check if queue has completed jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return boolean
      */
-    public function hasFailedJobs($queueName)
+    public function hasCompletedJobs($queue)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where('queue = :queue')
+            ->where('completed IS NOT NULL');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
+
+        return (count($this->db->fetchAll()) > 0);
+    }
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed $queue
+     * @return array
+     */
+    public function getCompletedJobs($queue)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where('queue = :queue')
+            ->where('completed IS NOT NULL');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
+
+        $rows = $this->db->fetchAll();
+
+        foreach ($rows as $i => $row) {
+            $rows[$i]['payload'] = unserialize($row['payload']);
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Check if queue stack has failed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasFailedJob($jobId)
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->failedTable)->where("queue = '" . $queueName . "'" );
+        $sql->select()->from($this->failedTable)->where('job_id = :job_id');
 
-        $this->db->query($sql);
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        return (count($this->db->fetchAll()) > 0);
+    }
+
+    /**
+     * Get failed job from queue stack by job ID
+     *
+     * @param  mixed $jobId
+     * @return array
+     */
+    public function getFailedJob($jobId)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->failedTable)->where('job_id = :job_id')->limit(1);
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        $rows = $this->db->fetchAll();
+        return (isset($rows[0])) ? $rows[0] : null;
+    }
+
+    /**
+     * Check if queue adapter has failed jobs
+     *
+     * @param  mixed $queue
+     * @return boolean
+     */
+    public function hasFailedJobs($queue)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->failedTable)->where('queue = :queue');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
 
         return (count($this->db->fetchAll()) > 0);
     }
@@ -158,15 +286,19 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  string $queueName
+     * @param  mixed $queue
      * @return array
      */
-    public function getFailedJobs($queueName)
+    public function getFailedJobs($queue)
     {
-        $sql = $this->db->createSql();
-        $sql->select()->from($this->failedTable)->where("queue = '" . $queueName . "'" );
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
-        $this->db->query($sql);
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->failedTable)->where("queue = :queue");
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
 
         $rows = $this->db->fetchAll();
 
@@ -180,30 +312,101 @@ class Db extends AbstractAdapter
     /**
      * Push job onto queue stack
      *
-     * @param  string $queueName
-     * @param  mixed  $job
+     * @param  mixed $queue
+     * @param  mixed $job
+     * @param  mixed $priority
      * @return void
      */
-    public function push($queueName, $job)
+    public function push($queue, $job, $priority = null)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $jobId     = null;
+
         $sql = $this->db->createSql();
         $sql->insert($this->table)->values([
-            'queue'    => $queueName,
-            'payload'  => serialize(clone $job),
-            'attempts' => 0
+            'job_id'    => ':job_id',
+            'queue'     => ':queue',
+            'payload'   => ':payload',
+            'priority'  => ':priority',
+            'attempts'  => ':attempts',
+            'completed' => ':completed'
         ]);
 
-        $this->db->query($sql);
+        if ($job instanceof Jobs\Schedule) {
+            $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
+        } else if ($job instanceof Jobs\Job) {
+            $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+        }
+
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'job_id'    => $jobId,
+            'queue'     => $queueName,
+            'payload'   => serialize(clone $job),
+            'priority'  => $priority,
+            'attempts'  => 0,
+            'completed' => null
+        ]);
+
+        $this->db->execute();
     }
 
     /**
      * Pop job off of queue stack
      *
+     * @param  mixed $jobId
      * @return void
      */
-    public function pop()
+    public function pop($jobId)
     {
+        $sql = $this->db->createSql();
+        $sql->delete($this->table)->where('job_id = :job_id');
 
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+    }
+
+    /**
+     * Clear jobs off of the queue stack
+     *
+     * @param  mixed   $queue
+     * @param  boolean $all
+     * @return void
+     */
+    public function clear($queue, $all = false)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->delete($this->table)
+            ->where('queue = :queue');
+
+        if (!$all) {
+            $sql->delete()->where('completed IS NOT NULL');
+        }
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
+    }
+
+    /**
+     * Flush all jobs off of the queue stack
+     *
+     * @param  boolean $all
+     * @return void
+     */
+    public function flush($all = false)
+    {
+        $sql = $this->db->createSql();
+        $sql->delete($this->table);
+
+        if (!$all) {
+            $sql->delete()->where('completed IS NOT NULL');
+        }
+
+        $this->db->query($sql);
     }
 
     /**
@@ -248,7 +451,9 @@ class Db extends AbstractAdapter
 
         $schema->create($table)
             ->int('id', 16)->increment()
+            ->varchar('job_id', 255)
             ->varchar('queue', 255)
+            ->varchar('priority', 255)
             ->text('payload')
             ->int('attempts', 16)
             ->datetime('completed')
@@ -271,6 +476,7 @@ class Db extends AbstractAdapter
 
         $schema->create($failedTable)
             ->int('id', 16)->increment()
+            ->varchar('job_id', 255)
             ->varchar('queue', 255)
             ->text('payload')
             ->text('exception')

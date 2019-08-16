@@ -13,6 +13,7 @@
  */
 namespace Pop\Queue\Processor;
 
+use Pop\Queue\Queue;
 use Pop\Queue\Processor\Jobs\Schedule;
 use Pop\Queue\Processor\Jobs\AbstractJob;
 
@@ -43,10 +44,6 @@ class Scheduler extends AbstractProcessor
      */
     public function addJob(AbstractJob $job)
     {
-        if (!$job->hasProcessor()) {
-            $job->setProcessor($this);
-        }
-
         $schedule          = new Schedule(($job));
         $this->schedules[] = $schedule;
 
@@ -61,10 +58,6 @@ class Scheduler extends AbstractProcessor
      */
     public function addSchedule(Schedule $schedule)
     {
-        if (($schedule->hasJob()) && !$schedule->getJob()->hasProcessor()) {
-            $schedule->getJob()->setProcessor($this);
-        }
-
         $this->schedules[] = $schedule;
 
         return $this;
@@ -129,9 +122,10 @@ class Scheduler extends AbstractProcessor
     /**
      * Process next job
      *
+     * @param  Queue $queue
      * @return void
      */
-    public function processNext()
+    public function processNext(Queue $queue = null)
     {
         foreach ($this->schedules as $key => $schedule) {
             if ($schedule->isDue()) {

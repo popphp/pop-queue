@@ -30,28 +30,6 @@ interface ProcessorInterface
 {
 
     /**
-     * Set queue
-     *
-     * @param  Queue $queue
-     * @return AbstractProcessor
-     */
-    public function setQueue(Queue $queue);
-
-    /**
-     * Get queue
-     *
-     * @return Queue
-     */
-    public function getQueue();
-
-    /**
-     * Has queue
-     *
-     * @return boolean
-     */
-    public function hasQueue();
-
-    /**
      * Get job results
      *
      * @return array
@@ -142,8 +120,9 @@ interface ProcessorInterface
     /**
      * Processor next job
      *
-     * @return boolean
+     * @param  Queue $queue
+     * @return void
      */
-    public function processNext();
+    public function processNext(Queue $queue = null);
 
 }

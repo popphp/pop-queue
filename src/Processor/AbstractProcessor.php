@@ -30,12 +30,6 @@ abstract class AbstractProcessor implements ProcessorInterface
 {
 
     /**
-     * The queue the processor belongs to
-     * @var Queue
-     */
-    protected $queue = null;
-
-    /**
      * Job results
      * @var array
      */
@@ -58,52 +52,6 @@ abstract class AbstractProcessor implements ProcessorInterface
      * @var \Exception[]
      */
     protected $failedExceptions = [];
-
-    /**
-     * Constructor
-     *
-     * Instantiate the processor object
-     *
-     * @param  Queue $queue
-     */
-    public function __construct(Queue $queue = null)
-    {
-        if (null !== $queue) {
-            $this->setQueue($queue);
-        }
-    }
-
-    /**
-     * Set queue
-     *
-     * @param  Queue $queue
-     * @return AbstractProcessor
-     */
-    public function setQueue(Queue $queue)
-    {
-        $this->queue = $queue;
-        return $this;
-    }
-
-    /**
-     * Get queue
-     *
-     * @return Queue
-     */
-    public function getQueue()
-    {
-        return $this->queue;
-    }
-
-    /**
-     * Has queue
-     *
-     * @return boolean
-     */
-    public function hasQueue()
-    {
-        return (null !== $this->queue);
-    }
 
     /**
      * Get job results
@@ -232,8 +180,9 @@ abstract class AbstractProcessor implements ProcessorInterface
     /**
      * Process next job
      *
-     * @return boolean
+     * @param  Queue $queue
+     * @return void
      */
-    abstract public function processNext();
+    abstract public function processNext(Queue $queue = null);
 
 }
