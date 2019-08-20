@@ -104,7 +104,16 @@ class Db extends AbstractAdapter
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
-        return (isset($rows[0])) ? $rows[0] : null;
+        $row  = null;
+
+        if (isset($rows[0])) {
+            $row = $rows[0];
+            if (isset($row['payload'])) {
+                $row['payload'] = unserialize($row['payload']);
+            }
+        }
+
+        return $row;
     }
 
     /**
