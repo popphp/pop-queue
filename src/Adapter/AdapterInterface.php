@@ -40,21 +40,21 @@ interface AdapterInterface
     /**
      * Get job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJob($jobId);
+    public function getJob($jobId, $unserialize = true);
 
     /**
      * Update job from queue stack by job ID
      *
      * @param  mixed $jobId
-     * @param  mixed $job
      * @param  mixed $completed
      * @param  mixed $increment
      * @return void
      */
-    public function updateJob($jobId, $job, $completed = false, $increment = false);
+    public function updateJob($jobId, $completed = false, $increment = false);
 
     /**
      * Check if queue adapter has jobs
@@ -103,17 +103,6 @@ interface AdapterInterface
      * @return array
      */
     public function getFailedJob($jobId);
-
-    /**
-     * Update failed job from queue stack by job ID
-     *
-     * @param  mixed      $jobId
-     * @param  mixed      $failedJob
-     * @param  mixed      $failed
-     * @param  \Exception $exception
-     * @return void
-     */
-    public function updateFailedJob($jobId, $failedJob, $failed = false, \Exception $exception = null);
 
     /**
      * Check if queue adapter has failed jobs
@@ -169,11 +158,26 @@ interface AdapterInterface
     public function clear($queue, $all = false);
 
     /**
+     * Clear failed jobs off of the queue stack
+     *
+     * @param  mixed $queue
+     * @return void
+     */
+    public function clearFailed($queue);
+
+    /**
      * Flush all jobs off of the queue stack
      *
      * @param  boolean $all
      * @return void
      */
     public function flush($all = false);
+
+    /**
+     * Flush all failed jobs off of the queue stack
+     *
+     * @return void
+     */
+    public function flushFailed();
 
 }

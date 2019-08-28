@@ -204,12 +204,16 @@ class Worker extends AbstractProcessor
 
                 if ((null !== $queue) && ($this->jobs[$nextIndex]->hasJobId()) &&
                     ($queue->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
-                    $queue->adapter()->updateJob($this->jobs[$nextIndex]->getJobId(), $this->jobs[$nextIndex], true, true);
+                    $queue->adapter()->updateJob($this->jobs[$nextIndex]->getJobId(), true, true);
                 }
             } catch (\Exception $e) {
                 $this->jobs[$nextIndex]->setAsFailed();
                 $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
                 $this->failedExceptions[$nextIndex] = $e;
+                if ((null !== $queue) && ($this->failed[$nextIndex]->hasJobId()) &&
+                    ($queue->adapter()->hasJob($this->failed[$nextIndex]->getJobId()))) {
+                    $queue->adapter()->failed($queue->getName(), $this->failed[$nextIndex]->getJobId(), $e);
+                }
             }
         }
 

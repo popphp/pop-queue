@@ -59,8 +59,9 @@ class Db extends AbstractAdapter
      */
     public function __construct(DbAdapter $db, $table = 'pop_queue_jobs', $failedTable = 'pop_queue_failed_jobs')
     {
-        $this->db    = $db;
-        $this->table = $table;
+        $this->db          = $db;
+        $this->table       = $table;
+        $this->failedTable = $failedTable;
 
         if (!$this->db->hasTable($table)) {
             $this->createTable($table);
@@ -91,10 +92,11 @@ class Db extends AbstractAdapter
     /**
      * Get job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJob($jobId)
+    public function getJob($jobId, $unserialize = true)
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)->where('job_id = :job_id')->limit(1);
@@ -108,7 +110,7 @@ class Db extends AbstractAdapter
 
         if (isset($rows[0])) {
             $row = $rows[0];
-            if (isset($row['payload'])) {
+            if (($unserialize) && isset($row['payload'])) {
                 $row['payload'] = unserialize($row['payload']);
             }
         }
@@ -120,16 +122,15 @@ class Db extends AbstractAdapter
      * Update job from queue stack by job ID
      *
      * @param  mixed $jobId
-     * @param  mixed $job
      * @param  mixed $completed
      * @param  mixed $increment
      * @return void
      */
-    public function updateJob($jobId, $job, $completed = false, $increment = false)
+    public function updateJob($jobId, $completed = false, $increment = false)
     {
         $jobRecord = $this->getJob($jobId);
-        $values    = ['payload' => ':payload'];
-        $params    = ['payload' => serialize(clone $job)];
+        $values    = [];
+        $params    = [];
 
         if ($completed !== false) {
             $values['completed'] = ':completed';
@@ -137,8 +138,12 @@ class Db extends AbstractAdapter
         }
         if ($increment !== false) {
             $values['attempts'] = ':attempts';
-            $params['attempts'] = ($increment === true) && isset($jobRecord['attempts']) ?
-                $jobRecord['attempts']++ : (int)$increment;
+            if (($increment === true) && isset($jobRecord['attempts'])) {
+                $jobRecord['attempts']++;
+                $values['attempts'] = $jobRecord['attempts'];
+            } else {
+                $params['attempts'] = (int)$increment;
+            }
         }
 
         $params['job_id'] = $jobId;
@@ -289,39 +294,6 @@ class Db extends AbstractAdapter
     }
 
     /**
-     * Update failed job from queue stack by job ID
-     *
-     * @param  mixed      $jobId
-     * @param  mixed      $failedJob
-     * @param  mixed      $failed
-     * @param  \Exception $exception
-     * @return void
-     */
-    public function updateFailedJob($jobId, $failedJob, $failed = false, \Exception $exception = null)
-    {
-        $values = ['payload' => ':payload'];
-        $params = ['payload' => serialize(clone $failedJob)];
-
-        if ($failed !== false) {
-            $values['failed'] = ':failed';
-            $params['failed'] = ($failed === true) ? date('Y-m-d H:i:s') : $failed;
-        }
-        if (null !== $exception) {
-            $values['exception'] = ':exception';
-            $params['exception'] = $exception->getMessage();
-        }
-
-        $params['job_id'] = $jobId;
-
-        $sql = $this->db->createSql();
-        $sql->update($this->failedTable)->values($values)->where('job_id = :job_id');
-
-        $this->db->prepare($sql);
-        $this->db->bindParams($params);
-        $this->db->execute();
-    }
-
-    /**
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
@@ -413,14 +385,13 @@ class Db extends AbstractAdapter
      * Move failed job to failed queue stack
      *
      * @param  mixed      $queue
-     * @param  mixed      $failedJob
+     * @param  mixed      $jobId
      * @param  \Exception $exception
      * @return void
      */
-    public function failed($queue, $failedJob, \Exception $exception = null)
+    public function failed($queue, $jobId, \Exception $exception = null)
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
-        $jobId     = null;
 
         $sql = $this->db->createSql();
         $sql->insert($this->failedTable)->values([
@@ -431,17 +402,13 @@ class Db extends AbstractAdapter
             'failed'    => ':failed'
         ]);
 
-        if ($failedJob instanceof Jobs\Schedule) {
-            $jobId = ($failedJob->getJob()->hasJobId()) ? $failedJob->getJob()->getJobId() :$failedJob->getJob()->generateJobId();
-        } else if ($failedJob instanceof Jobs\Job) {
-            $jobId = ($failedJob->hasJobId()) ? $failedJob->getJobId() : $failedJob->generateJobId();
-        }
+        $jobRecord = $this->getJob($jobId, false);
 
         $this->db->prepare($sql);
         $this->db->bindParams([
             'job_id'    => $jobId,
             'queue'     => $queueName,
-            'payload'   => serialize(clone $failedJob),
+            'payload'   => (isset($jobRecord['payload'])) ? $jobRecord['payload'] : null,
             'exception' => (null !== $exception) ? $exception->getMessage() : null,
             'failed'    => date('Y-m-d H:i:s')
         ]);
@@ -494,6 +461,25 @@ class Db extends AbstractAdapter
     }
 
     /**
+     * Clear failed jobs off of the queue stack
+     *
+     * @param  mixed $queue
+     * @return void
+     */
+    public function clearFailed($queue)
+    {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+
+        $sql = $this->db->createSql();
+        $sql->delete($this->failedTable)
+            ->where('queue = :queue');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->execute();
+    }
+
+    /**
      * Flush all jobs off of the queue stack
      *
      * @param  boolean $all
@@ -507,6 +493,19 @@ class Db extends AbstractAdapter
         if (!$all) {
             $sql->delete()->where('completed IS NOT NULL');
         }
+
+        $this->db->query($sql);
+    }
+
+    /**
+     * Flush all failed jobs off of the queue stack
+     *
+     * @return void
+     */
+    public function flushFailed()
+    {
+        $sql = $this->db->createSql();
+        $sql->delete($this->failedTable);
 
         $this->db->query($sql);
     }
