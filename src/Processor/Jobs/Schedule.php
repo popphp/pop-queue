@@ -69,6 +69,12 @@ class Schedule
     protected $timezone = null;
 
     /**
+     * Run until property
+     * @var int|string
+     */
+    protected $runUntil = null;
+
+    /**
      * Constructor
      *
      * Instantiate the job schedule object
@@ -549,6 +555,38 @@ class Schedule
     }
 
     /**
+     * Set the run until property
+     *
+     * @param  int|string $runUntil
+     * @return Schedule
+     */
+    public function runUntil($runUntil)
+    {
+        $this->runUntil = $runUntil;
+        return $this;
+    }
+
+    /**
+     * Has run until
+     *
+     * @return boolean
+     */
+    public function hasRunUntil()
+    {
+        return (null !== $this->runUntil);
+    }
+
+    /**
+     * Get run until value
+     *
+     * @return int|string
+     */
+    public function getRunUntil()
+    {
+        return $this->runUntil;
+    }
+
+    /**
      * Set job timezone
      *
      * @param  string $timezone
@@ -584,6 +622,21 @@ class Schedule
         $dowSatisfied    = $this->isSatisfied($this->daysOfTheWeek, (int)date('w'));
 
         return ($minuteSatisfied && $hourSatisfied && $domSatisfied && $monthSatisfied && $dowSatisfied);
+    }
+
+    /**
+     * Determine if the schedule is expired
+     *
+     * @param  int $attempts
+     * @return boolean
+     */
+    public function isExpired($attempts = null)
+    {
+        if (is_string($this->runUntil) && (strtotime($this->runUntil) !== false)) {
+            return (time() >= strtotime($this->runUntil));
+        } else {
+            return ($attempts >= $this->runUntil);
+        }
     }
 
     /**

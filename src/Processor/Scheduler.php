@@ -133,10 +133,23 @@ class Scheduler extends AbstractProcessor
                     $this->results[$key] = $schedule->getJob()->run();
                     $schedule->getJob()->setAsCompleted();
                     $this->completed[$key] = $schedule->getJob();
+
+                    if ((null !== $queue) && ($this->completed[$key]->hasJobId()) &&
+                        ($queue->adapter()->hasJob($this->completed[$key]->getJobId()))) {
+                        $queue->adapter()->updateJob($this->completed[$key]->getJobId(), false, true);
+                        $job = $queue->adapter()->getJob($this->completed[$key]->getJobId());
+                        if (($schedule->hasRunUntil()) && ($schedule->isExpired($job['attempts']))) {
+                            $queue->adapter()->updateJob($this->completed[$key]->getJobId(), true, false);
+                        }
+                    }
                 } catch (\Exception $e) {
                     $schedule->getJob()->setAsFailed();
                     $this->failed[$key]           = $schedule->getJob();
                     $this->failedExceptions[$key] = $e;
+                    if ((null !== $queue) && ($this->failed[$key]->hasJobId()) &&
+                        ($queue->adapter()->hasJob($this->failed[$key]->getJobId()))) {
+                        $queue->adapter()->failed($queue->getName(), $this->failed[$key]->getJobId(), $e);
+                    }
                 }
             }
         }
