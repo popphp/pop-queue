@@ -348,4 +348,106 @@ class Queue
         return $this;
     }
 
+    /**
+     * Check if queue has jobs
+     *
+     * @return boolean
+     */
+    public function hasJobs()
+    {
+        return $this->adapter->hasJobs($this->name);
+    }
+
+    /**
+     * Get queue jobs
+     *
+     * @return array
+     */
+    public function getJobs()
+    {
+        return $this->adapter->getJobs($this->name);
+    }
+
+    /**
+     * Check if queue has completed jobs
+     *
+     * @return boolean
+     */
+    public function hasCompletedJobs()
+    {
+        return $this->adapter->hasCompletedJobs($this->name);
+    }
+
+    /**
+     * Get queue completed jobs
+     *
+     * @return array
+     */
+    public function getCompletedJobs()
+    {
+        return $this->adapter->getCompletedJobs($this->name);
+    }
+
+    /**
+     * Check if queue adapter has failed jobs
+     *
+     * @return boolean
+     */
+    public function hasFailedJobs()
+    {
+        return $this->adapter->hasFailedJobs($this->name);
+    }
+
+    /**
+     * Get queue jobs
+     *
+     * @return array
+     */
+    public function getFailedJobs()
+    {
+        return $this->adapter->getFailedJobs($this->name);
+    }
+
+    /**
+     * Clear jobs off of the queue stack
+     *
+     * @param  boolean $all
+     * @return void
+     */
+    public function clear($all = false)
+    {
+        $this->adapter->clear($this->name, $all);
+    }
+
+    /**
+     * Clear failed jobs off of the queue stack
+     *
+     * @return void
+     */
+    public function clearFailed()
+    {
+        $this->adapter->clearFailed($this->name);
+    }
+
+    /**
+     * Flush all jobs off of the queue stack
+     *
+     * @param  boolean $all
+     * @return void
+     */
+    public function flush($all = false)
+    {
+        $this->adapter->flush($all);
+    }
+
+    /**
+     * Flush all failed jobs off of the queue stack
+     *
+     * @return void
+     */
+    public function flushFailed()
+    {
+        $this->adapter->flushFailed();
+    }
+
 }
