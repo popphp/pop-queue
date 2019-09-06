@@ -67,10 +67,19 @@ interface AdapterInterface
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJobs($queue);
+    public function getJobs($queue, $unserialize = true);
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasCompletedJob($jobId);
 
     /**
      * Check if queue adapter has completed jobs
@@ -83,10 +92,20 @@ interface AdapterInterface
     /**
      * Get queue completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue);
+    public function getCompletedJobs($queue, $unserialize = true);
+
+    /**
+     * Get queue completed job
+     *
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getCompletedJob($jobId, $unserialize = true);
 
     /**
      * Check if queue stack has failed job
@@ -99,10 +118,11 @@ interface AdapterInterface
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJob($jobId);
+    public function getFailedJob($jobId, $unserialize = true);
 
     /**
      * Check if queue adapter has failed jobs
@@ -115,10 +135,11 @@ interface AdapterInterface
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJobs($queue);
+    public function getFailedJobs($queue, $unserialize = true);
 
     /**
      * Push job onto queue stack
@@ -179,5 +200,12 @@ interface AdapterInterface
      * @return void
      */
     public function flushFailed();
+
+    /**
+     * Flush all pop queue items
+     *
+     * @return void
+     */
+    public function flushAll();
 
 }

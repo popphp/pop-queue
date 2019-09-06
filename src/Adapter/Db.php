@@ -181,10 +181,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJobs($queue)
+    public function getJobs($queue, $unserialize = true)
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -199,11 +200,33 @@ class Db extends AbstractAdapter
 
         $rows = $this->db->fetchAll();
 
-        foreach ($rows as $i => $row) {
-            $rows[$i]['payload'] = unserialize($row['payload']);
+        if ($unserialize) {
+            foreach ($rows as $i => $row) {
+                $rows[$i]['payload'] = unserialize($row['payload']);
+            }
         }
 
         return $rows;
+    }
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasCompletedJob($jobId)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where('job_id = :job_id')
+            ->where('completed IS NOT NULL');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        return (count($this->db->fetchAll()) > 0);
     }
 
     /**
@@ -229,12 +252,44 @@ class Db extends AbstractAdapter
     }
 
     /**
-     * Get queue completed jobs
+     * Get queue completed job
      *
-     * @param  mixed $queue
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue)
+    public function getCompletedJob($jobId, $unserialize = true)
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)
+            ->where('job_id = :job_id')
+            ->where('completed IS NOT NULL')->limit(1);
+
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        $rows = $this->db->fetchAll();
+        $row  = null;
+
+        if (isset($rows[0])) {
+            $row = $rows[0];
+            if (($unserialize) && isset($row['payload'])) {
+                $row['payload'] = unserialize($row['payload']);
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getCompletedJobs($queue, $unserialize = true)
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -249,8 +304,10 @@ class Db extends AbstractAdapter
 
         $rows = $this->db->fetchAll();
 
-        foreach ($rows as $i => $row) {
-            $rows[$i]['payload'] = unserialize($row['payload']);
+        if ($unserialize) {
+            foreach ($rows as $i => $row) {
+                $rows[$i]['payload'] = unserialize($row['payload']);
+            }
         }
 
         return $rows;
@@ -277,10 +334,11 @@ class Db extends AbstractAdapter
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJob($jobId)
+    public function getFailedJob($jobId, $unserialize = true)
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->failedTable)->where('job_id = :job_id')->limit(1);
@@ -290,7 +348,16 @@ class Db extends AbstractAdapter
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
-        return (isset($rows[0])) ? $rows[0] : null;
+        $row  = null;
+
+        if (isset($rows[0])) {
+            $row = $rows[0];
+            if ($unserialize) {
+                $row['payload'] = unserialize($row['payload']);
+            }
+        }
+
+        return $row;
     }
 
     /**
@@ -316,10 +383,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJobs($queue)
+    public function getFailedJobs($queue, $unserialize = true)
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -332,8 +400,10 @@ class Db extends AbstractAdapter
 
         $rows = $this->db->fetchAll();
 
-        foreach ($rows as $i => $row) {
-            $rows[$i]['payload'] = unserialize($row['payload']);
+        if ($unserialize) {
+            foreach ($rows as $i => $row) {
+                $rows[$i]['payload'] = unserialize($row['payload']);
+            }
         }
 
         return $rows;
@@ -508,6 +578,17 @@ class Db extends AbstractAdapter
         $sql->delete($this->failedTable);
 
         $this->db->query($sql);
+    }
+
+    /**
+     * Flush all pop queue items
+     *
+     * @return void
+     */
+    public function flushAll()
+    {
+        $this->flush(true);
+        $this->flushFailed();
     }
 
     /**

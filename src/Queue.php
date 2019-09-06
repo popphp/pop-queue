@@ -450,4 +450,14 @@ class Queue
         $this->adapter->flushFailed();
     }
 
+    /**
+     * Flush all pop queue items
+     *
+     * @return void
+     */
+    public function flushAll()
+    {
+        $this->adapter->flushAll();
+    }
+
 }

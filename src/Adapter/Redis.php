@@ -64,7 +64,7 @@ class Redis extends AbstractAdapter
      */
     public function hasJob($jobId)
     {
-
+        return ($this->redis->get('pop-queue-' . $jobId) !== false);
     }
 
     /**
@@ -76,7 +76,15 @@ class Redis extends AbstractAdapter
      */
     public function getJob($jobId, $unserialize = true)
     {
-
+        $job = $this->redis->get('pop-queue-' . $jobId);
+        if ($job !== false) {
+            $job        = unserialize($job);
+            $jobPayload = $this->redis->get('pop-queue-' . $jobId . '-payload');
+            if ($jobPayload !== false) {
+                $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
+            }
+        }
+        return $job;
     }
 
     /**
@@ -89,7 +97,41 @@ class Redis extends AbstractAdapter
      */
     public function updateJob($jobId, $completed = false, $increment = false)
     {
+        $jobData = $this->getJob($jobId);
 
+        if ($jobData !== false) {
+            if ($completed !== false) {
+                $jobData['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+                $queueJobs            = $this->redis->get('pop-queue-' . $jobData['queue']);
+                $queueJobs            = ($queueJobs !== false) ? unserialize($queueJobs) : [];
+                $queueCompletedJobs   = $this->redis->get('pop-queue-' . $jobData['queue'] . '-completed');
+                $queueCompletedJobs   = ($queueCompletedJobs !== false) ? unserialize($queueCompletedJobs) : [];
+
+                if (in_array($jobId, $queueJobs)) {
+                    unset($queueJobs[array_search($jobId, $queueJobs)]);
+                    $queueJobs = array_values($queueJobs);
+                }
+                if (!in_array($jobId, $queueCompletedJobs)) {
+                    $queueCompletedJobs[] = $jobId;
+                }
+
+                $this->redis->set('pop-queue-' . $jobData['queue'], serialize($queueJobs));
+                $this->redis->set('pop-queue-' . $jobData['queue'] . '-completed', serialize($queueCompletedJobs));
+            }
+            if ($increment !== false) {
+                if (($increment === true) && isset($jobData['attempts'])) {
+                    $jobData['attempts']++;
+                } else {
+                    $jobData['attempts'] = (int)$increment;
+                }
+            }
+
+            if (isset($jobData['payload'])) {
+                unset($jobData['payload']);
+            }
+
+            $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
+        }
     }
 
     /**
@@ -100,18 +142,61 @@ class Redis extends AbstractAdapter
      */
     public function hasJobs($queue)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueJobs = $this->redis->get('pop-queue-' . $queueName);
 
+        if ($queueJobs !== false) {
+            $queueJobs = unserialize($queueJobs);
+            return (count($queueJobs) > 0);
+        } else {
+            return false;
+        }
     }
 
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJobs($queue)
+    public function getJobs($queue, $unserialize = true)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueJobs = $this->redis->get('pop-queue-' . $queueName);
+        $jobs      = [];
 
+        if ($queueJobs !== false) {
+            $queueJobs = unserialize($queueJobs);
+            foreach ($queueJobs as $jobId) {
+                $jobs[$jobId] = $this->getJob($jobId, $unserialize);
+            }
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasCompletedJob($jobId)
+    {
+        $job = $this->getJob($jobId, false);
+
+        if ($job !== false) {
+            $queueCompletedJobs = $this->redis->get('pop-queue-' . $job['queue'] . '-completed');
+            if ($queueCompletedJobs !== false) {
+                $queueCompletedJobs = unserialize($queueCompletedJobs);
+                return (in_array($jobId, $queueCompletedJobs) && !empty($job['completed']));
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -122,18 +207,54 @@ class Redis extends AbstractAdapter
      */
     public function hasCompletedJobs($queue)
     {
+        $queueName          = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueCompletedJobs = $this->redis->get('pop-queue-' . $queueName . '-completed');
 
+        if ($queueCompletedJobs !== false) {
+            $queueCompletedJobs = unserialize($queueCompletedJobs);
+            return (count($queueCompletedJobs) > 0);
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Get queue completed job
+     *
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getCompletedJob($jobId, $unserialize = true)
+    {
+        if ($this->hasCompletedJob($jobId)) {
+            return $this->getJob($jobId, $unserialize);
+        } else {
+            return null;
+        }
     }
 
     /**
      * Get queue completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue)
+    public function getCompletedJobs($queue, $unserialize = true)
     {
+        $queueName          = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueCompletedJobs = $this->redis->get('pop-queue-' . $queueName . '-completed');
+        $completedJobs      = [];
 
+        if ($queueCompletedJobs !== false) {
+            $queueCompletedJobs = unserialize($queueCompletedJobs);
+            foreach ($queueCompletedJobs as $jobId) {
+                $completedJobs[$jobId] = $this->getJob($jobId, $unserialize);
+            }
+        }
+
+        return $completedJobs;
     }
 
     /**
@@ -144,18 +265,27 @@ class Redis extends AbstractAdapter
      */
     public function hasFailedJob($jobId)
     {
-
+        return ($this->redis->get('pop-queue-' . $jobId . '-failed') !== false);
     }
 
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJob($jobId)
+    public function getFailedJob($jobId, $unserialize = true)
     {
-
+        $job = $this->redis->get('pop-queue-' . $jobId . '-failed');
+        if ($job !== false) {
+            $job        = unserialize($job);
+            $jobPayload = $this->redis->get('pop-queue-' . $jobId . '-payload');
+            if ($jobPayload !== false) {
+                $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
+            }
+        }
+        return $job;
     }
 
     /**
@@ -166,18 +296,38 @@ class Redis extends AbstractAdapter
      */
     public function hasFailedJobs($queue)
     {
+        $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
 
+        if ($queueFailedJobs !== false) {
+            $queueFailedJobs = unserialize($queueFailedJobs);
+            return (count($queueFailedJobs) > 0);
+        } else {
+            return false;
+        }
     }
 
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJobs($queue)
+    public function getFailedJobs($queue, $unserialize = true)
     {
+        $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
+        $failedJobs      = [];
 
+        if ($queueFailedJobs !== false) {
+            $queueFailedJobs = unserialize($queueFailedJobs);
+            foreach ($queueFailedJobs as $jobId) {
+                $failedJobs[$jobId] = $this->getFailedJob($jobId, $unserialize);
+            }
+        }
+
+        return $failedJobs;
     }
 
     /**
@@ -190,7 +340,40 @@ class Redis extends AbstractAdapter
      */
     public function push($queue, $job, $priority = null)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $jobId     = null;
 
+        if ($job instanceof Jobs\Schedule) {
+            $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
+        } else if ($job instanceof Jobs\Job) {
+            $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+        }
+
+        $queueJobs          = $this->redis->get('pop-queue-' . $queueName);
+        $queueJobsCompleted = $this->redis->get('pop-queue-' . $queueName . '-completed');
+        $queueJobsFailed    = $this->redis->get('pop-queue-' . $queueName . '-failed');
+
+        $queueJobs          = ($queueJobs !== false) ? unserialize($queueJobs) : [];
+        $queueJobsCompleted = ($queueJobsCompleted !== false) ? unserialize($queueJobsCompleted) : [];
+        $queueJobsFailed    = ($queueJobsFailed !== false) ? unserialize($queueJobsFailed) : [];
+
+        if (!in_array($jobId, $queueJobs)) {
+            $queueJobs[] = $jobId;
+        }
+
+        $jobData = [
+            'job_id'    => $jobId,
+            'queue'     => $queueName,
+            'priority'  => $priority,
+            'attempts'  => 0,
+            'completed' => null
+        ];
+
+        $this->redis->set('pop-queue-' . $queueName, serialize($queueJobs));
+        $this->redis->set('pop-queue-' . $queueName . '-completed', serialize($queueJobsCompleted));
+        $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
+        $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
+        $this->redis->set('pop-queue-' . $jobId . '-payload', serialize(clone $job));
     }
 
     /**
@@ -203,7 +386,28 @@ class Redis extends AbstractAdapter
      */
     public function failed($queue, $jobId, \Exception $exception = null)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
+        $failedJobData = [
+            'job_id'    => $jobId,
+            'queue'     => $queueName,
+            'exception' => (null !== $exception) ? $exception->getMessage() : null,
+            'failed'    => date('Y-m-d H:i:s')
+        ];
+
+        $queueJobsFailed = $this->redis->get('pop-queue-' . $queueName . '-failed');
+        $queueJobsFailed = ($queueJobsFailed !== false) ? unserialize($queueJobsFailed) : [];
+
+        if (!in_array($jobId, $queueJobsFailed)) {
+            $queueJobsFailed[] = $jobId;
+        }
+
+        $this->redis->set('pop-queue-' . $jobId . '-failed', serialize($failedJobData));
+        $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
+
+        if (!empty($jobId)) {
+            $this->pop($jobId);
+        }
     }
 
     /**
@@ -214,7 +418,21 @@ class Redis extends AbstractAdapter
      */
     public function pop($jobId)
     {
+        $jobData = $this->getJob($jobId);
 
+        if ($jobData !== false) {
+            $queueJobs = $this->redis->get('pop-queue-' . $jobData['queue']);
+            $queueJobs = ($queueJobs !== false) ? unserialize($queueJobs) : [];
+
+            if (in_array($jobId, $queueJobs)) {
+                unset($queueJobs[array_search($jobId, $queueJobs)]);
+                $queueJobs = array_values($queueJobs);
+            }
+
+            $this->redis->set('pop-queue-' . $jobData['queue'], serialize($queueJobs));
+        }
+
+        $this->redis->delete('pop-queue-' . $jobId);
     }
 
     /**
@@ -226,7 +444,19 @@ class Redis extends AbstractAdapter
      */
     public function clear($queue, $all = false)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueJobs = $this->redis->get('pop-queue-' . $queueName);
 
+        if ($queueJobs !== false) {
+            $queueJobs = unserialize($queueJobs);
+            foreach ($queueJobs as $jobId) {
+                $this->redis->delete('pop-queue-' . $jobId);
+            }
+        }
+
+        if ($all) {
+            $this->redis->delete('pop-queue-' . $queueName . '-completed');
+        }
     }
 
     /**
@@ -237,7 +467,17 @@ class Redis extends AbstractAdapter
      */
     public function clearFailed($queue)
     {
+        $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
 
+        if ($queueFailedJobs !== false) {
+            $queueFailedJobs = unserialize($queueFailedJobs);
+            foreach ($queueFailedJobs as $failedJobId) {
+                $this->redis->delete('pop-queue-' . $failedJobId . '-failed');
+            }
+        }
+
+        $this->redis->delete('pop-queue-' . $queueName . '-failed');
     }
 
     /**
@@ -248,7 +488,13 @@ class Redis extends AbstractAdapter
      */
     public function flush($all = false)
     {
-
+        $keys = $this->redis->keys('pop-queue-*');
+        $keys = array_filter($keys, function($value) {
+            return (strpos($value, 'failed') === false);
+        });
+        if ($all) {
+            $this->redis->delete($keys);
+        }
     }
 
     /**
@@ -258,7 +504,21 @@ class Redis extends AbstractAdapter
      */
     public function flushFailed()
     {
+        $keys = $this->redis->keys('pop-queue-*');
+        $keys = array_filter($keys, function($value) {
+            return (strpos($value, 'failed') !== false);
+        });
+        $this->redis->delete($keys);
+    }
 
+    /**
+     * Flush all pop queue items
+     *
+     * @return void
+     */
+    public function flushAll()
+    {
+        $this->redis->delete($this->redis->keys('pop-queue-*'));
     }
 
     /**

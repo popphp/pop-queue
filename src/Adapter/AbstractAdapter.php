@@ -67,10 +67,19 @@ abstract class AbstractAdapter implements AdapterInterface
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    abstract public function getJobs($queue);
+    abstract public function getJobs($queue, $unserialize = true);
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    abstract public function hasCompletedJob($jobId);
 
     /**
      * Check if queue adapter has completed jobs
@@ -81,12 +90,22 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function hasCompletedJobs($queue);
 
     /**
-     * Get queue completed jobs
+     * Get queue completed job
      *
-     * @param  mixed $queue
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    abstract public function getCompletedJobs($queue);
+    abstract public function getCompletedJob($jobId, $unserialize = true);
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
+     * @return array
+     */
+    abstract public function getCompletedJobs($queue, $unserialize = true);
 
     /**
      * Check if queue stack has failed job
@@ -99,10 +118,11 @@ abstract class AbstractAdapter implements AdapterInterface
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    abstract public function getFailedJob($jobId);
+    abstract public function getFailedJob($jobId, $unserialize = true);
 
     /**
      * Check if queue adapter has failed jobs
@@ -115,10 +135,11 @@ abstract class AbstractAdapter implements AdapterInterface
     /**
      * Get queue failed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    abstract public function getFailedJobs($queue);
+    abstract public function getFailedJobs($queue, $unserialize = true);
 
     /**
      * Push job onto queue stack
@@ -179,5 +200,12 @@ abstract class AbstractAdapter implements AdapterInterface
      * @return void
      */
     abstract public function flushFailed();
+
+    /**
+     * Flush all pop queue items
+     *
+     * @return void
+     */
+    abstract public function flushAll();
 
 }
