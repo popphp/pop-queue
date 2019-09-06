@@ -23,7 +23,6 @@
         "php": ">=7.1.0",
         "popphp/popphp": "^3.3.1",
         "popphp/pop-db": "^4.5.4",
-        "pda/pheanstalk" : "^4.0.0",
         "jeremeamia/superclosure": "^2.0"
     },
     "require-dev": {

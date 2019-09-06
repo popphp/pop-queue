@@ -13,13 +13,11 @@
  */
 namespace Pop\Queue\Adapter;
 
-use Pheanstalk\Connection;
-use Pheanstalk\Pheanstalk;
 use Pop\Queue\Queue;
 use Pop\Queue\Processor\Jobs;
 
 /**
- * Redis queue adapter class
+ * File queue adapter class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -28,30 +26,33 @@ use Pop\Queue\Processor\Jobs;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    0.0.1a
  */
-class Beanstalk extends AbstractAdapter
+class File extends AbstractAdapter
 {
 
     /**
-     * Pheanstalk object
-     * @var Pheanstalk
+     * Queue folder
+     * @var string
      */
-    protected $pheanstalk = null;
+    protected $folder = null;
 
     /**
      * Constructor
      *
-     * Instantiate the beanstalk queue object
+     * Instantiate the file queue object
      *
-     * @param  string $host
-     * @param  int    $port
-     * @param  int    $timeout
+     * @param string $folder
      */
-    public function __construct($host = 'localhost', $port = null, $timeout = null)
+    public function __construct($folder)
     {
-        $port    = $port ?? Pheanstalk::DEFAULT_PORT;
-        $timeout = $timeout ?? Connection::DEFAULT_CONNECT_TIMEOUT;
+        if (!file_exists($folder)) {
+            throw new Exception("Error: The queue folder '" . $folder . "' does not exist.");
+        }
+        if (!is_writable($folder)) {
+            throw new Exception("Error: The queue folder '" . $folder . "' is not writable.");
+        }
 
-        $this->pheanstalk = Pheanstalk::create($host, $port, $timeout);
+        $this->folder = $folder;
+        $this->initFolders();
     }
 
     /**
@@ -62,7 +63,7 @@ class Beanstalk extends AbstractAdapter
      */
     public function hasJob($jobId)
     {
-
+        return (file_exists($this->folder . '/' . $this->queueName . '/' . $jobId));
     }
 
     /**
@@ -70,11 +71,23 @@ class Beanstalk extends AbstractAdapter
      *
      * @param  mixed   $jobId
      * @param  boolean $unserialize
-     * @return array
+     * @return array|boolean
      */
     public function getJob($jobId, $unserialize = true)
     {
-
+        if (file_exists($this->folder . '/' . $jobId)) {
+            $job = unserialize(file_get_contents($this->folder . '/' . $jobId));
+            if (file_exists($this->folder . '/payloads/' . $jobId)) {
+                $jobPayload = file_get_contents($this->folder . '/payloads/' . $jobId);
+                if ($unserialize) {
+                    $jobPayload = unserialize($jobPayload);
+                }
+                $job['payload'] = $jobPayload;
+            }
+            return $job;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -98,16 +111,29 @@ class Beanstalk extends AbstractAdapter
      */
     public function hasJobs($queue)
     {
+        return (count($this->getFiles($this->folder . '/' . $this->queueName)) > 0);
 
     }
 
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getJobs($queue)
+    public function getJobs($queue, $unserialize = true)
+    {
+
+    }
+
+    /**
+     * Check if queue stack has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasCompletedJob($jobId)
     {
 
     }
@@ -124,12 +150,25 @@ class Beanstalk extends AbstractAdapter
     }
 
     /**
-     * Get queue completed jobs
+     * Get queue completed job
      *
-     * @param  mixed $queue
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue)
+    public function getCompletedJob($jobId, $unserialize = true)
+    {
+
+    }
+
+    /**
+     * Get queue completed jobs
+     *
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getCompletedJobs($queue, $unserialize = true)
     {
 
     }
@@ -148,10 +187,11 @@ class Beanstalk extends AbstractAdapter
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJob($jobId)
+    public function getFailedJob($jobId, $unserialize = true)
     {
 
     }
@@ -170,10 +210,11 @@ class Beanstalk extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed $queue
+     * @param  mixed   $queue
+     * @param  boolean $unserialize
      * @return array
      */
-    public function getFailedJobs($queue)
+    public function getFailedJobs($queue, $unserialize = true)
     {
 
     }
@@ -260,13 +301,62 @@ class Beanstalk extends AbstractAdapter
     }
 
     /**
-     * Get the pheanstalk object
+     * Flush all pop queue items
      *
-     * @return Pheanstalk
+     * @return void
      */
-    public function pheanstalk()
+    public function flushAll()
     {
-        return $this->pheanstalk;
+
+    }
+
+    /**
+     * Get the queue folder
+     *
+     * @return string
+     */
+    public function folder()
+    {
+        return $this->folder;
+    }
+
+
+
+    /**
+     * Initialize queue folders
+     *
+     * @return File
+     */
+    public function initFolders()
+    {
+        if (!file_exists($this->folder . '/payloads')) {
+            mkdir($this->folder . '/payloads');
+            chmod($this->folder . '/payloads', 0777);
+        }
+        if (!file_exists($this->folder . '/completed')) {
+            mkdir($this->folder . '/completed');
+            chmod($this->folder . '/completed', 0777);
+        }
+        if (!file_exists($this->folder . '/failed')) {
+            mkdir($this->folder . '/failed');
+            chmod($this->folder . '/failed', 0777);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get files from folder
+     *
+     * @param  string $folder
+     * @return array
+     */
+    public function getFiles($folder)
+    {
+        return array_values(array_filter(scandir($folder), function($value){
+            return (($value != '.') && ($value != '..') &&
+                ($value != 'payloads') && ($value != 'completed') && ($value != 'failed'));
+        }));
     }
 
 }
