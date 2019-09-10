@@ -52,7 +52,6 @@ class File extends AbstractAdapter
         }
 
         $this->folder = $folder;
-        $this->initFolders();
     }
 
     /**
@@ -63,7 +62,7 @@ class File extends AbstractAdapter
      */
     public function hasJob($jobId)
     {
-        return (file_exists($this->folder . '/' . $this->queueName . '/' . $jobId));
+
     }
 
     /**
@@ -75,19 +74,7 @@ class File extends AbstractAdapter
      */
     public function getJob($jobId, $unserialize = true)
     {
-        if (file_exists($this->folder . '/' . $jobId)) {
-            $job = unserialize(file_get_contents($this->folder . '/' . $jobId));
-            if (file_exists($this->folder . '/payloads/' . $jobId)) {
-                $jobPayload = file_get_contents($this->folder . '/payloads/' . $jobId);
-                if ($unserialize) {
-                    $jobPayload = unserialize($jobPayload);
-                }
-                $job['payload'] = $jobPayload;
-            }
-            return $job;
-        } else {
-            return false;
-        }
+
     }
 
     /**
@@ -265,7 +252,14 @@ class File extends AbstractAdapter
      */
     public function clear($queue, $all = false)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
+        if (file_exists($this->folder . '/' . $queueName)) {
+            $this->clearFolder($this->folder . '/' . $queueName);
+        }
+        if (($all) && file_exists($this->folder . '/' . $queueName . '/completed')) {
+            $this->clearFolder($this->folder . '/' . $queueName . '/completed');
+        }
     }
 
     /**
@@ -276,7 +270,11 @@ class File extends AbstractAdapter
      */
     public function clearFailed($queue)
     {
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
+        if (file_exists($this->folder . '/' . $queueName . '/failed')) {
+            $this->clearFolder($this->folder . '/' . $queueName . '/failed');
+        }
     }
 
     /**
@@ -320,26 +318,45 @@ class File extends AbstractAdapter
         return $this->folder;
     }
 
-
-
     /**
      * Initialize queue folders
      *
+     * @param  string $queueName
      * @return File
      */
-    public function initFolders()
+    public function initFolders($queueName)
     {
-        if (!file_exists($this->folder . '/payloads')) {
-            mkdir($this->folder . '/payloads');
-            chmod($this->folder . '/payloads', 0777);
+        if (!file_exists($this->folder . '/' . $queueName)) {
+            mkdir($this->folder . '/' . $queueName);
+            chmod($this->folder . '/' . $queueName, 0777);
         }
-        if (!file_exists($this->folder . '/completed')) {
-            mkdir($this->folder . '/completed');
-            chmod($this->folder . '/completed', 0777);
+        if (!file_exists($this->folder . '/' . $queueName . '/completed')) {
+            mkdir($this->folder . '/' . $queueName . '/completed');
+            chmod($this->folder . '/' . $queueName . '/completed', 0777);
         }
-        if (!file_exists($this->folder . '/failed')) {
-            mkdir($this->folder . '/failed');
-            chmod($this->folder . '/failed', 0777);
+        if (!file_exists($this->folder . '/' . $queueName . '/failed')) {
+            mkdir($this->folder . '/' . $queueName . '/failed');
+            chmod($this->folder . '/' . $queueName . '/failed', 0777);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Clear queue folder
+     *
+     * @param  string  $folder
+     * @throws Exception
+     * @return File
+     */
+    public function clearFolder($folder)
+    {
+        $files = $this->getFiles($folder);
+
+        foreach ($files as $file) {
+            if (file_exists($folder . '/' . $file)) {
+                unlink($folder . '/' . $file);
+            }
         }
 
         return $this;
@@ -354,8 +371,7 @@ class File extends AbstractAdapter
     public function getFiles($folder)
     {
         return array_values(array_filter(scandir($folder), function($value){
-            return (($value != '.') && ($value != '..') &&
-                ($value != 'payloads') && ($value != 'completed') && ($value != 'failed'));
+            return (($value != '.') && ($value != '..') && ($value != 'completed') && ($value != 'failed'));
         }));
     }
 
