@@ -148,7 +148,8 @@ class File extends AbstractAdapter
      */
     public function hasJobs($queue)
     {
-        return (count($this->getFiles($this->folder . '/' . $this->queueName)) > 0);
+        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        return (count($this->getFiles($this->folder . '/' . $queueName)) > 0);
     }
 
     /**
@@ -166,7 +167,7 @@ class File extends AbstractAdapter
 
         if (count($queueJobs) > 0) {
             foreach ($queueJobs as $jobId) {
-                if (file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
+                if ((strpos($jobId, '-payload') === false) && file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
                     $job = unserialize(file_get_contents($this->folder . '/' . $queueName . '/' . $jobId));
                     if (file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
                         $jobPayload = file_get_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload');
@@ -444,8 +445,7 @@ class File extends AbstractAdapter
      */
     public function pop($jobId)
     {
-        $jobData = $this->getJob($jobId);
-
+        $jobData   = $this->getJob($jobId);
         $queueName = $jobData['queue'];
 
         if (file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
