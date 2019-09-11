@@ -113,7 +113,31 @@ class File extends AbstractAdapter
      */
     public function updateJob($jobId, $completed = false, $increment = false)
     {
+        $jobData = $this->getJob($jobId);
 
+        if ($jobData !== false) {
+            $queueName = $jobData['queue'];
+            if (isset($jobData['payload'])) {
+                unset($jobData['payload']);
+            }
+            if ($increment !== false) {
+                if (($increment === true) && isset($jobData['attempts'])) {
+                    $jobData['attempts']++;
+                } else {
+                    $jobData['attempts'] = (int)$increment;
+                }
+            }
+            if ($completed !== false) {
+                $jobData['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+
+                file_put_contents($this->folder . '/' . $queueName . '/completed/' . $jobId, serialize($jobData));
+                if (file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
+                    unlink($this->folder . '/' . $queueName . '/' . $jobId);
+                }
+            } else {
+                file_put_contents($this->folder . '/' . $queueName . '/' . $jobId, serialize($jobData));
+            }
+        }
     }
 
     /**
