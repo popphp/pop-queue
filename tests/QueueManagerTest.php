@@ -52,11 +52,10 @@ class QueueManagerTest extends TestCase
         $this->assertEquals(1, count($manager));
 
         $i = 0;
-
         foreach ($manager as $queue) {
             $i++;
         }
-        
+
         $this->assertEquals(1, $i);
 
         unset($manager['test']);
