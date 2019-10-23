@@ -152,6 +152,56 @@ class Schedule
     }
 
     /**
+     * Get minutes
+     *
+     * @return array
+     */
+    public function getMinutes()
+    {
+        return $this->minutes;
+    }
+
+    /**
+     * Get hours
+     *
+     * @return array
+     */
+    public function getHours()
+    {
+        return $this->hours;
+    }
+
+    /**
+     * Get days of the month
+     *
+     * @return array
+     */
+    public function getDaysOfTheMonth()
+    {
+        return $this->daysOfTheMonth;
+    }
+
+    /**
+     * Get months
+     *
+     * @return array
+     */
+    public function getMonths()
+    {
+        return $this->months;
+    }
+
+    /**
+     * Get days of the week
+     *
+     * @return array
+     */
+    public function getDaysOfTheWeek()
+    {
+        return $this->daysOfTheWeek;
+    }
+
+    /**
      * Set job schedule to every minute
      *
      * @return Schedule
