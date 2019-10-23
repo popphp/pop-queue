@@ -37,7 +37,7 @@ class QueueTest extends TestCase
 
     public function testAddWorker()
     {
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis(), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis());
         $job   = new Processor\Jobs\Job(function() {
             return 'This is job #1';
         });
@@ -50,7 +50,7 @@ class QueueTest extends TestCase
 
     public function testAddWorkers()
     {
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis(), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis());
         $job   = new Processor\Jobs\Job(function() {
             return 'This is job #1';
         });
@@ -63,7 +63,7 @@ class QueueTest extends TestCase
 
     public function testAddScheduler()
     {
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis(), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis());
         $job   = new Processor\Jobs\Job(function() {
             echo 'This is job #1' . PHP_EOL;
         });
@@ -79,7 +79,7 @@ class QueueTest extends TestCase
 
     public function testAddSchedulers()
     {
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis(), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\Redis());
         $job   = new Processor\Jobs\Job(function() {
             echo 'This is job #1' . PHP_EOL;
         });
@@ -96,7 +96,7 @@ class QueueTest extends TestCase
     public function testPush()
     {
         mkdir(__DIR__ . '/tmp/pop-queue');
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'));
         $queue->clear(true);
         $job1  = new Processor\Jobs\Job(function() {
             return 'This is job #1';
@@ -139,7 +139,7 @@ class QueueTest extends TestCase
     public function testProcess()
     {
         mkdir(__DIR__ . '/tmp/pop-queue');
-        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'), new Application());
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'));
         $queue->clear(true);
         $job1  = new Processor\Jobs\Job(function() {
             echo 'This is job #1' . PHP_EOL;
@@ -159,7 +159,6 @@ class QueueTest extends TestCase
             ->everyMinute();
 
         $queue->addScheduler($scheduler);
-        $queue->pushAll();
 
         ob_start();
         $queue->processAll();
@@ -173,6 +172,54 @@ class QueueTest extends TestCase
         $queue->flush(true);
         $queue->flushAll();
         $queue->flushFailed();
+        //rmdir(__DIR__ . '/tmp/pop-queue/completed');
+        //rmdir(__DIR__ . '/tmp/pop-queue/failed');
+        //rmdir(__DIR__ . '/tmp/pop-queue');
+    }
+
+    public function testLoad()
+    {
+        mkdir(__DIR__ . '/tmp/pop-queue');
+        $queue = new Queue\Queue('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'));
+
+        $job1  = new Processor\Jobs\Job(function() {
+            echo 'This is job #1' . PHP_EOL;
+        });
+
+        $processor1 = new Processor\Worker(Processor\Worker::FIFO);
+        $processor1->addJob($job1);
+
+        $queue->addWorker($processor1);
+
+        $job2  = new Processor\Jobs\Job(function() {
+            echo 'This is job #2' . PHP_EOL;
+        });
+
+        $processor2 = new Processor\Worker(Processor\Worker::FILO);
+        $processor2->addJob($job2);
+
+        $queue->addWorker($processor2);
+
+        $job3 = new Processor\Jobs\Job(function() {
+            echo 'This is job #3' . PHP_EOL;
+        });
+
+        $scheduler = new Processor\Scheduler();
+        $scheduler->addJob($job3)
+            ->everyMinute();
+
+        $queue->addScheduler($scheduler);
+        $queue->pushAll();
+
+        $newQueue = Queue\Queue::load('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'));
+
+        $this->assertInstanceOf('Pop\Queue\Queue', $newQueue);
+
+        $newQueue->clear(true);
+        $newQueue->clearFailed();
+        $newQueue->flush(true);
+        $newQueue->flushAll();
+        $newQueue->flushFailed();
         rmdir(__DIR__ . '/tmp/pop-queue/completed');
         rmdir(__DIR__ . '/tmp/pop-queue/failed');
         rmdir(__DIR__ . '/tmp/pop-queue');
