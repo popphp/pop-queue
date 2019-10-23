@@ -477,7 +477,7 @@ class File extends AbstractAdapter
             $this->clearFolder($this->folder . '/' . $queueName . '/completed');
         }
 
-        if (count(scandir($this->folder . '/' . $queueName)) == 2) {
+        if (is_dir($this->folder . '/' . $queueName) && count(scandir($this->folder . '/' . $queueName)) == 2) {
             rmdir($this->folder . '/' . $queueName);
         }
     }
@@ -496,7 +496,7 @@ class File extends AbstractAdapter
             $this->clearFolder($this->folder . '/' . $queueName . '/failed');
         }
 
-        if (count(scandir($this->folder . '/' . $queueName)) == 2) {
+        if (is_dir($this->folder . '/' . $queueName) && count(scandir($this->folder . '/' . $queueName)) == 2) {
             rmdir($this->folder . '/' . $queueName);
         }
     }
@@ -543,7 +543,7 @@ class File extends AbstractAdapter
         $queueFolders = $this->getFiles($this->folder);
 
         foreach ($queueFolders as $queueFolder) {
-            if (count(scandir($this->folder . '/' . $queueFolder)) == 2) {
+            if (is_dir($this->folder . '/' . $queueFolder) && count(scandir($this->folder . '/' . $queueFolder)) == 2) {
                 rmdir($this->folder . '/' . $queueFolder);
             }
         }
@@ -608,9 +608,13 @@ class File extends AbstractAdapter
      */
     public function getFiles($folder)
     {
-        return array_values(array_filter(scandir($folder), function($value){
-            return (($value != '.') && ($value != '..') && ($value != 'completed') && ($value != 'failed'));
-        }));
+        if (is_dir($folder)) {
+            return array_values(array_filter(scandir($folder), function($value){
+                return (($value != '.') && ($value != '..') && ($value != 'completed') && ($value != 'failed'));
+            }));
+        } else {
+            return [];
+        }
     }
 
 }

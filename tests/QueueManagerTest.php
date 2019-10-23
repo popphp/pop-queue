@@ -10,6 +10,7 @@ class QueueManagerTest extends TestCase
 
     public function testConstructor()
     {
+        mkdir(__DIR__ . '/tmp/test-queue');
         $fileQueue  = new Queue\Queue('test-queue1', new Queue\Adapter\File(__DIR__ . '/tmp/test-queue'));
         $redisQueue = new Queue\Queue('test-queue2', new Queue\Adapter\Redis());
         $manager1   = new Queue\Manager($fileQueue);
@@ -60,6 +61,7 @@ class QueueManagerTest extends TestCase
 
         unset($manager['test']);
         $this->assertFalse(isset($manager->test));
+        rmdir(__DIR__ . '/tmp/test-queue');
     }
 
 }
