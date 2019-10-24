@@ -305,8 +305,10 @@ class Schedule
     public function minutes($minutes)
     {
         if (is_string($minutes) && (strpos($minutes, ',') !== false)) {
-            $this->minutes = explode(',' , $minutes);
+            $minutes = explode(',' , $minutes);
         } else if (is_numeric($minutes)) {
+            $minutes = [(int)$minutes];
+        } else {
             $minutes = [$minutes];
         }
 
@@ -696,13 +698,13 @@ class Schedule
      * @param  mixed $value
      * @return boolean
      */
-    protected function isSatisfied($values, $value)
+    protected function isSatisfied(array $values, $value)
     {
         if (!empty($values)) {
             if (in_array('*', $values)) {
                 return true;
             }
-            if (in_array($value, $values)) {
+            if (in_array((string)$value, $values)) {
                 return true;
             }
             foreach ($values as $expression) {
