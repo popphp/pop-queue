@@ -632,7 +632,7 @@ class Db extends AbstractAdapter
         $schema = $this->db->createSchema();
 
         $schema->create($table)
-            ->int('id', 16)->increment()
+            ->int('id')->increment()
             ->varchar('job_id', 255)
             ->varchar('queue', 255)
             ->varchar('priority', 255)
