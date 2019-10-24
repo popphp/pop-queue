@@ -2,6 +2,7 @@
 
 namespace Pop\Queue\Test;
 
+use Pop\Application;
 use Pop\Queue\Processor\Jobs\Job;
 use PHPUnit\Framework\TestCase;
 
@@ -43,6 +44,50 @@ class JobTest extends TestCase
         $job = new Job(function(){echo 1;});
         $job->setAsRunning();
         $this->assertTrue($job->isRunning());
+    }
+
+    public function testRunExec()
+    {
+        $job = Job::exec('ls -la');
+        $this->assertIsArray($job->run());
+    }
+
+    public function testRunCommand()
+    {
+        $job = Job::command('hello');
+
+        $app = new Application([
+            'routes' => [
+                'hello' => function(){
+                    echo 'Hello World!';
+                }
+            ]
+        ]);
+        $result = $job->run($app);
+        $this->assertIsArray($result);
+        $this->assertTrue(isset($result[0]));
+        $this->assertEquals('Hello World!', $result[0]);
+    }
+
+    public function testRunCommandWithNoCommand()
+    {
+        $job = Job::command('foo');
+
+        $app = new Application([
+            'routes' => [
+                'hello' => function(){
+                    echo 'Hello World!';
+                }
+            ]
+        ]);
+        $result = $job->run($app);
+        $this->assertFalse($result);
+    }
+
+    public function testRunWithNone()
+    {
+        $job = new Job();
+        $this->assertNull($job->run());
     }
 
 }
