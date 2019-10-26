@@ -433,17 +433,18 @@ class File extends AbstractAdapter
         file_put_contents($this->folder . '/' . $queueName . '/failed/' . $jobId, serialize($failedJobData));
 
         if (!empty($jobId)) {
-            $this->pop($jobId);
+            $this->pop($jobId, false);
         }
     }
 
     /**
      * Pop job off of queue stack
      *
-     * @param  mixed $jobId
+     * @param  mixed   $jobId
+     * @param  boolean $payload
      * @return void
      */
-    public function pop($jobId)
+    public function pop($jobId, $payload = true)
     {
         $jobData   = $this->getJob($jobId);
         $queueName = $jobData['queue'];
@@ -451,7 +452,7 @@ class File extends AbstractAdapter
         if (file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
             unlink($this->folder . '/' . $queueName . '/' . $jobId);
         }
-        if (file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
+        if (($payload) && file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
             unlink($this->folder . '/' . $queueName . '/' . $jobId . '-payload');
         }
         if (file_exists($this->folder . '/' . $queueName . '/completed/' . $jobId)) {
@@ -612,14 +613,15 @@ class File extends AbstractAdapter
         $this->clearFolder($this->folder . '/' . $queueName . '/failed');
         $this->clearFolder($this->folder . '/' . $queueName);
 
-        if (file_exists($this->folder . '/' . $queueName)) {
-            rmdir($this->folder . '/' . $queueName);
-        }
+
         if (file_exists($this->folder . '/' . $queueName . '/completed')) {
             rmdir($this->folder . '/' . $queueName . '/completed');
         }
         if (file_exists($this->folder . '/' . $queueName . '/failed')) {
             rmdir($this->folder . '/' . $queueName . '/failed');
+        }
+        if (file_exists($this->folder . '/' . $queueName)) {
+            rmdir($this->folder . '/' . $queueName);
         }
 
         return $this;

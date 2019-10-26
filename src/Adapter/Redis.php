@@ -147,7 +147,14 @@ class Redis extends AbstractAdapter
 
         if ($queueJobs !== false) {
             $queueJobs = unserialize($queueJobs);
-            return (count($queueJobs) > 0);
+            if (!empty($queueJobs)) {
+                foreach ($queueJobs as $jobId) {
+                    if ($this->hasJob($jobId)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         } else {
             return false;
         }
