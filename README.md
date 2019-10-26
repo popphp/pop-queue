@@ -137,7 +137,7 @@ $appJob = Job::command('foo bar');
 
 $scheduler = new Processor\Scheduler();
 $scheduler->addJob($appJob)
-    ->ever10Minute(); // This will trigger the application command every 10 minutes
+    ->ever10Minutes(); // This will trigger the application command every 10 minutes
 
 ```
 
