@@ -163,10 +163,20 @@ $worker->addJob($sysJob);
 
 If you have a CLI application that is aware of your queues and has access to them, you can
 use that application to be the "manager" of your queues, checking them and processing them
-as needed.
-
-Set up a cron job to trigger this application:
+as needed. Assuming you have a CLI application that processes the queue via a command like:
 
 ```bash
-* * * * * cd /path/to/your/project && ./app run-queue >> /dev/null 2>&1
+$ ./app manage queue
+```
+
+You could set up a cron job to trigger this application every minute:
+
+```bash
+* * * * * cd /path/to/your/project && ./app manage queue
+```
+
+Or, if you'd like any output to be routed to `/dev/null`:
+
+```bash
+* * * * * cd /path/to/your/project && ./app manage queue >> /dev/null 2>&1
 ```
