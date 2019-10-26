@@ -111,7 +111,7 @@ class Db extends AbstractAdapter
         if (isset($rows[0])) {
             $row = $rows[0];
             if (($unserialize) && isset($row['payload'])) {
-                $row['payload'] = unserialize($row['payload']);
+                $row['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -202,7 +202,7 @@ class Db extends AbstractAdapter
 
         if ($unserialize) {
             foreach ($rows as $i => $row) {
-                $rows[$i]['payload'] = unserialize($row['payload']);
+                $rows[$i]['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -275,7 +275,7 @@ class Db extends AbstractAdapter
         if (isset($rows[0])) {
             $row = $rows[0];
             if (($unserialize) && isset($row['payload'])) {
-                $row['payload'] = unserialize($row['payload']);
+                $row['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -306,7 +306,7 @@ class Db extends AbstractAdapter
 
         if ($unserialize) {
             foreach ($rows as $i => $row) {
-                $rows[$i]['payload'] = unserialize($row['payload']);
+                $rows[$i]['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -353,7 +353,7 @@ class Db extends AbstractAdapter
         if (isset($rows[0])) {
             $row = $rows[0];
             if ($unserialize) {
-                $row['payload'] = unserialize($row['payload']);
+                $row['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -402,7 +402,7 @@ class Db extends AbstractAdapter
 
         if ($unserialize) {
             foreach ($rows as $i => $row) {
-                $rows[$i]['payload'] = unserialize($row['payload']);
+                $rows[$i]['payload'] = unserialize(base64_decode($row['payload']));
             }
         }
 
@@ -442,7 +442,7 @@ class Db extends AbstractAdapter
         $this->db->bindParams([
             'job_id'    => $jobId,
             'queue'     => $queueName,
-            'payload'   => serialize(clone $job),
+            'payload'   => base64_encode(serialize(clone $job)),
             'priority'  => $priority,
             'attempts'  => 0,
             'completed' => null

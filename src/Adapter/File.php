@@ -601,6 +601,31 @@ class File extends AbstractAdapter
     }
 
     /**
+     * Remove queue folder
+     *
+     * @param  string $queueName
+     * @return File
+     */
+    public function removeQueueFolder($queueName)
+    {
+        $this->clearFolder($this->folder . '/' . $queueName . '/completed');
+        $this->clearFolder($this->folder . '/' . $queueName . '/failed');
+        $this->clearFolder($this->folder . '/' . $queueName);
+
+        if (file_exists($this->folder . '/' . $queueName)) {
+            rmdir($this->folder . '/' . $queueName);
+        }
+        if (file_exists($this->folder . '/' . $queueName . '/completed')) {
+            rmdir($this->folder . '/' . $queueName . '/completed');
+        }
+        if (file_exists($this->folder . '/' . $queueName . '/failed')) {
+            rmdir($this->folder . '/' . $queueName . '/failed');
+        }
+
+        return $this;
+    }
+
+    /**
      * Get files from folder
      *
      * @param  string $folder
