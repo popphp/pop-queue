@@ -11,8 +11,10 @@ class JobTest extends TestCase
 
     public function testConstructor()
     {
-        $job = new Job(function(){echo 1;}, null, 1);
+        $job = new Job(function(){echo 1;}, null, 1, 'Test Desc');
         $this->assertEquals(1, $job->getJobId());
+        $this->assertEquals('Test Desc', $job->getJobDescription());
+        $this->assertTrue($job->hasJobDescription());
         $this->assertInstanceOf('Closure', $job->getCallable());
         $this->assertFalse($job->isComplete());
         $this->assertFalse($job->hasFailed());

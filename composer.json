@@ -21,8 +21,8 @@
     ],
     "require": {
         "php": ">=7.1.0",
-        "popphp/popphp": "^3.3.1",
-        "popphp/pop-db": "^4.5.6",
+        "popphp/popphp": "^3.3.2",
+        "popphp/pop-db": "^4.5.7",
         "jeremeamia/superclosure": "^2.0"
     },
     "require-dev": {

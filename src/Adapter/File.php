@@ -382,7 +382,7 @@ class File extends AbstractAdapter
      * @param  mixed $queue
      * @param  mixed $job
      * @param  mixed $priority
-     * @return void
+     * @return string
      */
     public function push($queue, $job, $priority = null)
     {
@@ -407,6 +407,8 @@ class File extends AbstractAdapter
 
         file_put_contents($this->folder . '/' . $queueName . '/' . $jobId, serialize($jobData));
         file_put_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload', serialize(clone $job));
+
+        return $jobId;
     }
 
     /**

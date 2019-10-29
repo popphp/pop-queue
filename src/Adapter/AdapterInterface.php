@@ -147,7 +147,7 @@ interface AdapterInterface
      * @param  mixed $queue
      * @param  mixed $job
      * @param  mixed $priority
-     * @return void
+     * @return string
      */
     public function push($queue, $job, $priority = null);
 

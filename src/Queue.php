@@ -255,50 +255,60 @@ class Queue
     /**
      * Push scheduled jobs to queue adapter
      *
-     * @return Queue
+     * @return array
      */
     public function pushSchedulers()
     {
+        $pushed = [];
+
         foreach ($this->schedulers as $scheduler) {
             if ($scheduler->hasSchedules()) {
                 foreach ($scheduler->getSchedules() as $schedule) {
-                    $this->adapter->push($this, $schedule);
+                    $jobId = $this->adapter->push($this, $schedule);
+                    if (!empty($jobId)) {
+                        $pushed[$jobId] = $schedule->getJob()->getJobDescription();
+                    }
                 }
             }
         }
 
-        return $this;
+        return $pushed;
     }
 
     /**
      * Push worker jobs to queue adapter
      *
-     * @return Queue
+     * @return array
      */
     public function pushWorkers()
     {
+        $pushed = [];
+
         foreach ($this->workers as $worker) {
             if ($worker->hasJobs()) {
                 foreach ($worker->getJobs() as $job) {
-                    $this->adapter->push($this, $job, $worker->getPriority());
+                    $jobId = $this->adapter->push($this, $job, $worker->getPriority());
+                    if (!empty($jobId)) {
+                        $pushed[$jobId] = $job->getJobDescription();
+                    }
                 }
             }
         }
 
-        return $this;
+        return $pushed;
     }
 
     /**
      * Push all jobs to queue adapter
      *
-     * @return Queue
+     * @return array
      */
     public function pushAll()
     {
-        $this->pushSchedulers();
-        $this->pushWorkers();
+        $pushedScheduled = $this->pushSchedulers();
+        $pushedProcessed = $this->pushWorkers();
 
-        return $this;
+        return $pushedScheduled + $pushedProcessed;
     }
 
     /**
@@ -349,6 +359,63 @@ class Queue
     }
 
     /**
+     * Check if job is queued, but hasn't run yet
+     *
+     * @param  mixed  $jobId
+     * @return boolean
+     */
+    public function isQueued($jobId)
+    {
+        return (($this->adapter->hasJob($jobId)) && (!$this->adapter->hasCompletedJob($jobId)) &&
+            (!$this->adapter->hasFailedJob($jobId)));
+    }
+
+    /**
+     * Check if job is completed (alias)
+     *
+     * @param  mixed  $jobId
+     * @return boolean
+     */
+    public function isCompleted($jobId)
+    {
+        return $this->adapter->hasCompletedJob($jobId);
+    }
+
+    /**
+     * Check if job has failed (alias)
+     *
+     * @param  mixed  $jobId
+     * @return boolean
+     */
+    public function hasFailed($jobId)
+    {
+        return $this->adapter->hasFailedJob($jobId);
+    }
+
+    /**
+     * Check if queue has job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasJob($jobId)
+    {
+        return $this->adapter->hasJob($jobId);
+    }
+
+    /**
+     * Get job
+     *
+     * @param  mixed  $jobId
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getJob($jobId, $unserialize = true)
+    {
+        return $this->adapter->getJob($jobId, $unserialize);
+    }
+
+    /**
      * Check if queue has jobs
      *
      * @return boolean
@@ -366,6 +433,29 @@ class Queue
     public function getJobs()
     {
         return $this->adapter->getJobs($this->name);
+    }
+
+    /**
+     * Check if queue has completed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasCompletedJob($jobId)
+    {
+        return $this->adapter->hasCompletedJob($jobId);
+    }
+
+    /**
+     * Get completed job
+     *
+     * @param  mixed  $jobId
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getCompletedJob($jobId, $unserialize = true)
+    {
+        return $this->adapter->getCompletedJob($jobId, $unserialize);
     }
 
     /**
@@ -389,6 +479,29 @@ class Queue
     }
 
     /**
+     * Check if queue has failed job
+     *
+     * @param  mixed $jobId
+     * @return boolean
+     */
+    public function hasFailedJob($jobId)
+    {
+        return $this->adapter->hasFailedJob($jobId);
+    }
+
+    /**
+     * Get failed job
+     *
+     * @param  mixed  $jobId
+     * @param  boolean $unserialize
+     * @return array
+     */
+    public function getFailedJob($jobId, $unserialize = true)
+    {
+        return $this->adapter->getFailedJob($jobId, $unserialize);
+    }
+
+    /**
      * Check if queue adapter has failed jobs
      *
      * @return boolean
@@ -399,7 +512,7 @@ class Queue
     }
 
     /**
-     * Get queue jobs
+     * Get queue failed jobs
      *
      * @return array
      */

@@ -36,6 +36,12 @@ abstract class AbstractJob implements JobInterface
     protected $id = null;
 
     /**
+     * Job Description
+     * @var string
+     */
+    protected $description = null;
+
+    /**
      * Job callable
      * @var mixed
      */
@@ -97,14 +103,18 @@ abstract class AbstractJob implements JobInterface
      * @param  mixed  $callable
      * @param  mixed  $params
      * @param  string $id
+     * @param  string $description
      */
-    public function __construct($callable = null, $params = null, $id = null)
+    public function __construct($callable = null, $params = null, $id = null, $description = null)
     {
         if (null !== $callable) {
             $this->setCallable($callable, $params);
         }
         if (null !== $id) {
             $this->setJobId($id);
+        }
+        if (null !== $description) {
+            $this->setJobDescription($description);
         }
     }
 
@@ -149,6 +159,38 @@ abstract class AbstractJob implements JobInterface
     public function hasJobId()
     {
         return (null !== $this->id);
+    }
+
+    /**
+     * Set job description
+     *
+     * @param  string $description
+     * @return AbstractJob
+     */
+    public function setJobDescription($description)
+    {
+        $this->description = $description;
+        return $this;
+    }
+
+    /**
+     * Get job description
+     *
+     * @return string
+     */
+    public function getJobDescription()
+    {
+        return $this->description;
+    }
+
+    /**
+     * Has job description
+     *
+     * @return boolean
+     */
+    public function hasJobDescription()
+    {
+        return (null !== $this->description);
     }
 
     /**

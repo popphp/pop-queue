@@ -184,16 +184,16 @@ class QueueTest extends TestCase
 
         $job1  = new Processor\Jobs\Job(function() {
             echo 'This is job #1' . PHP_EOL;
-        });
+        }, null, 1, 'Test Job #1');
 
         $processor1 = new Processor\Worker(Processor\Worker::FIFO);
         $processor1->addJob($job1);
 
         $queue->addWorker($processor1);
 
-        $job2  = new Processor\Jobs\Job(function() {
+        $job2 = new Processor\Jobs\Job(function() {
             echo 'This is job #2' . PHP_EOL;
-        });
+        }, null, 2, 'Test Job #2');
 
         $processor2 = new Processor\Worker(Processor\Worker::FILO);
         $processor2->addJob($job2);
@@ -202,18 +202,34 @@ class QueueTest extends TestCase
 
         $job3 = new Processor\Jobs\Job(function() {
             echo 'This is job #3' . PHP_EOL;
-        });
+        }, null, 3, 'Test Job #3');
 
         $scheduler = new Processor\Scheduler();
         $scheduler->addJob($job3)
             ->everyMinute();
 
         $queue->addScheduler($scheduler);
-        $queue->pushAll();
+        $pushed = $queue->pushAll();
+
+        $this->assertTrue(isset($pushed['1']));
+        $this->assertTrue(isset($pushed['2']));
+        $this->assertTrue(isset($pushed['3']));
+        $this->assertEquals('Test Job #1', $pushed['1']);
+        $this->assertEquals('Test Job #2', $pushed['2']);
+        $this->assertEquals('Test Job #3', $pushed['3']);
 
         $newQueue = Queue\Queue::load('pop-queue', new Queue\Adapter\File(__DIR__ . '/tmp/'));
 
         $this->assertInstanceOf('Pop\Queue\Queue', $newQueue);
+        $this->assertTrue($queue->isQueued($job1->getJobId()));
+        $this->assertTrue($queue->hasJob($job1->getJobId()));
+        $this->assertNotEmpty($queue->getJob($job1->getJobId()));
+        $this->assertFalse($queue->isCompleted($job1->getJobId()));
+        $this->assertFalse($queue->hasFailed($job1->getJobId()));
+        $this->assertFalse($queue->hasCompletedJob($job1->getJobId()));
+        $this->assertFalse($queue->hasFailedJob($job1->getJobId()));
+        $this->assertEmpty($queue->getCompletedJob($job1->getJobId()));
+        $this->assertEmpty($queue->getFailedJob($job1->getJobId()));
 
         $newQueue->clear(true);
         $newQueue->clearFailed();

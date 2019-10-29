@@ -147,7 +147,7 @@ abstract class AbstractAdapter implements AdapterInterface
      * @param  mixed $queue
      * @param  mixed $job
      * @param  mixed $priority
-     * @return void
+     * @return string
      */
     abstract public function push($queue, $job, $priority = null);
 

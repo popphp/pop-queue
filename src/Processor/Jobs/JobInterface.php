@@ -58,6 +58,28 @@ interface JobInterface
     public function hasJobId();
 
     /**
+     * Set job description
+     *
+     * @param  string $description
+     * @return JobInterface
+     */
+    public function setJobDescription($description);
+
+    /**
+     * Get job description
+     *
+     * @return string
+     */
+    public function getJobDescription();
+
+    /**
+     * Has job description
+     *
+     * @return boolean
+     */
+    public function hasJobDescription();
+
+    /**
      * Set job callable
      *
      * @param  mixed $callable

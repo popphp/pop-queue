@@ -84,6 +84,7 @@ class Redis extends AbstractAdapter
                 $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
             }
         }
+
         return $job;
     }
 
@@ -343,7 +344,7 @@ class Redis extends AbstractAdapter
      * @param  mixed $queue
      * @param  mixed $job
      * @param  mixed $priority
-     * @return void
+     * @return string
      */
     public function push($queue, $job, $priority = null)
     {
@@ -381,6 +382,8 @@ class Redis extends AbstractAdapter
         $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
         $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
         $this->redis->set('pop-queue-' . $jobId . '-payload', serialize(clone $job));
+
+        return $jobId;
     }
 
     /**
