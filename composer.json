@@ -21,12 +21,12 @@
     ],
     "require": {
         "php": ">=7.1.0",
-        "popphp/popphp": "^3.3.2",
-        "popphp/pop-db": "^4.5.7",
+        "popphp/popphp": "^3.3.3",
+        "popphp/pop-db": "^5.0.0",
         "jeremeamia/superclosure": "^2.0"
     },
     "require-dev": {
-        "popphp/pop-kettle": "^1.0.1",
+        "popphp/pop-kettle": "^1.1.0",
         "phpunit/phpunit": "^7.0.0"
     },
     "autoload": {
