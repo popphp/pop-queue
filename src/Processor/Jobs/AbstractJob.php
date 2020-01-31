@@ -14,6 +14,7 @@
 namespace Pop\Queue\Processor\Jobs;
 
 use Pop\Application;
+use Pop\Utils\CallableObject;
 use SuperClosure\Serializer;
 
 /**
@@ -43,15 +44,9 @@ abstract class AbstractJob implements JobInterface
 
     /**
      * Job callable
-     * @var mixed
+     * @var CallableObject
      */
     protected $callable = null;
-
-    /**
-     * Job parameters
-     * @var mixed
-     */
-    protected $params = null;
 
     /**
      * Job application command
@@ -90,10 +85,16 @@ abstract class AbstractJob implements JobInterface
     protected $attemptOnce = false;
 
     /**
-     * Serialize callable
-     * @var mixed
+     * Serialize closure
+     * @var \Closure
      */
-    protected $serializedCallable = null;
+    protected $serializedClosure = null;
+
+    /**
+     * Serialize parameters
+     * @var array
+     */
+    protected $serializedParameters = null;
 
     /**
      * Constructor
@@ -202,8 +203,19 @@ abstract class AbstractJob implements JobInterface
      */
     public function setCallable($callable, $params = null)
     {
-        $this->callable = $callable;
-        $this->params   = $params;
+
+        if (!($callable instanceof CallableObject)) {
+            $this->callable = new CallableObject($callable, $params);
+        } else {
+            $this->callable = $callable;
+            if (null !== $params) {
+                if (is_array($params)) {
+                    $this->callable->addParameters($params);
+                } else {
+                    $this->callable->addParameter($params);
+                }
+            }
+        }
 
         return $this;
     }
@@ -235,7 +247,7 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job callable
      *
-     * @return mixed
+     * @return CallableObject
      */
     public function getCallable()
     {
@@ -402,7 +414,6 @@ abstract class AbstractJob implements JobInterface
      * Load callable
      *
      * @param  Application $application
-     * @throws \ReflectionException
      * @throws Exception
      * @return mixed
      */
@@ -412,39 +423,17 @@ abstract class AbstractJob implements JobInterface
             throw new Exception('Error: The callable for this job was not set.');
         }
 
-        $callable = $this->callable;
-        $params   = $this->params;
-        $result   = null;
-
-        if ((null !== $params) && !is_array($params)) {
-            $params = [$params];
-        }
-
-        if (!empty($params) && !empty($application)) {
-            array_unshift($params, $application);
-        }
-
-        // If the callable is a closure
-        if ($callable instanceof \Closure) {
-            $result = (!empty($params)) ? call_user_func_array($callable, $params) : $callable();
-        // If the callable is a string
-        } else if (is_string($callable)) {
-            if (strpos($callable, '->') !== false) {
-                list($class, $method) = explode('->', $callable);
-                if (class_exists($class) && method_exists($class, $method)) {
-                    $result = (!empty($params)) ?
-                        call_user_func_array([new $class(), $method], $params) : call_user_func([new $class(), $method]);
-                }
-            } else if (strpos($callable, '::') !== false) {
-                $result = (!empty($params)) ?
-                    call_user_func_array($callable, $params) : call_user_func($callable);
-            } else if (class_exists($callable)) {
-                $result = (!empty($params)) ?
-                    (new \ReflectionClass($callable))->newInstanceArgs($params) : new $callable();
+        if (null !== $application) {
+            if ($this->callable->hasParameters()) {
+                $parameters = $this->callable->getParameters();
+                array_unshift($parameters, $application);
+                $this->callable->setParameters($parameters);
+            } else {
+                $this->callable->addNamedParameter('application', $application);
             }
         }
 
-        return $result;
+        return $this->callable->call();
     }
 
     /**
@@ -487,8 +476,11 @@ abstract class AbstractJob implements JobInterface
      */
     public function __sleep()
     {
-        if (!empty($this->callable) && ($this->callable instanceof \Closure)) {
-            $this->serializedCallable = (new Serializer())->serialize($this->callable);
+        if (!empty($this->callable) && ($this->callable->getCallable() instanceof \Closure)) {
+            $this->serializedClosure = (new Serializer())->serialize($this->callable->getCallable());
+            if ($this->callable->hasParameters()) {
+                $this->serializedParameters = $this->callable->getParameters();
+            }
             $this->callable = null;
         }
 
@@ -502,9 +494,11 @@ abstract class AbstractJob implements JobInterface
      */
     public function __wakeup()
     {
-        if (!empty($this->serializedCallable)) {
-            $this->callable = (new Serializer())->unserialize($this->serializedCallable);
-            $this->serializedCallable = null;
+        if (!empty($this->serializedClosure)) {
+            $callable                   = (new Serializer())->unserialize($this->serializedClosure);
+            $this->callable             = new CallableObject($callable, $this->serializedParameters);
+            $this->serializedClosure    = null;
+            $this->serializedParameters = null;
         }
     }
 

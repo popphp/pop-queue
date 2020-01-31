@@ -5,6 +5,7 @@ namespace Pop\Queue\Test;
 use Pop\Application;
 use Pop\Queue\Processor\Jobs\Job;
 use PHPUnit\Framework\TestCase;
+use Pop\Utils\CallableObject;
 
 class JobTest extends TestCase
 {
@@ -15,9 +16,28 @@ class JobTest extends TestCase
         $this->assertEquals(1, $job->getJobId());
         $this->assertEquals('Test Desc', $job->getJobDescription());
         $this->assertTrue($job->hasJobDescription());
-        $this->assertInstanceOf('Closure', $job->getCallable());
+        $this->assertInstanceOf('Pop\Utils\CallableObject', $job->getCallable());
+        $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
         $this->assertFalse($job->isComplete());
         $this->assertFalse($job->hasFailed());
+    }
+
+    public function testSetCallableObject1()
+    {
+        $callable = new CallableObject(function($var){echo $var;});
+        $job = new Job();
+        $job->setCallable($callable, 'Hello');
+        $this->assertInstanceOf('Pop\Utils\CallableObject', $job->getCallable());
+        $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
+    }
+
+    public function testSetCallableObject2()
+    {
+        $callable = new CallableObject(function($var1, $var2){echo $var1 . ' ' . $var2;});
+        $job = new Job();
+        $job->setCallable($callable, ['Hello', 'World']);
+        $this->assertInstanceOf('Pop\Utils\CallableObject', $job->getCallable());
+        $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
     }
 
     public function testCommand()
