@@ -442,7 +442,7 @@ class Redis extends AbstractAdapter
             $this->redis->set('pop-queue-' . $jobData['queue'], serialize($queueJobs));
         }
 
-        $this->redis->delete('pop-queue-' . $jobId);
+        $this->redis->del('pop-queue-' . $jobId);
     }
 
     /**
@@ -460,12 +460,12 @@ class Redis extends AbstractAdapter
         if ($queueJobs !== false) {
             $queueJobs = unserialize($queueJobs);
             foreach ($queueJobs as $jobId) {
-                $this->redis->delete('pop-queue-' . $jobId);
+                $this->redis->del('pop-queue-' . $jobId);
             }
         }
 
         if ($all) {
-            $this->redis->delete('pop-queue-' . $queueName . '-completed');
+            $this->redis->del('pop-queue-' . $queueName . '-completed');
         }
     }
 
@@ -483,11 +483,11 @@ class Redis extends AbstractAdapter
         if ($queueFailedJobs !== false) {
             $queueFailedJobs = unserialize($queueFailedJobs);
             foreach ($queueFailedJobs as $failedJobId) {
-                $this->redis->delete('pop-queue-' . $failedJobId . '-failed');
+                $this->redis->del('pop-queue-' . $failedJobId . '-failed');
             }
         }
 
-        $this->redis->delete('pop-queue-' . $queueName . '-failed');
+        $this->redis->del('pop-queue-' . $queueName . '-failed');
     }
 
     /**
@@ -503,7 +503,7 @@ class Redis extends AbstractAdapter
             return (strpos($value, 'failed') === false);
         });
         if ($all) {
-            $this->redis->delete($keys);
+            $this->redis->del($keys);
         }
     }
 
@@ -518,7 +518,7 @@ class Redis extends AbstractAdapter
         $keys = array_filter($keys, function($value) {
             return (strpos($value, 'failed') !== false);
         });
-        $this->redis->delete($keys);
+        $this->redis->del($keys);
     }
 
     /**
@@ -528,7 +528,7 @@ class Redis extends AbstractAdapter
      */
     public function flushAll()
     {
-        $this->redis->delete($this->redis->keys('pop-queue-*'));
+        $this->redis->del($this->redis->keys('pop-queue-*'));
     }
 
     /**
