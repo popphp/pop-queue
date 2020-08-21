@@ -198,7 +198,8 @@ class Worker extends AbstractProcessor
 
         if ($this->hasJob($nextIndex)) {
             try {
-                $this->results[$nextIndex] = $this->jobs[$nextIndex]->run();
+                $application = ((null !== $queue) && (null !== $queue->hasApplication())) ? $queue->application() : null;
+                $this->results[$nextIndex] = $this->jobs[$nextIndex]->run($application);
                 $this->jobs[$nextIndex]->setAsCompleted();
                 $this->completed[$nextIndex] = $this->jobs[$nextIndex];
 

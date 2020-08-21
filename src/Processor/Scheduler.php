@@ -130,7 +130,8 @@ class Scheduler extends AbstractProcessor
         foreach ($this->schedules as $key => $schedule) {
             if ($schedule->isDue()) {
                 try {
-                    $this->results[$key] = $schedule->getJob()->run();
+                    $application = ((null !== $queue) && (null !== $queue->hasApplication())) ? $queue->application() : null;
+                    $this->results[$key] = $schedule->getJob()->run($application);
                     $schedule->getJob()->setAsCompleted();
                     $this->completed[$key] = $schedule->getJob();
 
