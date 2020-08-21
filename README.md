@@ -141,6 +141,17 @@ $scheduler->addJob($appJob)
 
 ```
 
+When pulling up the queue to run the application command, the application object then
+needs to be registered with the queue object in order for it to find the command to execute:
+
+```php
+use Pop\Queue;
+
+$adapter = new Queue\Adapter\File('queues');
+$queue   = Queue\Queue::load('pop-queue', $adapter, $application);
+
+```
+
 ### Executing a System Command
 
 ##### WARNING: Take caution in running and executing system commands from a PHP application
