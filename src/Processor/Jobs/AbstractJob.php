@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2020 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2021 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -15,7 +15,7 @@ namespace Pop\Queue\Processor\Jobs;
 
 use Pop\Application;
 use Pop\Utils\CallableObject;
-use SuperClosure\Serializer;
+use Opis\Closure\SerializableClosure;
 
 /**
  * Abstract job class
@@ -23,9 +23,9 @@ use SuperClosure\Serializer;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2020 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2021 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.0.0
+ * @version    1.2.0
  */
 abstract class AbstractJob implements JobInterface
 {
@@ -477,7 +477,8 @@ abstract class AbstractJob implements JobInterface
     public function __sleep()
     {
         if (!empty($this->callable) && ($this->callable->getCallable() instanceof \Closure)) {
-            $this->serializedClosure = (new Serializer())->serialize($this->callable->getCallable());
+            $serializedClosure       = new SerializableClosure($this->callable->getCallable());
+            $this->serializedClosure = serialize($serializedClosure);
             if ($this->callable->hasParameters()) {
                 $this->serializedParameters = $this->callable->getParameters();
             }
@@ -495,7 +496,8 @@ abstract class AbstractJob implements JobInterface
     public function __wakeup()
     {
         if (!empty($this->serializedClosure)) {
-            $callable                   = (new Serializer())->unserialize($this->serializedClosure);
+            $serializedClosure          = unserialize($this->serializedClosure);
+            $callable                   = $serializedClosure->getClosure();
             $this->callable             = new CallableObject($callable, $this->serializedParameters);
             $this->serializedClosure    = null;
             $this->serializedParameters = null;

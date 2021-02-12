@@ -14,7 +14,7 @@ class FileTest extends TestCase
     {
         $adapter = new Adapter\File(__DIR__ . '/../tmp');
         $this->assertInstanceOf('Pop\Queue\Adapter\File', $adapter);
-        $this->assertContains('/tmp', $adapter->folder());
+        $this->assertStringContainsString('/tmp', $adapter->folder());
     }
 
     public function testGetJobs()

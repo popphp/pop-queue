@@ -164,8 +164,8 @@ class QueueTest extends TestCase
         $queue->processAll();
         $result = ob_get_clean();
 
-        $this->assertContains('This is job #1', $result);
-        $this->assertContains('This is job #2', $result);
+        $this->assertStringContainsString('This is job #1', $result);
+        $this->assertStringContainsString('This is job #2', $result);
 
         $queue->clear(true);
         $queue->clearFailed();
