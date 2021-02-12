@@ -17,6 +17,17 @@ jobs:
     #- name: Validate composer.json and composer.lock
     #  run: composer validate
 
+    - name: Start Redis
+      uses: supercharge/redis-github-action@1.2.0
+      with:
+        redis-version: ${{ matrix.redis-version }}
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '7.3'
+        extensions: redis
+
     - name: Cache Composer packages
       id: composer-cache
       uses: actions/cache@v2
