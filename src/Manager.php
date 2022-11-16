@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2021 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -13,13 +13,15 @@
  */
 namespace Pop\Queue;
 
+use ReturnTypeWillChange;
+
 /**
  * Queue manager class
  *
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2021 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  * @version    1.2.0
  */
@@ -164,6 +166,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  mixed $value
      * @return Manager
      */
+    #[ReturnTypeWillChange]
     public function offsetSet($offset, $value)
     {
         return $this->__set($offset, $value);
@@ -175,6 +178,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  string $offset
      * @return Queue
      */
+    #[ReturnTypeWillChange]
     public function offsetGet($offset)
     {
         return $this->__get($offset);
@@ -186,7 +190,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  string $offset
      * @return boolean
      */
-    public function offsetExists($offset)
+    public function offsetExists($offset): bool
     {
         return $this->__isset($offset);
     }
@@ -197,6 +201,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  string $offset
      * @return Manager
      */
+    #[ReturnTypeWillChange]
     public function offsetUnset($offset)
     {
         return $this->__unset($offset);
@@ -207,7 +212,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      *
      * @return int
      */
-    public function count()
+    public function count(): int
     {
         return count($this->queues);
     }
@@ -217,7 +222,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      *
      * @return \ArrayIterator
      */
-    public function getIterator()
+    public function getIterator(): \ArrayIterator
     {
         return new \ArrayIterator($this->queues);
     }
