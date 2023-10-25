@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -19,76 +19,76 @@ namespace Pop\Queue\Processor\Jobs;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Schedule
 {
 
     /**
      * The job the schedule belongs to
-     * @var AbstractJob
+     * @var ?AbstractJob
      */
-    protected $job = null;
+    protected ?AbstractJob $job = null;
 
     /**
      * Minutes
      * @var array
      */
-    protected $minutes = [];
+    protected array $minutes = [];
 
     /**
      * Hours
      * @var array
      */
-    protected $hours = [];
+    protected array $hours = [];
 
     /**
      * Days of the month
      * @var array
      */
-    protected $daysOfTheMonth = [];
+    protected array $daysOfTheMonth = [];
 
     /**
      * Months
      * @var array
      */
-    protected $months = [];
+    protected array $months = [];
 
     /**
      * Days of the week
      * @var array
      */
-    protected $daysOfTheWeek = [];
+    protected array $daysOfTheWeek = [];
 
     /**
      * Timezone
      * @var string
      */
-    protected $timezone = null;
+    protected ?string $timezone = null;
 
     /**
      * Run until property
-     * @var int|string
+     * @var int|string|null
      */
-    protected $runUntil = null;
+    protected int|string|null $runUntil = null;
 
     /**
      * Constructor
      *
      * Instantiate the job schedule object
      *
-     * @param  AbstractJob $job
-     * @param  string      $timezone
+     * @param  ?AbstractJob $job
+     * @param  ?string      $timezone
      */
-    public function __construct(AbstractJob $job = null, $timezone = null)
+    public function __construct(?AbstractJob $job = null, ?string $timezone = null)
     {
-        if (null !== $job) {
+        if ($job !== null) {
             $this->setJob($job);
         }
 
-        if (null !== $timezone) {
+        if ($timezone !== null) {
             $this->setTimezone($timezone);
         } else {
             $this->setTimezone(date('e'));
@@ -101,7 +101,7 @@ class Schedule
      * @param  AbstractJob $job
      * @return Schedule
      */
-    public function setJob(AbstractJob $job)
+    public function setJob(AbstractJob $job): Schedule
     {
         $this->job = $job;
         return $this;
@@ -110,9 +110,9 @@ class Schedule
     /**
      * Get job
      *
-     * @return AbstractJob
+     * @return ?AbstractJob
      */
-    public function getJob()
+    public function getJob(): ?AbstractJob
     {
         return $this->job;
     }
@@ -120,11 +120,11 @@ class Schedule
     /**
      * Has job
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJob()
+    public function hasJob(): bool
     {
-        return (null !== $this->job);
+        return ($this->job !== null);
     }
 
     /**
@@ -136,7 +136,7 @@ class Schedule
      * @param  mixed $cronSchedule
      * @return Schedule
      */
-    public function cron($cronSchedule)
+    public function cron(mixed $cronSchedule): Schedule
     {
         if (substr_count($cronSchedule, ' ') == 4) {
             list($min, $hour, $dom, $month, $dow) = explode(' ', $cronSchedule);
@@ -156,7 +156,7 @@ class Schedule
      *
      * @return array
      */
-    public function getMinutes()
+    public function getMinutes(): array
     {
         return $this->minutes;
     }
@@ -166,7 +166,7 @@ class Schedule
      *
      * @return array
      */
-    public function getHours()
+    public function getHours(): array
     {
         return $this->hours;
     }
@@ -176,7 +176,7 @@ class Schedule
      *
      * @return array
      */
-    public function getDaysOfTheMonth()
+    public function getDaysOfTheMonth(): array
     {
         return $this->daysOfTheMonth;
     }
@@ -186,7 +186,7 @@ class Schedule
      *
      * @return array
      */
-    public function getMonths()
+    public function getMonths(): array
     {
         return $this->months;
     }
@@ -196,7 +196,7 @@ class Schedule
      *
      * @return array
      */
-    public function getDaysOfTheWeek()
+    public function getDaysOfTheWeek(): array
     {
         return $this->daysOfTheWeek;
     }
@@ -206,7 +206,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function everyMinute()
+    public function everyMinute(): Schedule
     {
         $this->minutes        = ['*'];
         $this->hours          = ['*'];
@@ -222,7 +222,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function every5Minutes()
+    public function every5Minutes(): Schedule
     {
         $this->minutes        = ['*/5'];
         $this->hours          = ['*'];
@@ -238,7 +238,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function every10Minutes()
+    public function every10Minutes(): Schedule
     {
         $this->minutes        = ['*/10'];
         $this->hours          = ['*'];
@@ -254,7 +254,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function every15Minutes()
+    public function every15Minutes(): Schedule
     {
         $this->minutes        = ['*/15'];
         $this->hours          = ['*'];
@@ -269,7 +269,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function every20Minutes()
+    public function every20Minutes(): Schedule
     {
         $this->minutes        = ['*/20'];
         $this->hours          = ['*'];
@@ -285,7 +285,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function every30Minutes()
+    public function every30Minutes(): Schedule
     {
         $this->minutes        = ['*/30'];
         $this->hours          = ['*'];
@@ -302,9 +302,9 @@ class Schedule
      * @param  mixed $minutes
      * @return Schedule
      */
-    public function minutes($minutes)
+    public function minutes(string $minutes): Schedule
     {
-        if (is_string($minutes) && (strpos($minutes, ',') !== false)) {
+        if (is_string($minutes) && (str_contains($minutes, ','))) {
             $minutes = explode(',' , $minutes);
         } else if (is_numeric($minutes)) {
             $minutes = [(int)$minutes];
@@ -327,9 +327,9 @@ class Schedule
      * @param  mixed $minute
      * @return Schedule
      */
-    public function hourly($minute = null)
+    public function hourly(mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
@@ -350,9 +350,9 @@ class Schedule
      * @param  mixed $minute
      * @return Schedule
      */
-    public function daily($hours, $minute = null)
+    public function daily(mixed $hours, mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
@@ -372,7 +372,7 @@ class Schedule
      * @param  string $time
      * @return Schedule
      */
-    public function dailyAt($time)
+    public function dailyAt(string $time): Schedule
     {
         list($hour, $minute) = explode(':', $time);
         $this->daily($hour, $minute);
@@ -387,15 +387,15 @@ class Schedule
      * @param  mixed $minute
      * @return Schedule
      */
-    public function weekly($day, $hours = null, $minute = null)
+    public function weekly(mixed $day, mixed $hours = null, mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
         }
 
-        if (null === $hours) {
+        if ($hours === null) {
             $this->hours = ['0'];
         } else {
             $this->hours = [$hours];
@@ -416,15 +416,15 @@ class Schedule
      * @param  mixed $minute
      * @return Schedule
      */
-    public function monthly($day, $hours = null, $minute = null)
+    public function monthly(mixed $day, mixed $hours = null, mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
         }
 
-        if (null === $hours) {
+        if ($hours === null) {
             $this->hours = ['0'];
         } else {
             $this->hours = [$hours];
@@ -444,15 +444,15 @@ class Schedule
      * @param  mixed $minute
      * @return Schedule
      */
-    public function quarterly($hours = null, $minute = null)
+    public function quarterly(mixed $hours = null, mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
         }
 
-        if (null === $hours) {
+        if ($hours === null) {
             $this->hours = ['0'];
         } else {
             $this->hours = [$hours];
@@ -468,20 +468,20 @@ class Schedule
     /**
      * Set job schedule to yearly
      *
-     * @param  boolean $endOfYear
+     * @param  bool $endOfYear
      * @param  mixed $hours
      * @param  mixed $minute
      * @return Schedule
      */
-    public function yearly($endOfYear = false, $hours = null, $minute = null)
+    public function yearly(bool $endOfYear = false, mixed $hours = null, mixed $minute = null): Schedule
     {
-        if (null === $minute) {
+        if ($minute === null) {
             $this->minutes = ['0'];
         } else {
             $this->minutes($minute);
         }
 
-        if (null === $hours) {
+        if ($hours === null) {
             $this->hours = ['0'];
         } else {
             $this->hours = [$hours];
@@ -499,7 +499,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function weekdays()
+    public function weekdays(): Schedule
     {
         $this->daysOfTheWeek = ['1', '2', '3', '4', '5'];
         return $this;
@@ -510,7 +510,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function weekends()
+    public function weekends(): Schedule
     {
         $this->daysOfTheWeek = ['0', '6'];
         return $this;
@@ -521,7 +521,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function sundays()
+    public function sundays(): Schedule
     {
         $this->daysOfTheWeek = ['0'];
         return $this;
@@ -532,7 +532,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function mondays()
+    public function mondays(): Schedule
     {
         $this->daysOfTheWeek = ['1'];
         return $this;
@@ -543,7 +543,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function tuesdays()
+    public function tuesdays(): Schedule
     {
         $this->daysOfTheWeek = ['2'];
         return $this;
@@ -554,7 +554,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function wednesdays()
+    public function wednesdays(): Schedule
     {
         $this->daysOfTheWeek = ['3'];
         return $this;
@@ -565,7 +565,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function thursdays()
+    public function thursdays(): Schedule
     {
         $this->daysOfTheWeek = ['4'];
         return $this;
@@ -576,7 +576,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function fridays()
+    public function fridays(): Schedule
     {
         $this->daysOfTheWeek = ['5'];
         return $this;
@@ -587,7 +587,7 @@ class Schedule
      *
      * @return Schedule
      */
-    public function saturdays()
+    public function saturdays(): Schedule
     {
         $this->daysOfTheWeek = ['6'];
         return $this;
@@ -600,7 +600,7 @@ class Schedule
      * @param  int $end
      * @return Schedule
      */
-    public function between($start, $end)
+    public function between(int $start, int $end): Schedule
     {
         $this->hours = [$start . '-' . $end];
         return $this;
@@ -612,7 +612,7 @@ class Schedule
      * @param  int|string $runUntil
      * @return Schedule
      */
-    public function runUntil($runUntil)
+    public function runUntil(int|string $runUntil): Schedule
     {
         $this->runUntil = $runUntil;
         return $this;
@@ -621,11 +621,11 @@ class Schedule
     /**
      * Has run until
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasRunUntil()
+    public function hasRunUntil(): bool
     {
-        return (null !== $this->runUntil);
+        return ($this->runUntil !== null);
     }
 
     /**
@@ -633,7 +633,7 @@ class Schedule
      *
      * @return int|string
      */
-    public function getRunUntil()
+    public function getRunUntil(): int|string|null
     {
         return $this->runUntil;
     }
@@ -644,7 +644,7 @@ class Schedule
      * @param  string $timezone
      * @return Schedule
      */
-    public function setTimezone($timezone)
+    public function setTimezone(string $timezone): Schedule
     {
         $this->timezone = $timezone;
         return $this;
@@ -653,9 +653,9 @@ class Schedule
     /**
      * Get job timezone
      *
-     * @return string
+     * @return ?string
      */
-    public function getTimezone()
+    public function getTimezone(): ?string
     {
         return $this->timezone;
     }
@@ -663,9 +663,9 @@ class Schedule
     /**
      * Determine if the schedule is due
      *
-     * @return boolean
+     * @return bool
      */
-    public function isDue()
+    public function isDue(): bool
     {
         $minuteSatisfied = $this->isSatisfied($this->minutes, (int)date('i'));
         $hourSatisfied   = $this->isSatisfied($this->hours, (int)date('G'));
@@ -679,10 +679,10 @@ class Schedule
     /**
      * Determine if the schedule is expired
      *
-     * @param  int $attempts
-     * @return boolean
+     * @param  ?int $attempts
+     * @return bool
      */
-    public function isExpired($attempts = null)
+    public function isExpired(?int $attempts = null): bool
     {
         if (is_string($this->runUntil) && (strtotime($this->runUntil) !== false)) {
             return (time() >= strtotime($this->runUntil));
@@ -696,9 +696,9 @@ class Schedule
      *
      * @param  array $values
      * @param  mixed $value
-     * @return boolean
+     * @return bool
      */
-    protected function isSatisfied(array $values, $value)
+    protected function isSatisfied(array $values, mixed $value): bool
     {
         if (!empty($values)) {
             if (in_array('*', $values)) {
@@ -708,13 +708,13 @@ class Schedule
                 return true;
             }
             foreach ($values as $expression) {
-                if (strpos($expression, '-') !== false) {
+                if (str_contains($expression, '-')) {
                     list($min, $max) = explode('-', $expression);
                     if (($value >= $min) || ($value <= $max)) {
                         return true;
                     }
                 }
-                if (strpos($expression, '/') !== false) {
+                if (str_contains($expression, '/')) {
                     $step = (int)substr($expression, (strpos($expression, '/') + 1));
                     if (($value % $step) == 0) {
                         return true;

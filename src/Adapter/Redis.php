@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -22,29 +22,29 @@ use Pop\Queue\Processor\Jobs;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Redis extends AbstractAdapter
 {
 
     /**
      * Redis object
-     * @var \Redis
+     * @var \Redis|null
      */
-    protected $redis = null;
+    protected \Redis|null $redis = null;
 
     /**
      * Constructor
      *
      * Instantiate the redis queue object
      *
-     * @param  string $host
-     * @param  int    $port
-     * @throws Exception
+     * @param  string     $host
+     * @param  int|string $port
+     * @throws Exception|\RedisException
      */
-    public function __construct($host = 'localhost', $port = 6379)
+    public function __construct(string $host = 'localhost', int|string $port = 6379)
     {
         if (!class_exists('Redis', false)) {
             throw new Exception('Error: Redis is not available.');
@@ -60,9 +60,9 @@ class Redis extends AbstractAdapter
      * Check if queue stack has job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasJob($jobId)
+    public function hasJob(mixed $jobId): bool
     {
         return ($this->redis->get('pop-queue-' . $jobId) !== false);
     }
@@ -70,11 +70,11 @@ class Redis extends AbstractAdapter
     /**
      * Get job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJob($jobId, $unserialize = true)
+    public function getJob(mixed $jobId, bool $unserialize = true): array
     {
         $job = $this->redis->get('pop-queue-' . $jobId);
         if ($job !== false) {
@@ -96,7 +96,7 @@ class Redis extends AbstractAdapter
      * @param  mixed $increment
      * @return void
      */
-    public function updateJob($jobId, $completed = false, $increment = false)
+    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void
     {
         $jobData = $this->getJob($jobId);
 
@@ -139,9 +139,9 @@ class Redis extends AbstractAdapter
      * Check if queue has jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasJobs($queue)
+    public function hasJobs(mixed $queue): bool
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueJobs = $this->redis->get('pop-queue-' . $queueName);
@@ -164,11 +164,11 @@ class Redis extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJobs($queue, $unserialize = true)
+    public function getJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueJobs = $this->redis->get('pop-queue-' . $queueName);
@@ -188,9 +188,9 @@ class Redis extends AbstractAdapter
      * Check if queue stack has completed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJob($jobId)
+    public function hasCompletedJob(mixed $jobId): bool
     {
         $job = $this->getJob($jobId, false);
 
@@ -211,9 +211,9 @@ class Redis extends AbstractAdapter
      * Check if queue has completed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJobs($queue)
+    public function hasCompletedJobs(mixed $queue): bool
     {
         $queueName          = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueCompletedJobs = $this->redis->get('pop-queue-' . $queueName . '-completed');
@@ -229,27 +229,27 @@ class Redis extends AbstractAdapter
     /**
      * Get queue completed job
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJob($jobId, $unserialize = true)
+    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
     {
         if ($this->hasCompletedJob($jobId)) {
             return $this->getJob($jobId, $unserialize);
         } else {
-            return null;
+            return [];
         }
     }
 
     /**
      * Get queue completed jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue, $unserialize = true)
+    public function getCompletedJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName          = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueCompletedJobs = $this->redis->get('pop-queue-' . $queueName . '-completed');
@@ -269,9 +269,9 @@ class Redis extends AbstractAdapter
      * Check if queue stack has failed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJob($jobId)
+    public function hasFailedJob(mixed $jobId): bool
     {
         return ($this->redis->get('pop-queue-' . $jobId . '-failed') !== false);
     }
@@ -279,11 +279,11 @@ class Redis extends AbstractAdapter
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJob($jobId, $unserialize = true)
+    public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
         $job = $this->redis->get('pop-queue-' . $jobId . '-failed');
         if ($job !== false) {
@@ -300,9 +300,9 @@ class Redis extends AbstractAdapter
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJobs($queue)
+    public function hasFailedJobs(mixed $queue): bool
     {
         $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
@@ -318,11 +318,11 @@ class Redis extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJobs($queue, $unserialize = true)
+    public function getFailedJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
@@ -346,10 +346,10 @@ class Redis extends AbstractAdapter
      * @param  mixed $priority
      * @return string
      */
-    public function push($queue, $job, $priority = null)
+    public function push(mixed $queue, mixed $job, mixed $priority = null): string
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
-        $jobId     = null;
+        $jobId     = '';
 
         if ($job instanceof Jobs\Schedule) {
             $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
@@ -389,34 +389,34 @@ class Redis extends AbstractAdapter
     /**
      * Move failed job to failed queue stack
      *
-     * @param  mixed      $queue
-     * @param  mixed      $jobId
-     * @param  \Exception $exception
+     * @param  mixed           $queue
+     * @param  mixed           $failedJob
+     * @param  \Exception|null $exception
      * @return void
      */
-    public function failed($queue, $jobId, \Exception $exception = null)
+    public function failed(mixed $queue, mixed $failedJob, \Exception|null $exception = null): void
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
         $failedJobData = [
-            'job_id'    => $jobId,
+            'job_id'    => $failedJob,
             'queue'     => $queueName,
-            'exception' => (null !== $exception) ? $exception->getMessage() : null,
+            'exception' => ($exception !== null) ? $exception->getMessage() : null,
             'failed'    => date('Y-m-d H:i:s')
         ];
 
         $queueJobsFailed = $this->redis->get('pop-queue-' . $queueName . '-failed');
         $queueJobsFailed = ($queueJobsFailed !== false) ? unserialize($queueJobsFailed) : [];
 
-        if (!in_array($jobId, $queueJobsFailed)) {
-            $queueJobsFailed[] = $jobId;
+        if (!in_array($failedJob, $queueJobsFailed)) {
+            $queueJobsFailed[] = $failedJob;
         }
 
-        $this->redis->set('pop-queue-' . $jobId . '-failed', serialize($failedJobData));
+        $this->redis->set('pop-queue-' . $failedJob . '-failed', serialize($failedJobData));
         $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
 
-        if (!empty($jobId)) {
-            $this->pop($jobId);
+        if (!empty($failedJob)) {
+            $this->pop($failedJob);
         }
     }
 
@@ -426,7 +426,7 @@ class Redis extends AbstractAdapter
      * @param  mixed $jobId
      * @return void
      */
-    public function pop($jobId)
+    public function pop(mixed $jobId): void
     {
         $jobData = $this->getJob($jobId);
 
@@ -448,11 +448,11 @@ class Redis extends AbstractAdapter
     /**
      * Clear jobs off of the queue stack
      *
-     * @param  mixed   $queue
-     * @param  boolean $all
+     * @param  mixed $queue
+     * @param  bool  $all
      * @return void
      */
-    public function clear($queue, $all = false)
+    public function clear(mixed $queue, bool $all = false): void
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueJobs = $this->redis->get('pop-queue-' . $queueName);
@@ -475,7 +475,7 @@ class Redis extends AbstractAdapter
      * @param  mixed $queue
      * @return void
      */
-    public function clearFailed($queue)
+    public function clearFailed(mixed $queue): void
     {
         $queueName       = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $queueFailedJobs = $this->redis->get('pop-queue-' . $queueName . '-failed');
@@ -493,14 +493,14 @@ class Redis extends AbstractAdapter
     /**
      * Flush all jobs off of the queue stack
      *
-     * @param  boolean $all
+     * @param  bool $all
      * @return void
      */
-    public function flush($all = false)
+    public function flush(bool $all = false): void
     {
         $keys = $this->redis->keys('pop-queue-*');
         $keys = array_filter($keys, function($value) {
-            return (strpos($value, 'failed') === false);
+            return (!str_contains($value, 'failed'));
         });
         if ($all) {
             $this->redis->del($keys);
@@ -512,11 +512,11 @@ class Redis extends AbstractAdapter
      *
      * @return void
      */
-    public function flushFailed()
+    public function flushFailed(): void
     {
         $keys = $this->redis->keys('pop-queue-*');
         $keys = array_filter($keys, function($value) {
-            return (strpos($value, 'failed') !== false);
+            return (str_contains($value, 'failed'));
         });
         $this->redis->del($keys);
     }
@@ -526,7 +526,7 @@ class Redis extends AbstractAdapter
      *
      * @return void
      */
-    public function flushAll()
+    public function flushAll(): void
     {
         $this->redis->del($this->redis->keys('pop-queue-*'));
     }
@@ -536,7 +536,7 @@ class Redis extends AbstractAdapter
      *
      * @return \Redis
      */
-    public function redis()
+    public function redis(): \Redis
     {
         return $this->redis;
     }

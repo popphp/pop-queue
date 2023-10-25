@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -23,78 +23,78 @@ use Opis\Closure\SerializableClosure;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 abstract class AbstractJob implements JobInterface
 {
 
     /**
      * Job ID
-     * @var string
+     * @var ?string
      */
-    protected $id = null;
+    protected ?string $id = null;
 
     /**
      * Job Description
-     * @var string
+     * @var ?string
      */
-    protected $description = null;
+    protected ?string $description = null;
 
     /**
      * Job callable
-     * @var CallableObject
+     * @var ?CallableObject
      */
-    protected $callable = null;
+    protected ?CallableObject $callable = null;
 
     /**
      * Job application command
-     * @var string
+     * @var ?string
      */
-    protected $command = null;
+    protected ?string $command = null;
 
     /**
      * Job CLI executable command
-     * @var string
+     * @var ?string
      */
-    protected $exec = null;
+    protected ?string $exec = null;
 
     /**
      * Job running flag
-     * @var boolean
+     * @var bool
      */
-    protected $running = false;
+    protected bool $running = false;
 
     /**
      * Job completed flag
-     * @var boolean
+     * @var bool
      */
-    protected $completed = false;
+    protected bool $completed = false;
 
     /**
      * Job failed flag
-     * @var boolean
+     * @var bool
      */
-    protected $failed = false;
+    protected bool$failed = false;
 
     /**
      * Attempt once flag
-     * @var boolean
+     * @var bool
      */
-    protected $attemptOnce = false;
+    protected bool $attemptOnce = false;
 
     /**
      * Serialize closure
-     * @var \Closure
+     * @var \Closure|null
      */
-    protected $serializedClosure = null;
+    protected \Closure|null $serializedClosure = null;
 
     /**
      * Serialize parameters
-     * @var array
+     * @var ?array
      */
-    protected $serializedParameters = null;
+    protected ?array $serializedParameters = null;
 
     /**
      * Constructor
@@ -106,15 +106,15 @@ abstract class AbstractJob implements JobInterface
      * @param  string $id
      * @param  string $description
      */
-    public function __construct($callable = null, $params = null, $id = null, $description = null)
+    public function __construct(mixed $callable = null, mixed $params = null, ?string $id = null, ?string $description = null)
     {
-        if (null !== $callable) {
+        if ($callable !== null) {
             $this->setCallable($callable, $params);
         }
-        if (null !== $id) {
+        if ($id !== null) {
             $this->setJobId($id);
         }
-        if (null !== $description) {
+        if ($description !== null) {
             $this->setJobDescription($description);
         }
     }
@@ -124,7 +124,7 @@ abstract class AbstractJob implements JobInterface
      *
      * @return string
      */
-    public function generateJobId()
+    public function generateJobId(): string
     {
         $this->id = sha1(uniqid(rand()) . time());
         return $this->id;
@@ -136,7 +136,7 @@ abstract class AbstractJob implements JobInterface
      * @param  string $id
      * @return AbstractJob
      */
-    public function setJobId($id)
+    public function setJobId(string $id): AbstractJob
     {
         $this->id = $id;
         return $this;
@@ -145,9 +145,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job ID
      *
-     * @return string
+     * @return ?string
      */
-    public function getJobId()
+    public function getJobId(): ?string
     {
         return $this->id;
     }
@@ -155,11 +155,11 @@ abstract class AbstractJob implements JobInterface
     /**
      * Has job ID
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobId()
+    public function hasJobId(): bool
     {
-        return (null !== $this->id);
+        return ($this->id !== null);
     }
 
     /**
@@ -168,7 +168,7 @@ abstract class AbstractJob implements JobInterface
      * @param  string $description
      * @return AbstractJob
      */
-    public function setJobDescription($description)
+    public function setJobDescription(string $description): AbstractJob
     {
         $this->description = $description;
         return $this;
@@ -177,9 +177,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job description
      *
-     * @return string
+     * @return ?string
      */
-    public function getJobDescription()
+    public function getJobDescription(): ?string
     {
         return $this->description;
     }
@@ -187,11 +187,11 @@ abstract class AbstractJob implements JobInterface
     /**
      * Has job description
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobDescription()
+    public function hasJobDescription(): bool
     {
-        return (null !== $this->description);
+        return ($this->description !== null);
     }
 
     /**
@@ -201,14 +201,14 @@ abstract class AbstractJob implements JobInterface
      * @param  mixed $params
      * @return AbstractJob
      */
-    public function setCallable($callable, $params = null)
+    public function setCallable(mixed $callable, mixed $params = null): AbstractJob
     {
 
         if (!($callable instanceof CallableObject)) {
             $this->callable = new CallableObject($callable, $params);
         } else {
             $this->callable = $callable;
-            if (null !== $params) {
+            if ($params !== null) {
                 if (is_array($params)) {
                     $this->callable->addParameters($params);
                 } else {
@@ -226,7 +226,7 @@ abstract class AbstractJob implements JobInterface
      * @param  string $command
      * @return AbstractJob
      */
-    public function setCommand($command)
+    public function setCommand(string $command): AbstractJob
     {
         $this->command = $command;
         return $this;
@@ -235,10 +235,10 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job CLI executable command
      *
-     * @param  string executable
+     * @param  string $command
      * @return AbstractJob
      */
-    public function setExec($command)
+    public function setExec(string $command): AbstractJob
     {
         $this->exec = $command;
         return $this;
@@ -249,7 +249,7 @@ abstract class AbstractJob implements JobInterface
      *
      * @return CallableObject
      */
-    public function getCallable()
+    public function getCallable(): mixed
     {
         return $this->callable;
     }
@@ -257,9 +257,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job application command
      *
-     * @return string
+     * @return s?tring
      */
-    public function getCommand()
+    public function getCommand(): ?string
     {
         return $this->command;
     }
@@ -267,9 +267,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job CLI executable command
      *
-     * @return string
+     * @return ?string
      */
-    public function getExec()
+    public function getExec(): ?string
     {
         return $this->exec;
     }
@@ -277,40 +277,40 @@ abstract class AbstractJob implements JobInterface
     /**
      * Has job callable
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCallable()
+    public function hasCallable(): bool
     {
-        return (null !== $this->callable);
+        return ($this->callable !== null);
     }
 
     /**
      * Has job application command
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCommand()
+    public function hasCommand(): bool
     {
-        return (null !== $this->command);
+        return ($this->command !== null);
     }
 
     /**
      * Has job CLI executable command
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasExec()
+    public function hasExec(): bool
     {
-        return (null !== $this->exec);
+        return ($this->exec !== null);
     }
 
     /**
      * Set job to only attempt once
      *
-     * @param  boolean $attemptOnce
-     * @return JobInterface
+     * @param  bool $attemptOnce
+     * @return AbstractJob
      */
-    public function attemptOnce($attemptOnce = true)
+    public function attemptOnce(bool $attemptOnce = true): AbstractJob
     {
         $this->attemptOnce = (bool)$attemptOnce;
         return $this;
@@ -319,9 +319,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job to only attempt to run once
      *
-     * @return boolean
+     * @return bool
      */
-    public function isAttemptOnce()
+    public function isAttemptOnce(): bool
     {
         return $this->attemptOnce;
     }
@@ -329,9 +329,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job as running
      *
-     * @return JobInterface
+     * @return AbstractJob
      */
-    public function setAsRunning()
+    public function setAsRunning(): AbstractJob
     {
         $this->running = true;
         return $this;
@@ -340,9 +340,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Is job running
      *
-     * @return boolean
+     * @return bool
      */
-    public function isRunning()
+    public function isRunning(): bool
     {
         return $this->running;
     }
@@ -350,9 +350,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job as completed
      *
-     * @return JobInterface
+     * @return AbstractJob
      */
-    public function setAsCompleted()
+    public function setAsCompleted(): AbstractJob
     {
         $this->completed = true;
         return $this;
@@ -361,9 +361,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Is job complete
      *
-     * @return boolean
+     * @return bool
      */
-    public function isComplete()
+    public function isComplete(): bool
     {
         return $this->completed;
     }
@@ -371,9 +371,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job as failed
      *
-     * @return JobInterface
+     * @return AbstractJob
      */
-    public function setAsFailed()
+    public function setAsFailed(): AbstractJob
     {
         $this->failed = true;
         return $this;
@@ -382,9 +382,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Has job failed
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasFailed()
+    public function hasFailed(): bool
     {
         return $this->failed;
     }
@@ -392,15 +392,15 @@ abstract class AbstractJob implements JobInterface
     /**
      * Run job
      *
-     * @param  Application $application
+     * @param  ?Application $application
      * @return mixed
      */
-    public function run(Application $application = null)
+    public function run(?Application $application = null): mixed
     {
         if ($this->hasCallable()) {
             return $this->loadCallable($application);
         }
-        if (($this->hasCommand()) && (null !== $application)) {
+        if (($this->hasCommand()) && ($application !== null)) {
             return $this->runCommand($application);
         }
         if ($this->hasExec()) {
@@ -413,17 +413,17 @@ abstract class AbstractJob implements JobInterface
     /**
      * Load callable
      *
-     * @param  Application $application
-     * @throws Exception
+     * @param  ?Application $application
+     * @throws Exception|\Pop\Utils\Exception|\ReflectionException
      * @return mixed
      */
-    protected function loadCallable(Application $application = null)
+    protected function loadCallable(?Application $application = null): mixed
     {
-        if (null === $this->callable) {
+        if ($this->callable === null) {
             throw new Exception('Error: The callable for this job was not set.');
         }
 
-        if (null !== $application) {
+        if ($application !== null) {
             if ($this->callable->hasParameters()) {
                 $parameters = $this->callable->getParameters();
                 array_unshift($parameters, $application);
@@ -439,10 +439,10 @@ abstract class AbstractJob implements JobInterface
     /**
      * Run application command
      *
-     * @param Application $application
+     * @param  Application $application
      * @return mixed
      */
-    protected function runCommand(Application $application)
+    protected function runCommand(Application $application): mixed
     {
         if (array_key_exists($this->command, $application->router()->getRouteMatch()->getRoutes())) {
             $output = null;
@@ -462,7 +462,7 @@ abstract class AbstractJob implements JobInterface
      *
      * @return mixed
      */
-    protected function runExec()
+    protected function runExec(): mixed
     {
         $output = [];
         exec($this->exec, $output);
@@ -474,7 +474,7 @@ abstract class AbstractJob implements JobInterface
      *
      * @return array
      */
-    public function __sleep()
+    public function __sleep(): array
     {
         if (!empty($this->callable) && ($this->callable->getCallable() instanceof \Closure)) {
             $serializedClosure       = new SerializableClosure($this->callable->getCallable());
@@ -493,7 +493,7 @@ abstract class AbstractJob implements JobInterface
      *
      * @return void
      */
-    public function __wakeup()
+    public function __wakeup(): void
     {
         if (!empty($this->serializedClosure)) {
             $serializedClosure          = unserialize($this->serializedClosure);

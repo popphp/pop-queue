@@ -25,6 +25,12 @@ Install `pop-queue` using Composer.
 
     composer require popphp/pop-queue
 
+Or, require it in your composer.json file
+
+    "require": {
+        "popphp/pop-queue" : "^2.0.0"
+    }
+
 BASIC USAGE
 -----------
 

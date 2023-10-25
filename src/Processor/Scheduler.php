@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -23,18 +23,18 @@ use Pop\Queue\Processor\Jobs\AbstractJob;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Scheduler extends AbstractProcessor
 {
 
     /**
      * Job schedules
-     * @var Schedule[]
+     * @var array
      */
-    protected $schedules = [];
+    protected array $schedules = [];
 
     /**
      * Add job
@@ -42,7 +42,7 @@ class Scheduler extends AbstractProcessor
      * @param  AbstractJob $job
      * @return Schedule
      */
-    public function addJob(AbstractJob $job)
+    public function addJob(AbstractJob $job): Schedule
     {
         $schedule          = new Schedule(($job));
         $this->schedules[] = $schedule;
@@ -56,7 +56,7 @@ class Scheduler extends AbstractProcessor
      * @param  Schedule $schedule
      * @return Scheduler
      */
-    public function addSchedule(Schedule $schedule)
+    public function addSchedule(Schedule $schedule): Scheduler
     {
         $this->schedules[] = $schedule;
 
@@ -69,7 +69,7 @@ class Scheduler extends AbstractProcessor
      * @param  array $schedules
      * @return Scheduler
      */
-    public function addSchedules(array $schedules)
+    public function addSchedules(array $schedules): Scheduler
     {
         foreach ($schedules as $schedule) {
             $this->addSchedule($schedule);
@@ -82,7 +82,7 @@ class Scheduler extends AbstractProcessor
      *
      * @return array
      */
-    public function getSchedules()
+    public function getSchedules(): array
     {
         return $this->schedules;
     }
@@ -91,19 +91,19 @@ class Scheduler extends AbstractProcessor
      * Get schedule
      *
      * @param  int $index
-     * @return Schedule
+     * @return Schedule|null
      */
-    public function getSchedule($index)
+    public function getSchedule(int $index): Schedule|null
     {
-        return (isset($this->schedules[$index])) ? $this->schedules[$index] : null;
+        return $this->schedules[$index] ?? null;
     }
 
     /**
      * Has schedules
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasSchedules()
+    public function hasSchedules(): bool
     {
         return (count($this->schedules) > 0);
     }
@@ -112,9 +112,9 @@ class Scheduler extends AbstractProcessor
      * Has schedule
      *
      * @param  int $index
-     * @return boolean
+     * @return bool
      */
-    public function hasSchedule($index)
+    public function hasSchedule(int $index): bool
     {
         return (isset($this->schedules[$index]));
     }
@@ -122,20 +122,20 @@ class Scheduler extends AbstractProcessor
     /**
      * Process next job
      *
-     * @param  Queue $queue
-     * @return void
+     * @param  ?Queue $queue
+     * @return mixed
      */
-    public function processNext(Queue $queue = null)
+    public function processNext(?Queue $queue = null): mixed
     {
         foreach ($this->schedules as $key => $schedule) {
             if ($schedule->isDue()) {
                 try {
-                    $application = ((null !== $queue) && (null !== $queue->hasApplication())) ? $queue->application() : null;
+                    $application = (($queue !== null) && ($queue->hasApplication() !== null)) ? $queue->application() : null;
                     $this->results[$key] = $schedule->getJob()->run($application);
                     $schedule->getJob()->setAsCompleted();
                     $this->completed[$key] = $schedule->getJob();
 
-                    if ((null !== $queue) && ($this->completed[$key]->hasJobId()) &&
+                    if (($queue !== null) && ($this->completed[$key]->hasJobId()) &&
                         ($queue->adapter()->hasJob($this->completed[$key]->getJobId()))) {
                         $queue->adapter()->updateJob($this->completed[$key]->getJobId(), false, true);
                         $job = $queue->adapter()->getJob($this->completed[$key]->getJobId());
@@ -147,13 +147,15 @@ class Scheduler extends AbstractProcessor
                     $schedule->getJob()->setAsFailed();
                     $this->failed[$key]           = $schedule->getJob();
                     $this->failedExceptions[$key] = $e;
-                    if ((null !== $queue) && ($this->failed[$key]->hasJobId()) &&
+                    if (($queue !== null) && ($this->failed[$key]->hasJobId()) &&
                         ($queue->adapter()->hasJob($this->failed[$key]->getJobId()))) {
                         $queue->adapter()->failed($queue->getName(), $this->failed[$key]->getJobId(), $e);
                     }
                 }
             }
         }
+
+        return null;
     }
 
 }

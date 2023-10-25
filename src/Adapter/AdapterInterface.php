@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -22,9 +22,9 @@ use Pop\Queue\Queue;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 interface AdapterInterface
 {
@@ -33,18 +33,18 @@ interface AdapterInterface
      * Check if queue stack has job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasJob($jobId);
+    public function hasJob(mixed $jobId): bool;
 
     /**
      * Get job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJob($jobId, $unserialize = true);
+    public function getJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
      * Update job from queue stack by job ID
@@ -54,92 +54,92 @@ interface AdapterInterface
      * @param  mixed $increment
      * @return void
      */
-    public function updateJob($jobId, $completed = false, $increment = false);
+    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void;
 
     /**
      * Check if queue adapter has jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasJobs($queue);
+    public function hasJobs(mixed $queue): bool;
 
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJobs($queue, $unserialize = true);
+    public function getJobs(mixed $queue, bool $unserialize = true): array;
 
     /**
      * Check if queue stack has completed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJob($jobId);
+    public function hasCompletedJob(mixed $jobId): bool;
 
     /**
      * Check if queue adapter has completed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJobs($queue);
+    public function hasCompletedJobs(mixed $queue): bool;
 
     /**
      * Get queue completed jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue, $unserialize = true);
+    public function getCompletedJobs(mixed $queue, bool $unserialize = true): array;
 
     /**
      * Get queue completed job
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJob($jobId, $unserialize = true);
+    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
      * Check if queue stack has failed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJob($jobId);
+    public function hasFailedJob(mixed $jobId): bool;
 
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJob($jobId, $unserialize = true);
+    public function getFailedJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJobs($queue);
+    public function hasFailedJobs(mixed $queue): bool;
 
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJobs($queue, $unserialize = true);
+    public function getFailedJobs(mixed $queue, bool $unserialize = true): array;
 
     /**
      * Push job onto queue stack
@@ -149,17 +149,17 @@ interface AdapterInterface
      * @param  mixed $priority
      * @return string
      */
-    public function push($queue, $job, $priority = null);
+    public function push(mixed $queue, mixed $job, mixed $priority = null): string;
 
     /**
      * Move failed job to failed queue stack
      *
-     * @param  mixed      $queue
-     * @param  mixed      $failedJob
-     * @param  \Exception $exception
+     * @param  mixed           $queue
+     * @param  mixed           $failedJob
+     * @param  \Exception|null $exception
      * @return void
      */
-    public function failed($queue, $failedJob, \Exception $exception = null);
+    public function failed(mixed $queue, mixed $failedJob, \Exception|null $exception = null): void;
 
     /**
      * Pop job off of queue stack
@@ -167,16 +167,16 @@ interface AdapterInterface
      * @param  mixed $jobId
      * @return void
      */
-    public function pop($jobId);
+    public function pop(mixed $jobId): void;
 
     /**
      * Clear completed jobs off of the queue stack
      *
-     * @param  mixed   $queue
-     * @param  boolean $all
+     * @param  mixed $queue
+     * @param  bool  $all
      * @return void
      */
-    public function clear($queue, $all = false);
+    public function clear(mixed $queue, bool $all = false): void;
 
     /**
      * Clear failed jobs off of the queue stack
@@ -184,28 +184,28 @@ interface AdapterInterface
      * @param  mixed $queue
      * @return void
      */
-    public function clearFailed($queue);
+    public function clearFailed(mixed $queue): void;
 
     /**
      * Flush all jobs off of the queue stack
      *
-     * @param  boolean $all
+     * @param  bool $all
      * @return void
      */
-    public function flush($all = false);
+    public function flush(bool $all = false): void;
 
     /**
      * Flush all failed jobs off of the queue stack
      *
      * @return void
      */
-    public function flushFailed();
+    public function flushFailed(): void;
 
     /**
      * Flush all pop queue items
      *
      * @return void
      */
-    public function flushAll();
+    public function flushAll(): void;
 
 }

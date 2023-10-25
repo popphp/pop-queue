@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -22,9 +22,9 @@ use Pop\Queue\Processor\Jobs\AbstractJob;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Worker extends AbstractProcessor
 {
@@ -37,15 +37,15 @@ class Worker extends AbstractProcessor
 
     /**
      * Worker type
-     * @var string
+     * @var ?string
      */
-    protected $priority = 'FIFO';
+    protected ?string $priority = 'FIFO';
 
     /**
      * Worker jobs
-     * @var AbstractJob[]
+     * @var array
      */
-    protected $jobs = [];
+    protected array $jobs = [];
 
     /**
      * Constructor
@@ -54,7 +54,7 @@ class Worker extends AbstractProcessor
      *
      * @param  string $priority
      */
-    public function __construct($priority = 'FIFO')
+    public function __construct(string $priority = 'FIFO')
     {
         $this->setPriority($priority);
     }
@@ -65,7 +65,7 @@ class Worker extends AbstractProcessor
      * @param  string $priority
      * @return Worker
      */
-    public function setPriority($priority = 'FIFO')
+    public function setPriority(string $priority = 'FIFO'): Worker
     {
         if (defined('self::' . $priority)) {
             $this->priority = $priority;
@@ -78,7 +78,7 @@ class Worker extends AbstractProcessor
      *
      * @return string
      */
-    public function getPriority()
+    public function getPriority(): string
     {
         return $this->priority;
     }
@@ -86,9 +86,9 @@ class Worker extends AbstractProcessor
     /**
      * Is worker fifo
      *
-     * @return boolean
+     * @return bool
      */
-    public function isFifo()
+    public function isFifo(): bool
     {
         return ($this->priority == self::FIFO);
     }
@@ -96,9 +96,9 @@ class Worker extends AbstractProcessor
     /**
      * Is worker filo
      *
-     * @return boolean
+     * @return bool
      */
-    public function isFilo()
+    public function isFilo(): bool
     {
         return ($this->priority == self::FILO);
     }
@@ -109,7 +109,7 @@ class Worker extends AbstractProcessor
      * @param  AbstractJob $job
      * @return Worker
      */
-    public function addJob(AbstractJob $job)
+    public function addJob(AbstractJob $job): Worker
     {
         if ($this->isFilo()) {
             array_unshift($this->jobs, $job);
@@ -125,7 +125,7 @@ class Worker extends AbstractProcessor
      * @param  array $jobs
      * @return Worker
      */
-    public function addJobs(array $jobs)
+    public function addJobs(array $jobs): Worker
     {
         foreach ($jobs as $job) {
             $this->addJob($job);
@@ -138,7 +138,7 @@ class Worker extends AbstractProcessor
      *
      * @return array
      */
-    public function getJobs()
+    public function getJobs(): array
     {
         return $this->jobs;
     }
@@ -147,19 +147,19 @@ class Worker extends AbstractProcessor
      * Get job
      *
      * @param  int $index
-     * @return AbstractJob
+     * @return AbstractJob|null
      */
-    public function getJob($index)
+    public function getJob(int $index): AbstractJob|null
     {
-        return (isset($this->jobs[$index])) ? $this->jobs[$index] : null;
+        return $this->jobs[$index] ?? null;
     }
 
     /**
      * Has jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobs()
+    public function hasJobs(): bool
     {
         return (count($this->jobs) > 0);
     }
@@ -168,9 +168,9 @@ class Worker extends AbstractProcessor
      * Has job
      *
      * @param  int $index
-     * @return boolean
+     * @return bool
      */
-    public function hasJob($index)
+    public function hasJob(int $index): bool
     {
         return (isset($this->jobs[$index]));
     }
@@ -178,32 +178,32 @@ class Worker extends AbstractProcessor
     /**
      * Has next job
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasNextJob()
+    public function hasNextJob(): bool
     {
         $current = key($this->jobs);
-        return ((null !== $current) && ($current < count($this->jobs)));
+        return (($current !== null) && ($current < count($this->jobs)));
     }
 
     /**
      * Process next job
      *
-     * @param  Queue $queue
-     * @return int
+     * @param  ?Queue $queue
+     * @return mixed
      */
-    public function processNext(Queue $queue = null)
+    public function processNext(?Queue $queue = null): mixed
     {
         $nextIndex = $this->getNextIndex();
 
         if ($this->hasJob($nextIndex)) {
             try {
-                $application = ((null !== $queue) && (null !== $queue->hasApplication())) ? $queue->application() : null;
+                $application = (($queue !== null) && ($queue->hasApplication() !== null)) ? $queue->application() : null;
                 $this->results[$nextIndex] = $this->jobs[$nextIndex]->run($application);
                 $this->jobs[$nextIndex]->setAsCompleted();
                 $this->completed[$nextIndex] = $this->jobs[$nextIndex];
 
-                if ((null !== $queue) && ($this->jobs[$nextIndex]->hasJobId()) &&
+                if (($queue !== null) && ($this->jobs[$nextIndex]->hasJobId()) &&
                     ($queue->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
                     $queue->adapter()->updateJob($this->jobs[$nextIndex]->getJobId(), true, true);
                 }
@@ -211,7 +211,7 @@ class Worker extends AbstractProcessor
                 $this->jobs[$nextIndex]->setAsFailed();
                 $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
                 $this->failedExceptions[$nextIndex] = $e;
-                if ((null !== $queue) && ($this->failed[$nextIndex]->hasJobId()) &&
+                if (($queue !== null) && ($this->failed[$nextIndex]->hasJobId()) &&
                     ($queue->adapter()->hasJob($this->failed[$nextIndex]->getJobId()))) {
                     $queue->adapter()->failed($queue->getName(), $this->failed[$nextIndex]->getJobId(), $e);
                 }
@@ -226,7 +226,7 @@ class Worker extends AbstractProcessor
      *
      * @return int
      */
-    public function getNextIndex()
+    public function getNextIndex(): int
     {
         $index = key($this->jobs);
         next($this->jobs);

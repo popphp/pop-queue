@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -21,9 +21,9 @@ use Pop\Queue\Processor\AbstractProcessor;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 interface JobInterface
 {
@@ -33,7 +33,7 @@ interface JobInterface
      *
      * @return string
      */
-    public function generateJobId();
+    public function generateJobId(): string;
 
     /**
      * Set job ID
@@ -41,21 +41,21 @@ interface JobInterface
      * @param  string $id
      * @return JobInterface
      */
-    public function setJobId($id);
+    public function setJobId(string $id): JobInterface;
 
     /**
      * Get job ID
      *
-     * @return string
+     * @return ?string
      */
-    public function getJobId();
+    public function getJobId(): ?string;
 
     /**
      * Has job ID
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobId();
+    public function hasJobId(): bool;
 
     /**
      * Set job description
@@ -63,21 +63,21 @@ interface JobInterface
      * @param  string $description
      * @return JobInterface
      */
-    public function setJobDescription($description);
+    public function setJobDescription(string $description): JobInterface;
 
     /**
      * Get job description
      *
-     * @return string
+     * @return ?string
      */
-    public function getJobDescription();
+    public function getJobDescription(): ?string;
 
     /**
      * Has job description
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobDescription();
+    public function hasJobDescription(): bool;
 
     /**
      * Set job callable
@@ -86,7 +86,7 @@ interface JobInterface
      * @param  mixed $params
      * @return JobInterface
      */
-    public function setCallable($callable, $params = null);
+    public function setCallable(mixed $callable, mixed $params = null): JobInterface;
 
     /**
      * Set job application command
@@ -94,104 +94,104 @@ interface JobInterface
      * @param  string $command
      * @return JobInterface
      */
-    public function setCommand($command);
+    public function setCommand(string $command): JobInterface;
 
     /**
      * Set job CLI executable command
      *
-     * @param  string executable
+     * @param  string $command
      * @return JobInterface
      */
-    public function setExec($command);
+    public function setExec(string $command): JobInterface;
 
     /**
      * Get job callable
      *
      * @return mixed
      */
-    public function getCallable();
+    public function getCallable(): mixed;
 
     /**
      * Get job application command
      *
-     * @return string
+     * @return ?string
      */
-    public function getCommand();
+    public function getCommand(): ?string;
 
     /**
      * Get job CLI executable command
      *
-     * @return string
+     * @return ?string
      */
-    public function getExec();
+    public function getExec(): ?string;
 
     /**
      * Has job callable
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCallable();
+    public function hasCallable(): bool;
 
     /**
      * Has job application command
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCommand();
+    public function hasCommand(): bool;
 
     /**
      * Has job CLI executable command
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasExec();
+    public function hasExec(): bool;
     /**
      * Set job to only attempt once
      *
-     * @param  boolean $attemptOnce
+     * @param  bool $attemptOnce
      * @return JobInterface
      */
-    public function attemptOnce($attemptOnce = true);
+    public function attemptOnce(bool $attemptOnce = true): JobInterface;
 
     /**
      * Set job to only attempt to run once
      *
-     * @return boolean
+     * @return bool
      */
-    public function isAttemptOnce();
+    public function isAttemptOnce(): bool;
 
     /**
      * Set job as failed
      *
      * @return JobInterface
      */
-    public function setAsFailed();
+    public function setAsFailed(): JobInterface;
 
     /**
      * Has job failed
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasFailed();
+    public function hasFailed(): bool;
 
     /**
      * Is job running
      *
-     * @return boolean
+     * @return bool
      */
-    public function isRunning();
+    public function isRunning(): bool;
 
     /**
      * Is job complete
      *
-     * @return boolean
+     * @return bool
      */
-    public function isComplete();
+    public function isComplete(): bool;
 
     /**
      * Run job
      *
-     * @return void
+     * @return mixed
      */
-    public function run();
+    public function run(): mixed;
 }

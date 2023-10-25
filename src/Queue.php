@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -23,42 +23,42 @@ use Pop\Application;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Queue
 {
 
     /**
      * Queue name
-     * @var string
+     * @var ?string
      */
-    protected $name = null;
+    protected ?string $name = null;
 
     /**
      * Queue adapter
-     * @var AdapterInterface
+     * @var ?AdapterInterface
      */
-    protected $adapter = null;
+    protected ?AdapterInterface $adapter = null;
 
     /**
      * Application object
-     * @var Application
+     * @var ?Application
      */
-    protected $application = null;
+    protected ?Application $application = null;
 
     /**
      * Queue workers
-     * @var Processor\Worker[]
+     * @var array
      */
-    protected $workers = [];
+    protected array $workers = [];
 
     /**
      * Queue schedulers
-     * @var Processor\Scheduler[]
+     * @var array
      */
-    protected $schedulers = [];
+    protected array $schedulers = [];
 
     /**
      * Constructor
@@ -67,9 +67,9 @@ class Queue
      *
      * @param  string                   $name
      * @param  Adapter\AdapterInterface $adapter
-     * @param  Application              $application
+     * @param  ?Application             $application
      */
-    public function __construct($name, Adapter\AdapterInterface $adapter, Application $application = null)
+    public function __construct(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null)
     {
         $this->name        = $name;
         $this->adapter     = $adapter;
@@ -81,10 +81,10 @@ class Queue
      *
      * @param  string                   $name
      * @param  Adapter\AdapterInterface $adapter
-     * @param  Application              $application
+     * @param  ?Application             $application
      * @return Queue
      */
-    public static function load($name, Adapter\AdapterInterface $adapter, Application $application = null)
+    public static function load(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null): Queue
     {
         $queue = new static($name, $adapter, $application);
 
@@ -121,9 +121,9 @@ class Queue
     /**
      * Get the queue name
      *
-     * @return string
+     * @return ?string
      */
-    public function getName()
+    public function getName(): ?string
     {
         return $this->name;
     }
@@ -131,9 +131,9 @@ class Queue
     /**
      * Get the adapter
      *
-     * @return AdapterInterface
+     * @return ?AdapterInterface
      */
-    public function adapter()
+    public function adapter(): ?AdapterInterface
     {
         return $this->adapter;
     }
@@ -141,9 +141,9 @@ class Queue
     /**
      * Get the application
      *
-     * @return Application
+     * @return ?Application
      */
-    public function application()
+    public function application(): ?Application
     {
         return $this->application;
     }
@@ -151,11 +151,11 @@ class Queue
     /**
      * Has application
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasApplication()
+    public function hasApplication(): bool
     {
-        return (null !== $this->application);
+        return ($this->application !== null);
     }
 
     /**
@@ -164,7 +164,7 @@ class Queue
      * @param  Processor\Worker $worker
      * @return Queue
      */
-    public function addWorker(Processor\Worker $worker)
+    public function addWorker(Processor\Worker $worker): Queue
     {
         $this->workers[] = $worker;
         return $this;
@@ -176,7 +176,7 @@ class Queue
      * @param  array $workers
      * @return Queue
      */
-    public function addWorkers(array $workers)
+    public function addWorkers(array $workers): Queue
     {
         foreach ($workers as $worker) {
             $this->addWorker($worker);
@@ -190,7 +190,7 @@ class Queue
      *
      * @return array
      */
-    public function getWorkers()
+    public function getWorkers(): array
     {
         return $this->workers;
     }
@@ -198,9 +198,9 @@ class Queue
     /**
      * Has workers
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasWorkers()
+    public function hasWorkers(): bool
     {
         return !empty($this->workers);
     }
@@ -211,7 +211,7 @@ class Queue
      * @param  Processor\Scheduler $scheduler
      * @return Queue
      */
-    public function addScheduler(Processor\Scheduler $scheduler)
+    public function addScheduler(Processor\Scheduler $scheduler): Queue
     {
         $this->schedulers[] = $scheduler;
         return $this;
@@ -223,7 +223,7 @@ class Queue
      * @param  array $schedulers
      * @return Queue
      */
-    public function addSchedulers(array $schedulers)
+    public function addSchedulers(array $schedulers): Queue
     {
         foreach ($schedulers as $scheduler) {
             $this->addScheduler($scheduler);
@@ -237,7 +237,7 @@ class Queue
      *
      * @return array
      */
-    public function getSchedulers()
+    public function getSchedulers(): array
     {
         return $this->schedulers;
     }
@@ -245,9 +245,9 @@ class Queue
     /**
      * Has schedulers
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasSchedulers()
+    public function hasSchedulers(): bool
     {
         return !empty($this->schedulers);
     }
@@ -257,7 +257,7 @@ class Queue
      *
      * @return array
      */
-    public function pushSchedulers()
+    public function pushSchedulers(): array
     {
         $pushed = [];
 
@@ -280,7 +280,7 @@ class Queue
      *
      * @return array
      */
-    public function pushWorkers()
+    public function pushWorkers(): array
     {
         $pushed = [];
 
@@ -303,7 +303,7 @@ class Queue
      *
      * @return array
      */
-    public function pushAll()
+    public function pushAll(): array
     {
         $pushedScheduled = $this->pushSchedulers();
         $pushedProcessed = $this->pushWorkers();
@@ -316,7 +316,7 @@ class Queue
      *
      * @return Queue
      */
-    public function processSchedulers()
+    public function processSchedulers(): Queue
     {
         if ($this->hasSchedulers()) {
             foreach ($this->schedulers as $scheduler) {
@@ -332,7 +332,7 @@ class Queue
      *
      * @return Queue
      */
-    public function processWorkers()
+    public function processWorkers(): Queue
     {
         if ($this->hasWorkers()) {
             foreach ($this->workers as $worker) {
@@ -350,7 +350,7 @@ class Queue
      *
      * @return Queue
      */
-    public function processAll()
+    public function processAll(): Queue
     {
         $this->processSchedulers();
         $this->processWorkers();
@@ -361,10 +361,10 @@ class Queue
     /**
      * Check if job is queued, but hasn't run yet
      *
-     * @param  mixed  $jobId
-     * @return boolean
+     * @param  mixed $jobId
+     * @return bool
      */
-    public function isQueued($jobId)
+    public function isQueued(mixed $jobId): bool
     {
         return (($this->adapter->hasJob($jobId)) && (!$this->adapter->hasCompletedJob($jobId)) &&
             (!$this->adapter->hasFailedJob($jobId)));
@@ -373,10 +373,10 @@ class Queue
     /**
      * Check if job is completed (alias)
      *
-     * @param  mixed  $jobId
-     * @return boolean
+     * @param  mixed $jobId
+     * @return bool
      */
-    public function isCompleted($jobId)
+    public function isCompleted(mixed $jobId): bool
     {
         return $this->adapter->hasCompletedJob($jobId);
     }
@@ -384,10 +384,10 @@ class Queue
     /**
      * Check if job has failed (alias)
      *
-     * @param  mixed  $jobId
-     * @return boolean
+     * @param  mixed $jobId
+     * @return bool
      */
-    public function hasFailed($jobId)
+    public function hasFailed(mixed $jobId): bool
     {
         return $this->adapter->hasFailedJob($jobId);
     }
@@ -396,9 +396,9 @@ class Queue
      * Check if queue has job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasJob($jobId)
+    public function hasJob(mixed $jobId): bool
     {
         return $this->adapter->hasJob($jobId);
     }
@@ -406,11 +406,11 @@ class Queue
     /**
      * Get job
      *
-     * @param  mixed  $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJob($jobId, $unserialize = true)
+    public function getJob(mixed $jobId, bool $unserialize = true): array
     {
         return $this->adapter->getJob($jobId, $unserialize);
     }
@@ -418,9 +418,9 @@ class Queue
     /**
      * Check if queue has jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobs()
+    public function hasJobs(): bool
     {
         return $this->adapter->hasJobs($this->name);
     }
@@ -430,7 +430,7 @@ class Queue
      *
      * @return array
      */
-    public function getJobs()
+    public function getJobs(): array
     {
         return $this->adapter->getJobs($this->name);
     }
@@ -439,9 +439,9 @@ class Queue
      * Check if queue has completed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJob($jobId)
+    public function hasCompletedJob(mixed $jobId): bool
     {
         return $this->adapter->hasCompletedJob($jobId);
     }
@@ -449,11 +449,11 @@ class Queue
     /**
      * Get completed job
      *
-     * @param  mixed  $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJob($jobId, $unserialize = true)
+    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
     {
         return $this->adapter->getCompletedJob($jobId, $unserialize);
     }
@@ -461,9 +461,9 @@ class Queue
     /**
      * Check if queue has completed jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJobs()
+    public function hasCompletedJobs(): bool
     {
         return $this->adapter->hasCompletedJobs($this->name);
     }
@@ -473,7 +473,7 @@ class Queue
      *
      * @return array
      */
-    public function getCompletedJobs()
+    public function getCompletedJobs(): array
     {
         return $this->adapter->getCompletedJobs($this->name);
     }
@@ -482,9 +482,9 @@ class Queue
      * Check if queue has failed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJob($jobId)
+    public function hasFailedJob(mixed $jobId): bool
     {
         return $this->adapter->hasFailedJob($jobId);
     }
@@ -492,11 +492,11 @@ class Queue
     /**
      * Get failed job
      *
-     * @param  mixed  $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJob($jobId, $unserialize = true)
+    public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
         return $this->adapter->getFailedJob($jobId, $unserialize);
     }
@@ -504,9 +504,9 @@ class Queue
     /**
      * Check if queue adapter has failed jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJobs()
+    public function hasFailedJobs(): bool
     {
         return $this->adapter->hasFailedJobs($this->name);
     }
@@ -516,7 +516,7 @@ class Queue
      *
      * @return array
      */
-    public function getFailedJobs()
+    public function getFailedJobs(): array
     {
         return $this->adapter->getFailedJobs($this->name);
     }
@@ -524,10 +524,10 @@ class Queue
     /**
      * Clear jobs off of the queue stack
      *
-     * @param  boolean $all
+     * @param  bool $all
      * @return void
      */
-    public function clear($all = false)
+    public function clear(bool $all = false): void
     {
         $this->adapter->clear($this->name, $all);
     }
@@ -537,7 +537,7 @@ class Queue
      *
      * @return void
      */
-    public function clearFailed()
+    public function clearFailed(): void
     {
         $this->adapter->clearFailed($this->name);
     }
@@ -545,10 +545,10 @@ class Queue
     /**
      * Flush all jobs off of the queue stack
      *
-     * @param  boolean $all
+     * @param  bool $all
      * @return void
      */
-    public function flush($all = false)
+    public function flush(bool $all = false): void
     {
         $this->adapter->flush($all);
     }
@@ -558,7 +558,7 @@ class Queue
      *
      * @return void
      */
-    public function flushFailed()
+    public function flushFailed(): void
     {
         $this->adapter->flushFailed();
     }
@@ -568,7 +568,7 @@ class Queue
      *
      * @return void
      */
-    public function flushAll()
+    public function flushAll(): void
     {
         $this->adapter->flushAll();
     }

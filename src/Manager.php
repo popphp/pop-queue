@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -13,7 +13,7 @@
  */
 namespace Pop\Queue;
 
-use ReturnTypeWillChange;
+use ArrayIterator;
 
 /**
  * Queue manager class
@@ -21,18 +21,18 @@ use ReturnTypeWillChange;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
 {
 
     /**
      * Queues
-     * @var Queue[]
+     * @var array
      */
-    protected $queues = [];
+    protected array $queues = [];
 
     /**
      * Constructor
@@ -41,9 +41,9 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      *
      * @param  mixed $queues
      */
-    public function __construct($queues = null)
+    public function __construct(mixed $queues = null)
     {
-        if (null !== $queues) {
+        if ($queues !== null) {
             if (is_array($queues)) {
                 $this->addQueues($queues);
             } else if ($queues instanceof Queue) {
@@ -58,7 +58,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  Queue $queue
      * @return Manager
      */
-    public function addQueue(Queue $queue)
+    public function addQueue(Queue $queue): Manager
     {
         $this->queues[$queue->getName()] = $queue;
         return $this;
@@ -70,7 +70,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * @param  array $queues
      * @return Manager
      */
-    public function addQueues(array $queues)
+    public function addQueues(array $queues): Manager
     {
         foreach ($queues as $queue) {
             $this->addQueue($queue);
@@ -83,7 +83,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      *
      * @return array
      */
-    public function getQueues()
+    public function getQueues(): array
     {
         return $this->queues;
     }
@@ -92,20 +92,20 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * Get queue
      *
      * @param  string $queue
-     * @return Queue
+     * @return Queue|null
      */
-    public function getQueue($queue)
+    public function getQueue(string $queue): Queue|null
     {
-        return (isset($this->queues[$queue])) ? $this->queues[$queue] : null;
+        return $this->queues[$queue] ?? null;
     }
 
     /**
      * Has queue
      *
      * @param  string $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasQueue($queue)
+    public function hasQueue(string $queue): bool
     {
         return (isset($this->queues[$queue]));
     }
@@ -115,21 +115,20 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      *
      * @param  string $name
      * @param  mixed $value
-     * @return Manager
+     * @return void
      */
-    public function __set($name, $value)
+    public function __set(string $name, mixed $value): void
     {
         $this->addQueue($value);
-        return $this;
     }
 
     /**
      * Get a queue
      *
      * @param  string $name
-     * @return Queue
+     * @return ?Queue
      */
-    public function __get($name)
+    public function __get(string $name): ?Queue
     {
         return $this->getQueue($name);
     }
@@ -138,9 +137,9 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * Determine if a queue is registered with the manager object
      *
      * @param  string $name
-     * @return boolean
+     * @return bool
      */
-    public function __isset($name)
+    public function __isset(string $name): bool
     {
         return isset($this->queues[$name]);
     }
@@ -149,37 +148,34 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * Unset a queue with the manager
      *
      * @param  string $name
-     * @return Manager
+     * @return void
      */
-    public function __unset($name)
+    public function __unset(string $name): void
     {
         if (isset($this->queues[$name])) {
             unset($this->queues[$name]);
         }
-        return $this;
     }
 
     /**
      * Set a queue with the manager
      *
-     * @param  string $offset
+     * @param  mixed $offset
      * @param  mixed $value
-     * @return Manager
+     * @return void
      */
-    #[ReturnTypeWillChange]
-    public function offsetSet($offset, $value)
+    public function offsetSet(mixed $offset, mixed $value): void
     {
-        return $this->__set($offset, $value);
+        $this->__set($offset, $value);
     }
 
     /**
      * Get a queue
      *
-     * @param  string $offset
-     * @return Queue
+     * @param  mixed $offset
+     * @return ?Queue
      */
-    #[ReturnTypeWillChange]
-    public function offsetGet($offset)
+    public function offsetGet(mixed $offset): ?Queue
     {
         return $this->__get($offset);
     }
@@ -187,10 +183,10 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
     /**
      * Determine if a queue is registered with the manager object
      *
-     * @param  string $offset
-     * @return boolean
+     * @param  mixed $offset
+     * @return bool
      */
-    public function offsetExists($offset): bool
+    public function offsetExists(mixed $offset): bool
     {
         return $this->__isset($offset);
     }
@@ -199,12 +195,11 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      * Unset a queue from the manager
      *
      * @param  string $offset
-     * @return Manager
+     * @return void
      */
-    #[ReturnTypeWillChange]
-    public function offsetUnset($offset)
+    public function offsetUnset(mixed $offset): void
     {
-        return $this->__unset($offset);
+        $this->__unset($offset);
     }
 
     /**
@@ -220,11 +215,11 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
     /**
      * Get iterator
      *
-     * @return \ArrayIterator
+     * @return ArrayIterator
      */
-    public function getIterator(): \ArrayIterator
+    public function getIterator(): ArrayIterator
     {
-        return new \ArrayIterator($this->queues);
+        return new ArrayIterator($this->queues);
     }
 
 }

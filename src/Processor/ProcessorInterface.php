@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -22,9 +22,9 @@ use Pop\Queue\Processor\Jobs\AbstractJob;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 interface ProcessorInterface
 {
@@ -34,7 +34,7 @@ interface ProcessorInterface
      *
      * @return array
      */
-    public function getJobResults();
+    public function getJobResults(): array;
 
     /**
      * Get job result
@@ -42,87 +42,87 @@ interface ProcessorInterface
      * @param  mixed $index
      * @return mixed
      */
-    public function getJobResult($index);
+    public function getJobResult(mixed $index): mixed;
 
     /**
      * Has job results
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasJobResults();
+    public function hasJobResults(): bool;
 
     /**
      * Get completed jobs
      *
      * @return array
      */
-    public function getCompletedJobs();
+    public function getCompletedJobs(): array;
 
     /**
      * Get completed job
      *
      * @param  mixed $index
-     * @return AbstractJob
+     * @return AbstractJob|null
      */
-    public function getCompletedJob($index);
+    public function getCompletedJob(mixed $index): AbstractJob|null;
 
     /**
      * Has completed jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJobs();
+    public function hasCompletedJobs(): bool;
 
     /**
      * Get failed jobs
      *
      * @return array
      */
-    public function getFailedJobs();
+    public function getFailedJobs(): array;
 
     /**
      * Get failed job
      *
      * @param  mixed $index
-     * @return AbstractJob
+     * @return AbstractJob|null
      */
-    public function getFailedJob($index);
+    public function getFailedJob(mixed $index): AbstractJob|null;
 
     /**
      * Has failed jobs
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJobs();
+    public function hasFailedJobs(): bool;
 
     /**
      * Get failed exceptions
      *
      * @return array
      */
-    public function getFailedExceptions();
+    public function getFailedExceptions(): array;
 
     /**
      * Get failed exception
      *
      * @param  mixed $index
-     * @return AbstractJob
+     * @return \Exception|null
      */
-    public function getFailedException($index);
+    public function getFailedException(mixed $index): \Exception|null;
 
     /**
      * Has failed exceptions
      *
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedExceptions();
+    public function hasFailedExceptions(): bool;
 
     /**
      * Processor next job
      *
-     * @param  Queue $queue
-     * @return void
+     * @param  ?Queue $queue
+     * @return mixed
      */
-    public function processNext(Queue $queue = null);
+    public function processNext(?Queue $queue = null): mixed;
 
 }

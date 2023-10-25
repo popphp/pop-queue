@@ -4,7 +4,7 @@
  *
  * @link       https://github.com/popphp/popphp-framework
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
  */
 
@@ -23,30 +23,30 @@ use Pop\Queue\Processor\Jobs;
  * @category   Pop
  * @package    Pop\Queue
  * @author     Nick Sagona, III <dev@nolainteractive.com>
- * @copyright  Copyright (c) 2009-2023 NOLA Interactive, LLC. (http://www.nolainteractive.com)
+ * @copyright  Copyright (c) 2009-2024 NOLA Interactive, LLC. (http://www.nolainteractive.com)
  * @license    http://www.popphp.org/license     New BSD License
- * @version    1.2.0
+ * @version    2.0.0
  */
 class Db extends AbstractAdapter
 {
 
     /**
      * Database adapter
-     * @var DbAdapter
+     * @var ?DbAdapter
      */
-    protected $db = null;
+    protected ?DbAdapter $db = null;
 
     /**
      * Job table
-     * @var string
+     * @var ?string
      */
-    protected $table = null;
+    protected ?string $table = null;
 
     /**
      * Failed job table
-     * @var string
+     * @var ?string
      */
-    protected $failedTable = null;
+    protected ?string $failedTable = null;
 
     /**
      * Constructor
@@ -57,7 +57,7 @@ class Db extends AbstractAdapter
      * @param string    $table
      * @param string    $failedTable
      */
-    public function __construct(DbAdapter $db, $table = 'pop_queue_jobs', $failedTable = 'pop_queue_failed_jobs')
+    public function __construct(DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs')
     {
         $this->db          = $db;
         $this->table       = $table;
@@ -75,9 +75,9 @@ class Db extends AbstractAdapter
      * Check if queue stack has job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasJob($jobId)
+    public function hasJob(mixed $jobId): bool
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)->where('job_id = :job_id');
@@ -92,11 +92,11 @@ class Db extends AbstractAdapter
     /**
      * Get job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJob($jobId, $unserialize = true)
+    public function getJob(mixed $jobId, bool$unserialize = true): array
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)->where('job_id = :job_id')->limit(1);
@@ -106,7 +106,7 @@ class Db extends AbstractAdapter
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
-        $row  = null;
+        $row  = [];
 
         if (isset($rows[0])) {
             $row = $rows[0];
@@ -126,7 +126,7 @@ class Db extends AbstractAdapter
      * @param  mixed $increment
      * @return void
      */
-    public function updateJob($jobId, $completed = false, $increment = false)
+    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void
     {
         $jobRecord = $this->getJob($jobId);
         $values    = [];
@@ -160,9 +160,9 @@ class Db extends AbstractAdapter
      * Check if queue has jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasJobs($queue)
+    public function hasJobs(mixed $queue): bool
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -181,11 +181,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getJobs($queue, $unserialize = true)
+    public function getJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -213,9 +213,9 @@ class Db extends AbstractAdapter
      * Check if queue stack has completed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJob($jobId)
+    public function hasCompletedJob(mixed $jobId): bool
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)
@@ -233,9 +233,9 @@ class Db extends AbstractAdapter
      * Check if queue has completed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasCompletedJobs($queue)
+    public function hasCompletedJobs(mixed $queue): bool
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -254,11 +254,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue completed job
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJob($jobId, $unserialize = true)
+    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)
@@ -285,11 +285,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue completed jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJobs($queue, $unserialize = true)
+    public function getCompletedJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -317,9 +317,9 @@ class Db extends AbstractAdapter
      * Check if queue stack has failed job
      *
      * @param  mixed $jobId
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJob($jobId)
+    public function hasFailedJob(mixed $jobId): bool
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->failedTable)->where('job_id = :job_id');
@@ -334,11 +334,11 @@ class Db extends AbstractAdapter
     /**
      * Get failed job from queue stack by job ID
      *
-     * @param  mixed   $jobId
-     * @param  boolean $unserialize
+     * @param  mixed $jobId
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJob($jobId, $unserialize = true)
+    public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
         $sql = $this->db->createSql();
         $sql->select()->from($this->failedTable)->where('job_id = :job_id')->limit(1);
@@ -364,9 +364,9 @@ class Db extends AbstractAdapter
      * Check if queue adapter has failed jobs
      *
      * @param  mixed $queue
-     * @return boolean
+     * @return bool
      */
-    public function hasFailedJobs($queue)
+    public function hasFailedJobs(mixed $queue): bool
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -383,11 +383,11 @@ class Db extends AbstractAdapter
     /**
      * Get queue jobs
      *
-     * @param  mixed   $queue
-     * @param  boolean $unserialize
+     * @param  mixed $queue
+     * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJobs($queue, $unserialize = true)
+    public function getFailedJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -417,7 +417,7 @@ class Db extends AbstractAdapter
      * @param  mixed $priority
      * @return string
      */
-    public function push($queue, $job, $priority = null)
+    public function push(mixed $queue, mixed $job, mixed $priority = null): string
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $jobId     = null;
@@ -456,12 +456,12 @@ class Db extends AbstractAdapter
     /**
      * Move failed job to failed queue stack
      *
-     * @param  mixed      $queue
-     * @param  mixed      $jobId
-     * @param  \Exception $exception
+     * @param  mixed           $queue
+     * @param  mixed           $failedJob
+     * @param  \Exception|null $exception
      * @return void
      */
-    public function failed($queue, $jobId, \Exception $exception = null)
+    public function failed(mixed $queue, mixed $failedJob, \Exception|null $exception = null): void
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -474,14 +474,14 @@ class Db extends AbstractAdapter
             'failed'    => ':failed'
         ]);
 
-        $jobRecord = $this->getJob($jobId, false);
+        $jobRecord = $this->getJob($failedJob, false);
 
         $this->db->prepare($sql);
         $this->db->bindParams([
-            'job_id'    => $jobId,
+            'job_id'    => $failedJob,
             'queue'     => $queueName,
             'payload'   => (isset($jobRecord['payload'])) ? $jobRecord['payload'] : null,
-            'exception' => (null !== $exception) ? $exception->getMessage() : null,
+            'exception' => ($exception !== null) ? $exception->getMessage() : null,
             'failed'    => date('Y-m-d H:i:s')
         ]);
 
@@ -498,7 +498,7 @@ class Db extends AbstractAdapter
      * @param  mixed $jobId
      * @return void
      */
-    public function pop($jobId)
+    public function pop(mixed $jobId): void
     {
         $sql = $this->db->createSql();
         $sql->delete($this->table)->where('job_id = :job_id');
@@ -511,11 +511,11 @@ class Db extends AbstractAdapter
     /**
      * Clear jobs off of the queue stack
      *
-     * @param  mixed   $queue
-     * @param  boolean $all
+     * @param  mixed $queue
+     * @param  bool  $all
      * @return void
      */
-    public function clear($queue, $all = false)
+    public function clear(mixed $queue, bool $all = false): void
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -538,7 +538,7 @@ class Db extends AbstractAdapter
      * @param  mixed $queue
      * @return void
      */
-    public function clearFailed($queue)
+    public function clearFailed(mixed $queue): void
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
 
@@ -554,10 +554,10 @@ class Db extends AbstractAdapter
     /**
      * Flush all jobs off of the queue stack
      *
-     * @param  boolean $all
+     * @param  bool $all
      * @return void
      */
-    public function flush($all = false)
+    public function flush(bool $all = false): void
     {
         $sql = $this->db->createSql();
         $sql->delete($this->table);
@@ -574,7 +574,7 @@ class Db extends AbstractAdapter
      *
      * @return void
      */
-    public function flushFailed()
+    public function flushFailed(): void
     {
         $sql = $this->db->createSql();
         $sql->delete($this->failedTable);
@@ -587,7 +587,7 @@ class Db extends AbstractAdapter
      *
      * @return void
      */
-    public function flushAll()
+    public function flushAll(): void
     {
         $this->flush(true);
         $this->flushFailed();
@@ -596,9 +596,9 @@ class Db extends AbstractAdapter
     /**
      * Get the database object
      *
-     * @return DbAdapter
+     * @return ?DbAdapter
      */
-    public function db()
+    public function db(): ?DbAdapter
     {
         return $this->db;
     }
@@ -606,9 +606,9 @@ class Db extends AbstractAdapter
     /**
      * Get the job table
      *
-     * @return string
+     * @return ?string
      */
-    public function getTable()
+    public function getTable(): ?string
     {
         return $this->table;
     }
@@ -616,9 +616,9 @@ class Db extends AbstractAdapter
     /**
      * Get the failed job table
      *
-     * @return string
+     * @return ?string
      */
-    public function getFailedTable()
+    public function getFailedTable(): ?string
     {
         return $this->failedTable;
     }
@@ -629,7 +629,7 @@ class Db extends AbstractAdapter
      * @param  string $table
      * @return Db
      */
-    public function createTable($table)
+    public function createTable(string $table): Db
     {
         $schema = $this->db->createSchema();
 
@@ -654,7 +654,7 @@ class Db extends AbstractAdapter
      * @param  string $failedTable
      * @return Db
      */
-    public function createFailedTable($failedTable)
+    public function createFailedTable(string $failedTable): Db
     {
         $schema = $this->db->createSchema();
 
