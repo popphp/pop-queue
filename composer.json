@@ -28,7 +28,6 @@
         "ext-redis": "*"
     },
     "require-dev": {
-        "popphp/pop-kettle": "^2.0.0",
         "phpunit/phpunit": "^10.0.0"
     },
     "autoload": {
