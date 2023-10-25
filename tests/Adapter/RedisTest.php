@@ -1,8 +1,8 @@
 <?php
 
-namespace Pop\Queue\Test;
+namespace Pop\Queue\Test\Adapter;
 
-use Pop\Queue\Adapter;
+use Pop\Queue\Adapter\Redis;
 use Pop\Queue\Processor\Jobs\Job;
 use Pop\Queue\Processor\Jobs\Schedule;
 use PHPUnit\Framework\TestCase;
@@ -12,14 +12,14 @@ class RedisTest extends TestCase
 
     public function testConstructor()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
         $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
         $this->assertInstanceOf('Redis', $adapter->redis());
     }
 
     public function testGetJobs()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
@@ -35,7 +35,7 @@ class RedisTest extends TestCase
 
     public function testGetCompletedJobs()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
@@ -47,7 +47,7 @@ class RedisTest extends TestCase
         $this->assertTrue($adapter->hasCompletedJob($jobId));
         $this->assertFalse($adapter->hasCompletedJob($jobId . '-bad'));
         $this->assertNotNull($adapter->getCompletedJob($jobId));
-        $this->assertNull($adapter->getCompletedJob($jobId . '-bad'));
+        $this->assertEmpty($adapter->getCompletedJob($jobId . '-bad'));
         $this->assertTrue($adapter->hasCompletedJobs('pop-queue-test'));
         $this->assertFalse($adapter->hasCompletedJobs('pop-queue-bad'));
         $this->assertNotEmpty($adapter->getCompletedJobs('pop-queue-test'));
@@ -55,7 +55,7 @@ class RedisTest extends TestCase
 
     public function testGetFailedJobs()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $job   = new Job(function(){throw new \Exception('Whoops!');});
         $jobId = $job->generateJobId();
@@ -72,7 +72,7 @@ class RedisTest extends TestCase
 
     public function testPushSchedule()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
@@ -87,7 +87,7 @@ class RedisTest extends TestCase
 
     public function testClear()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $adapter->clear('pop-queue-test');
         $adapter->clear('pop-queue-test', true);
@@ -99,7 +99,7 @@ class RedisTest extends TestCase
 
     public function testFlush()
     {
-        $adapter = new Adapter\Redis();
+        $adapter = new Redis();
 
         $adapter->flush();
         $adapter->flush(true);

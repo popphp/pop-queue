@@ -86,9 +86,9 @@ abstract class AbstractJob implements JobInterface
 
     /**
      * Serialize closure
-     * @var \Closure|null
+     * @var ?string
      */
-    protected \Closure|null $serializedClosure = null;
+    protected ?string $serializedClosure = null;
 
     /**
      * Serialize parameters

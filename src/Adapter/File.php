@@ -116,7 +116,7 @@ class File extends AbstractAdapter
     {
         $jobData = $this->getJob($jobId);
 
-        if ($jobData !== false) {
+        if (!empty($jobData)) {
             $queueName = $jobData['queue'];
             if (isset($jobData['payload'])) {
                 unset($jobData['payload']);
@@ -230,7 +230,7 @@ class File extends AbstractAdapter
     public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
     {
         $queueFolders = $this->getFiles($this->folder);
-        $job          = false;
+        $job          = [];
 
         foreach ($queueFolders as $queueFolder) {
             if (file_exists($this->folder . '/' . $queueFolder . '/completed/' . $jobId)) {
@@ -313,7 +313,7 @@ class File extends AbstractAdapter
     public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
         $queueFolders = $this->getFiles($this->folder);
-        $job          = false;
+        $job          = [];
 
         foreach ($queueFolders as $queueFolder) {
             if (file_exists($this->folder . '/' . $queueFolder . '/failed/' . $jobId)) {

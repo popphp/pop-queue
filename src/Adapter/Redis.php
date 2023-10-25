@@ -77,12 +77,14 @@ class Redis extends AbstractAdapter
     public function getJob(mixed $jobId, bool $unserialize = true): array
     {
         $job = $this->redis->get('pop-queue-' . $jobId);
-        if ($job !== false) {
+        if (!empty($job)) {
             $job        = unserialize($job);
             $jobPayload = $this->redis->get('pop-queue-' . $jobId . '-payload');
             if ($jobPayload !== false) {
                 $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
             }
+        } else {
+            $job = [];
         }
 
         return $job;
@@ -100,7 +102,7 @@ class Redis extends AbstractAdapter
     {
         $jobData = $this->getJob($jobId);
 
-        if ($jobData !== false) {
+        if (!empty($jobData)) {
             if ($completed !== false) {
                 $jobData['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
                 $queueJobs            = $this->redis->get('pop-queue-' . $jobData['queue']);
@@ -194,7 +196,7 @@ class Redis extends AbstractAdapter
     {
         $job = $this->getJob($jobId, false);
 
-        if ($job !== false) {
+        if (!empty($job)) {
             $queueCompletedJobs = $this->redis->get('pop-queue-' . $job['queue'] . '-completed');
             if ($queueCompletedJobs !== false) {
                 $queueCompletedJobs = unserialize($queueCompletedJobs);
@@ -286,13 +288,16 @@ class Redis extends AbstractAdapter
     public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
         $job = $this->redis->get('pop-queue-' . $jobId . '-failed');
-        if ($job !== false) {
+        if (!empty($job)) {
             $job        = unserialize($job);
             $jobPayload = $this->redis->get('pop-queue-' . $jobId . '-payload');
             if ($jobPayload !== false) {
                 $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
             }
+        } else {
+            $job = [];
         }
+
         return $job;
     }
 
@@ -430,7 +435,7 @@ class Redis extends AbstractAdapter
     {
         $jobData = $this->getJob($jobId);
 
-        if ($jobData !== false) {
+        if (!empty($jobData)) {
             $queueJobs = $this->redis->get('pop-queue-' . $jobData['queue']);
             $queueJobs = ($queueJobs !== false) ? unserialize($queueJobs) : [];
 

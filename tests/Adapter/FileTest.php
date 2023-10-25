@@ -1,10 +1,9 @@
 <?php
 
-namespace Pop\Queue\Test;
+namespace Pop\Queue\Test\Adapter;
 
-use Pop\Queue\Adapter;
+use Pop\Queue\Adapter\File;
 use Pop\Queue\Processor\Jobs\Job;
-use Pop\Queue\Processor\Jobs\Schedule;
 use PHPUnit\Framework\TestCase;
 
 class FileTest extends TestCase
@@ -12,14 +11,20 @@ class FileTest extends TestCase
 
     public function testConstructor()
     {
-        $adapter = new Adapter\File(__DIR__ . '/../tmp');
+        $adapter = new File(__DIR__ . '/../tmp');
         $this->assertInstanceOf('Pop\Queue\Adapter\File', $adapter);
         $this->assertStringContainsString('/tmp', $adapter->folder());
     }
 
+    public function testConstructorException()
+    {
+        $this->expectException('Pop\Queue\Adapter\Exception');
+        $adapter = new File(__DIR__ . '/../bad');
+    }
+
     public function testGetJobs()
     {
-        $adapter = new Adapter\File(__DIR__ . '/../tmp');
+        $adapter = new File(__DIR__ . '/../tmp');
 
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
@@ -34,7 +39,7 @@ class FileTest extends TestCase
 
     public function testGetCompletedJobs1()
     {
-        $adapter = new Adapter\File(__DIR__ . '/../tmp');
+        $adapter = new File(__DIR__ . '/../tmp');
 
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
@@ -51,7 +56,7 @@ class FileTest extends TestCase
 
     public function testGetCompletedJobs2()
     {
-        $adapter = new Adapter\File(__DIR__ . '/../tmp');
+        $adapter = new File(__DIR__ . '/../tmp');
 
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
@@ -67,7 +72,7 @@ class FileTest extends TestCase
 
     public function testGetFailedJobs()
     {
-        $adapter = new Adapter\File(__DIR__ . '/../tmp');
+        $adapter = new File(__DIR__ . '/../tmp');
 
         $job   = new Job(function(){throw new \Exception('Whoops!');});
         $jobId = $job->generateJobId();
