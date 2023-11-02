@@ -73,10 +73,22 @@ abstract class AbstractJob implements JobInterface
     protected bool $completed = false;
 
     /**
+     * Job completed timestamp
+     * @var ?int
+     */
+    protected ?int $completedTimestamp = null;
+
+    /**
      * Job failed flag
      * @var bool
      */
-    protected bool$failed = false;
+    protected bool $failed = false;
+
+    /**
+     * Job failed timestamp
+     * @var ?int
+     */
+    protected ?int $failedTimestamp = null;
 
     /**
      * Attempt once flag
@@ -354,7 +366,8 @@ abstract class AbstractJob implements JobInterface
      */
     public function setAsCompleted(): AbstractJob
     {
-        $this->completed = true;
+        $this->completed          = true;
+        $this->completedTimestamp = time();
         return $this;
     }
 
@@ -369,13 +382,24 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
+     * Get completed timestamp
+     *
+     * @return ?int
+     */
+    public function getCompletedTimestamp(): ?int
+    {
+        return $this->completedTimestamp;
+    }
+
+    /**
      * Set job as failed
      *
      * @return AbstractJob
      */
     public function setAsFailed(): AbstractJob
     {
-        $this->failed = true;
+        $this->failed          = true;
+        $this->failedTimestamp = time();
         return $this;
     }
 
@@ -387,6 +411,16 @@ abstract class AbstractJob implements JobInterface
     public function hasFailed(): bool
     {
         return $this->failed;
+    }
+
+    /**
+     * Get failed timestamp
+     *
+     * @return ?int
+     */
+    public function getFailedTimestamp(): ?int
+    {
+        return $this->failedTimestamp;
     }
 
     /**

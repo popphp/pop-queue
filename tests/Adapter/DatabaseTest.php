@@ -3,12 +3,12 @@
 namespace Pop\Queue\Test\Adapter;
 
 use Pop\Db\Db as PopDb;
-use Pop\Queue\Adapter\Db;
+use Pop\Queue\Adapter\Database;
 use Pop\Queue\Processor\Jobs\Job;
 use Pop\Queue\Processor\Jobs\Schedule;
 use PHPUnit\Framework\TestCase;
 
-class DbTest extends TestCase
+class DatabaseTest extends TestCase
 {
 
     public function testConstructor()
@@ -20,8 +20,8 @@ class DbTest extends TestCase
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
 
-        $adapter = new Db($db);
-        $this->assertInstanceOf('Pop\Queue\Adapter\Db', $adapter);
+        $adapter = new Database($db);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Database', $adapter);
         $this->assertInstanceOf('Pop\Db\Adapter\Sqlite', $adapter->db());
         $this->assertEquals('pop_queue_jobs', $adapter->getTable());
         $this->assertEquals('pop_queue_failed_jobs', $adapter->getFailedTable());
@@ -32,7 +32,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
@@ -50,7 +50,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
@@ -70,7 +70,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
 
         $job   = new Job(function(){throw new \Exception('Whoops!');});
@@ -90,7 +90,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
@@ -106,7 +106,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
@@ -124,7 +124,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $this->assertTrue($adapter->hasCompletedJobs('pop-queue'));
         $adapter->clear('pop-queue');
@@ -141,7 +141,7 @@ class DbTest extends TestCase
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-        $adapter = new Db($db);
+        $adapter = new Database($db);
 
         $adapter->flush();
         $adapter->flush(true);

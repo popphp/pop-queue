@@ -27,7 +27,7 @@ use Pop\Queue\Processor\Jobs;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-class Db extends AbstractAdapter
+class Database extends AbstractAdapter
 {
 
     /**
@@ -627,9 +627,9 @@ class Db extends AbstractAdapter
      * Create the queue job table
      *
      * @param  string $table
-     * @return Db
+     * @return Database
      */
-    public function createTable(string $table): Db
+    public function createTable(string $table): Database
     {
         $schema = $this->db->createSchema();
 
@@ -652,9 +652,9 @@ class Db extends AbstractAdapter
      * Create the queue failed job table
      *
      * @param  string $failedTable
-     * @return Db
+     * @return Database
      */
-    public function createFailedTable(string $failedTable): Db
+    public function createFailedTable(string $failedTable): Database
     {
         $schema = $this->db->createSchema();
 

@@ -175,6 +175,13 @@ interface JobInterface
     public function hasFailed(): bool;
 
     /**
+     * Get failed timestamp
+     *
+     * @return ?int
+     */
+    public function getFailedTimestamp(): ?int;
+
+    /**
      * Is job running
      *
      * @return bool
@@ -187,6 +194,13 @@ interface JobInterface
      * @return bool
      */
     public function isComplete(): bool;
+
+    /**
+     * Get completed timestamp
+     *
+     * @return ?int
+     */
+    public function getCompletedTimestamp(): ?int;
 
     /**
      * Run job
