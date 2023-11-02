@@ -692,7 +692,7 @@ class Schedule
     }
 
     /**
-     * Determine if the value satisfies the expression
+     * Determine if the value satisfies the schedule expression
      *
      * @param  array $values
      * @param  mixed $value
