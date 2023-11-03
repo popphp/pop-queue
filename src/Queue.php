@@ -229,27 +229,32 @@ class Queue
     /**
      * Process schedulers in the queue
      *
-     * @return Queue
+     * @return array
      */
-    public function processWorkers(): Queue
+    public function processWorkers(): array
     {
+        $results = [];
+
         if ($this->hasWorkers()) {
             foreach ($this->workers as $worker) {
                 while ($worker->hasNextJob()) {
                     $worker->processNext($this);
                 }
+                if ($worker->hasJobResults()) {
+                    $results = array_merge($results, $worker->getJobResults());
+                }
             }
         }
 
-        return $this;
+        return $results;
     }
 
     /**
      * Process all schedulers and workers in the queue (alias)
      *
-     * @return Queue
+     * @return array
      */
-    public function processAll(): Queue
+    public function processAll(): array
     {
         return $this->processWorkers();
     }
