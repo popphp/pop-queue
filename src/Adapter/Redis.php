@@ -148,7 +148,7 @@ class Redis extends AbstractAdapter
                 $queueCompletedJobs   = $this->redis->get('pop-queue-' . $jobData['queue'] . '-completed');
                 $queueCompletedJobs   = ($queueCompletedJobs !== false) ? unserialize($queueCompletedJobs) : [];
 
-                if (in_array($jobId, $queueJobs)) {
+                if ((!$job->isValid()) && in_array($jobId, $queueJobs)) {
                     unset($queueJobs[array_search($jobId, $queueJobs)]);
                     $queueJobs = array_values($queueJobs);
                 }
@@ -158,6 +158,7 @@ class Redis extends AbstractAdapter
 
                 $this->redis->set('pop-queue-' . $jobData['queue'], serialize($queueJobs));
                 $this->redis->set('pop-queue-' . $jobData['queue'] . '-completed', serialize($queueCompletedJobs));
+                $this->redis->set('pop-queue-' . $jobId . '-payload', serialize(clone $job));
             }
 
             $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
@@ -383,11 +384,12 @@ class Redis extends AbstractAdapter
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
         $jobData   = [
-            'job_id'    => $jobId,
-            'queue'     => $queueName,
-            'priority'  => $priority,
-            'attempts'  => 0,
-            'completed' => null
+            'job_id'       => $jobId,
+            'queue'        => $queueName,
+            'priority'     => $priority,
+            'max_attempts' => $job->getMaxAttempts(),
+            'attempts'     => 0,
+            'completed'    => null
         ];
 
         return $this->saveJob($queueName, $job, $jobData);

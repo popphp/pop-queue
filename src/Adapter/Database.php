@@ -130,12 +130,13 @@ class Database extends AbstractAdapter
     {
         $sql = $this->db->createSql();
         $sql->insert($this->table)->values([
-            'job_id'    => ':job_id',
-            'queue'     => ':queue',
-            'payload'   => ':payload',
-            'priority'  => ':priority',
-            'attempts'  => ':attempts',
-            'completed' => ':completed'
+            'job_id'       => ':job_id',
+            'queue'        => ':queue',
+            'payload'      => ':payload',
+            'priority'     => ':priority',
+            'max_attempts' => ':max_attempts',
+            'attempts'     => ':attempts',
+            'completed'    => ':completed'
         ]);
 
         $this->db->prepare($sql);
@@ -158,6 +159,9 @@ class Database extends AbstractAdapter
         $completed = $job->getCompleted();
         $values    = [];
         $params    = [];
+
+        $values['payload'] = ':payload';
+        $params['payload'] = base64_encode(serialize(clone $job));
 
         if (!empty($completed)) {
             $values['completed'] = ':completed';
@@ -186,14 +190,24 @@ class Database extends AbstractAdapter
      */
     public function hasJobs(mixed $queue): bool
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $queueName   = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $placeholder = $this->db->createSql()->getPlaceholder();
 
-        $sql = $this->db->createSql();
-        $sql->select()->from($this->table)
-            ->where('queue = :queue')
-            ->where('completed IS NULL');
+        if ($placeholder == ':') {
+            $placeholder .= 'queue';
+        } else if ($placeholder == '$') {
+            $placeholder .= '1';
+        }
 
-        $this->db->prepare($sql);
+        $sqlString = <<<SQL
+SELECT *
+FROM `pop_queue_jobs`
+WHERE
+  `queue` = {$placeholder} AND
+  ((`completed` IS NULL) OR ((`completed` IS NOT NULL) AND ((`max_attempts` = 0) OR (`attempts` < `max_attempts`))));
+SQL;
+
+        $this->db->prepare($sqlString);
         $this->db->bindParams(['queue' => $queueName]);
         $this->db->execute();
 
@@ -210,13 +224,23 @@ class Database extends AbstractAdapter
     public function getJobs(mixed $queue, bool $unserialize = true): array
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $placeholder = $this->db->createSql()->getPlaceholder();
 
-        $sql = $this->db->createSql();
-        $sql->select()->from($this->table)
-            ->where('queue = :queue')
-            ->where('completed IS NULL');
+        if ($placeholder == ':') {
+            $placeholder .= 'queue';
+        } else if ($placeholder == '$') {
+            $placeholder .= '1';
+        }
 
-        $this->db->prepare($sql);
+        $sqlString = <<<SQL
+SELECT *
+FROM `pop_queue_jobs`
+WHERE
+  `queue` = {$placeholder} AND
+  ((`completed` IS NULL) OR ((`completed` IS NOT NULL) AND ((`max_attempts` = 0) OR (`attempts` < `max_attempts`))));
+SQL;
+
+        $this->db->prepare($sqlString);
         $this->db->bindParams(['queue' => $queueName]);
         $this->db->execute();
 
@@ -444,12 +468,13 @@ class Database extends AbstractAdapter
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
         $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
         $jobData   = [
-            'job_id'    => $jobId,
-            'queue'     => $queueName,
-            'payload'   => base64_encode(serialize(clone $job)),
-            'priority'  => $priority,
-            'attempts'  => 0,
-            'completed' => null
+            'job_id'       => $jobId,
+            'queue'        => $queueName,
+            'payload'      => base64_encode(serialize(clone $job)),
+            'priority'     => $priority,
+            'max_attempts' => $job->getMaxAttempts(),
+            'attempts'     => 0,
+            'completed'    => null
         ];
 
         return $this->saveJob($queueName, $job, $jobData);
@@ -641,6 +666,7 @@ class Database extends AbstractAdapter
             ->varchar('queue', 255)
             ->varchar('priority', 255)
             ->text('payload')
+            ->int('max_attempts', 16)
             ->int('attempts', 16)
             ->datetime('completed')
             ->primary('id');

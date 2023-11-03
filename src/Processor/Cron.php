@@ -71,17 +71,25 @@ class Cron
     protected array $daysOfTheWeek = [];
 
     /**
+     * Time buffer
+     * @var int
+     */
+    protected int $buffer = 0;
+
+    /**
      * Constructor
      *
      * Instantiate the cron  object
      *
      * @param  ?string $schedule
+     * @param  int     $buffer
      */
-    public function __construct(?string $schedule = null)
+    public function __construct(?string $schedule = null, int $buffer = 0)
     {
         if ($schedule !== null) {
             $this->schedule($schedule);
         }
+        $this->setBuffer($buffer);
     }
 
     /**
@@ -93,6 +101,28 @@ class Cron
     public static function create(?string $schedule = null): Cron
     {
         return new self($schedule);
+    }
+
+    /**
+     * Set buffer
+     *
+     * @param  int $buffer
+     * @return Cron
+     */
+    public function setBuffer(int $buffer): Cron
+    {
+        $this->buffer = $buffer;
+        return $this;
+    }
+
+    /**
+     * Get buffer
+     *
+     * @return int
+     */
+    public function getBuffer(): int
+    {
+        return $this->buffer;
     }
 
     /**
@@ -853,11 +883,11 @@ class Cron
      * $buffer = -1;     disregards the seconds value for a loose evaluation
      *
      * @param  mixed $time
-     * @param  int   $buffer
+     * @param  ?int  $buffer
      * @throws Exception
      * @return bool
      */
-    public function evaluate(mixed $time = null, int $buffer = 0): bool
+    public function evaluate(mixed $time = null, ?int $buffer = null): bool
     {
         if ($time === null) {
             $time = time();
@@ -866,6 +896,10 @@ class Cron
             if ($time === false) {
                 throw new Exception('Error: That time value is not valid.');
             }
+        }
+
+        if ($buffer !== null) {
+            $this->setBuffer($buffer);
         }
 
         $second        = (int)date('s', $time);
@@ -910,15 +944,15 @@ class Cron
         } else {
             // Check every minute schedule
             if (($this->schedule == '* * * * *')) {
-                return (($buffer < 0) || ($second <= $buffer));
-                // Validate the schedule
+                return (($this->buffer < 0) || ($second <= $this->buffer));
+            // Validate the schedule
             } else {
                 return (($dowPassed) &&
                     ($monthPassed) &&
                     ($domPassed) &&
                     ($hoursPassed) &&
                     ($minutesPassed) &&
-                    (($buffer < 0) || ($second <= $buffer)));
+                    (($this->buffer < 0) || ($second <= $this->buffer)));
             }
         }
     }

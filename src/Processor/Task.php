@@ -99,6 +99,18 @@ class Task extends Job
     }
 
     /**
+     * Set time buffer
+     *
+     * @param  int $buffer
+     * @return Task
+     */
+    public function buffer(int $buffer): Task
+    {
+        $this->cron->setBuffer($buffer);
+        return $this;
+    }
+
+    /**
      * Has cron Task
      *
      * @return bool
