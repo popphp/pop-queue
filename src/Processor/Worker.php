@@ -110,16 +110,16 @@ class Worker extends AbstractProcessor
 
         if ($this->hasJob($nextIndex)) {
             $scheduleCheck = true;
-            $hasSeconds    = false;
+            $isSubMinute   = false;
 
             // Check scheduled task
             if ($this->jobs[$nextIndex] instanceof Task) {
-                $hasSeconds    = ($this->jobs[$nextIndex]->cron()->hasSeconds());
+                $isSubMinute    = ($this->jobs[$nextIndex]->cron()->hasSeconds());
                 $scheduleCheck = $this->jobs[$nextIndex]->cron()->evaluate();
             }
 
             // If there is a sub-minute scheduled task
-            if ($hasSeconds) {
+            if ($isSubMinute) {
                 $timer = 0;
                 while ($timer < 60) {
                     if (($this->jobs[$nextIndex]->isValid()) && ($scheduleCheck)) {
