@@ -19,8 +19,11 @@ pop-queue
     - [Redis](#redis)
 * [Workers](#workers)
 * [Jobs](#jobs)
+    - [Callables](#callables)
+    - [Application Commands](*application-commands)
+    - [CLI Commands](*cli-commands)
 * [Tasks](#tasks)
-    -[Scheduling](#scheduling)
+    - [Scheduling](#scheduling)
 * [Tips](#tips)
 
 Overview
@@ -125,6 +128,12 @@ Workers
 
 Jobs
 ----
+
+### Callables
+
+### Application Commands
+
+### CLI Commands
 
 [Top](#pop-queue)
 
