@@ -11,9 +11,9 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Jobs;
+namespace Pop\Queue\Processor;
 
-use Pop\Queue\Processor\AbstractProcessor;
+use Pop\Application;
 
 /**
  * Job class
@@ -145,27 +145,154 @@ interface JobInterface
      * @return bool
      */
     public function hasExec(): bool;
-    /**
-     * Set job to only attempt once
-     *
-     * @param  bool $attemptOnce
-     * @return JobInterface
-     */
-    public function attemptOnce(bool $attemptOnce = true): JobInterface;
 
     /**
-     * Set job to only attempt to run once
+     * Set max attempts
+     *
+     * @param  int $maxAttempts
+     * @return JobInterface
+     */
+    public function setMaxAttempts(int $maxAttempts): JobInterface;
+
+    /**
+     * Get max attempts
+     *
+     * @return int
+     */
+    public function getMaxAttempts(): int;
+
+    /**
+     * Has max attempts
+     *
+     * @return bool
+     */
+    public function hasMaxAttempts(): bool;
+
+    /**
+     * Is job set for only one max attempt
      *
      * @return bool
      */
     public function isAttemptOnce(): bool;
 
     /**
+     * Get actual attempts
+     *
+     * @return int
+     */
+    public function getAttempts(): int;
+
+    /**
+     * Has actual attempts
+     *
+     * @return bool
+     */
+    public function hasAttempts(): bool;
+
+    /**
+     * Set the run until property
+     *
+     * @param  int|string $runUntil
+     * @return JobInterface
+     */
+    public function runUntil(int|string $runUntil): JobInterface;
+
+    /**
+     * Has run until
+     *
+     * @return bool
+     */
+    public function hasRunUntil(): bool;
+
+    /**
+     * Get run until value
+     *
+     * @return int|string|null
+     */
+    public function getRunUntil(): int|string|null;
+
+    /**
+     * Determine if the job has expired
+     *
+     * @return bool
+     */
+    public function isExpired(): bool;
+
+    /**
+     * Determine if the job has exceeded max attempts
+     *
+     * @return bool
+     */
+    public function hasExceededMaxAttempts(): bool;
+
+    /**
+     * Determine if the job is still valid
+     *
+     * @return bool
+     */
+    public function isValid(): bool;
+
+    /**
+     * Has job run yet
+     *
+     * @return bool
+     */
+    public function hasNotRun(): bool;
+
+    /**
+     * Start job
+     *
+     * @return JobInterface
+     */
+    public function start(): JobInterface;
+
+    /**
+     * Get started timestamp
+     *
+     * @return ?int
+     */
+    public function getStarted(): ?int;
+
+    /**
+     * Has job started
+     *
+     * @return bool
+     */
+    public function hasStarted(): bool;
+
+    /**
+     * Is job running and has not completed or failed yet
+     *
+     * @return bool
+     */
+    public function isRunning(): bool;
+
+    /**
+     * Complete job
+     *
+     * @return JobInterface
+     */
+    public function complete(): JobInterface;
+
+    /**
+     * Get completed timestamp
+     *
+     * @return ?int
+     */
+    public function getCompleted(): ?int;
+
+    /**
+     * Is job complete
+     *
+     * @return bool
+     */
+    public function isComplete(): bool;
+    /**
      * Set job as failed
      *
      * @return JobInterface
      */
-    public function setAsFailed(): JobInterface;
+    public function failed(): JobInterface;
 
     /**
      * Has job failed
@@ -179,33 +306,14 @@ interface JobInterface
      *
      * @return ?int
      */
-    public function getFailedTimestamp(): ?int;
-
-    /**
-     * Is job running
-     *
-     * @return bool
-     */
-    public function isRunning(): bool;
-
-    /**
-     * Is job complete
-     *
-     * @return bool
-     */
-    public function isComplete(): bool;
-
-    /**
-     * Get completed timestamp
-     *
-     * @return ?int
-     */
-    public function getCompletedTimestamp(): ?int;
-
+    public function getFailed(): ?int;
+    
     /**
      * Run job
      *
+     * @param  ?Application $application
      * @return mixed
      */
-    public function run(): mixed;
+    public function run(?Application $application = null): mixed;
+
 }

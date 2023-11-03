@@ -14,7 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs;
+use Pop\Queue\Processor\AbstractJob;
 
 /**
  * Redis queue adapter class
@@ -91,20 +91,58 @@ class Redis extends AbstractAdapter
     }
 
     /**
+     * Save job in queue
+     *
+     * @param  string $queueName
+     * @param  mixed $job
+     * @param  array $jobData
+     * @return string
+     */
+    public function saveJob(string $queueName, mixed $job, array $jobData) : string
+    {
+        $jobId              = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+        $queueJobs          = $this->redis->get('pop-queue-' . $queueName);
+        $queueJobsCompleted = $this->redis->get('pop-queue-' . $queueName . '-completed');
+        $queueJobsFailed    = $this->redis->get('pop-queue-' . $queueName . '-failed');
+
+        $queueJobs          = ($queueJobs !== false) ? unserialize($queueJobs) : [];
+        $queueJobsCompleted = ($queueJobsCompleted !== false) ? unserialize($queueJobsCompleted) : [];
+        $queueJobsFailed    = ($queueJobsFailed !== false) ? unserialize($queueJobsFailed) : [];
+
+        if (!in_array($jobId, $queueJobs)) {
+            $queueJobs[] = $jobId;
+        }
+        $this->redis->set('pop-queue-' . $queueName, serialize($queueJobs));
+        $this->redis->set('pop-queue-' . $queueName . '-completed', serialize($queueJobsCompleted));
+        $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
+        $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
+        $this->redis->set('pop-queue-' . $jobId . '-payload', serialize(clone $job));
+
+        return $jobId;
+    }
+
+    /**
      * Update job from queue stack by job ID
      *
-     * @param  mixed $jobId
-     * @param  mixed $completed
-     * @param  mixed $increment
+     * @param  AbstractJob $job
      * @return void
      */
-    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void
+    public function updateJob(AbstractJob $job): void
     {
-        $jobData = $this->getJob($jobId);
+        $jobId     = $job->getJobId();
+        $jobData   = $this->getJob($jobId);
+        $completed = $job->getCompleted();
 
         if (!empty($jobData)) {
-            if ($completed !== false) {
-                $jobData['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+            if (isset($jobData['attempts'])) {
+                $jobData['attempts'] = $job->getAttempts();
+            }
+
+            if (isset($jobData['payload'])) {
+                $jobData['payload'] = $job;
+            }
+            if (!empty($completed)) {
+                $jobData['completed'] = date('Y-m-d H:i:s', $completed);
                 $queueJobs            = $this->redis->get('pop-queue-' . $jobData['queue']);
                 $queueJobs            = ($queueJobs !== false) ? unserialize($queueJobs) : [];
                 $queueCompletedJobs   = $this->redis->get('pop-queue-' . $jobData['queue'] . '-completed');
@@ -120,17 +158,6 @@ class Redis extends AbstractAdapter
 
                 $this->redis->set('pop-queue-' . $jobData['queue'], serialize($queueJobs));
                 $this->redis->set('pop-queue-' . $jobData['queue'] . '-completed', serialize($queueCompletedJobs));
-            }
-            if ($increment !== false) {
-                if (($increment === true) && isset($jobData['attempts'])) {
-                    $jobData['attempts']++;
-                } else {
-                    $jobData['attempts'] = (int)$increment;
-                }
-            }
-
-            if (isset($jobData['payload'])) {
-                unset($jobData['payload']);
             }
 
             $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
@@ -354,27 +381,8 @@ class Redis extends AbstractAdapter
     public function push(mixed $queue, mixed $job, mixed $priority = null): string
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
-        $jobId     = '';
-
-        if ($job instanceof Jobs\Schedule) {
-            $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
-        } else if ($job instanceof Jobs\Job) {
-            $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
-        }
-
-        $queueJobs          = $this->redis->get('pop-queue-' . $queueName);
-        $queueJobsCompleted = $this->redis->get('pop-queue-' . $queueName . '-completed');
-        $queueJobsFailed    = $this->redis->get('pop-queue-' . $queueName . '-failed');
-
-        $queueJobs          = ($queueJobs !== false) ? unserialize($queueJobs) : [];
-        $queueJobsCompleted = ($queueJobsCompleted !== false) ? unserialize($queueJobsCompleted) : [];
-        $queueJobsFailed    = ($queueJobsFailed !== false) ? unserialize($queueJobsFailed) : [];
-
-        if (!in_array($jobId, $queueJobs)) {
-            $queueJobs[] = $jobId;
-        }
-
-        $jobData = [
+        $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+        $jobData   = [
             'job_id'    => $jobId,
             'queue'     => $queueName,
             'priority'  => $priority,
@@ -382,13 +390,7 @@ class Redis extends AbstractAdapter
             'completed' => null
         ];
 
-        $this->redis->set('pop-queue-' . $queueName, serialize($queueJobs));
-        $this->redis->set('pop-queue-' . $queueName . '-completed', serialize($queueJobsCompleted));
-        $this->redis->set('pop-queue-' . $queueName . '-failed', serialize($queueJobsFailed));
-        $this->redis->set('pop-queue-' . $jobId, serialize($jobData));
-        $this->redis->set('pop-queue-' . $jobId . '-payload', serialize(clone $job));
-
-        return $jobId;
+        return $this->saveJob($queueName, $job, $jobData);
     }
 
     /**

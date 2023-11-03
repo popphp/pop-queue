@@ -14,7 +14,6 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Abstract processor class
@@ -28,6 +27,69 @@ use Pop\Queue\Processor\Jobs\AbstractJob;
  */
 interface ProcessorInterface
 {
+
+
+    /**
+     * Add job
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $maxAttempts
+     * @return ProcessorInterface
+     */
+    public function addJob(AbstractJob $job, ?int $maxAttempts = null): ProcessorInterface;
+
+    /**
+     * Add jobs
+     *
+     * @param  array $jobs
+     * @param  ?int  $maxAttempts
+     * @return ProcessorInterface
+     */
+    public function addJobs(array $jobs, ?int $maxAttempts = null): ProcessorInterface;
+
+    /**
+     * Get jobs
+     *
+     * @return array
+     */
+    public function getJobs(): array;
+
+    /**
+     * Get job
+     *
+     * @param  int $index
+     * @return AbstractJob|null
+     */
+    public function getJob(int $index): AbstractJob|null;
+
+    /**
+     * Has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool;
+
+    /**
+     * Has job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    public function hasJob(int $index): bool;
+
+    /**
+     * Has next job
+     *
+     * @return bool
+     */
+    public function hasNextJob(): bool;
+
+    /**
+     * Get next index
+     *
+     * @return int
+     */
+    public function getNextIndex(): int;
 
     /**
      * Get job results

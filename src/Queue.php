@@ -14,7 +14,7 @@
 namespace Pop\Queue;
 
 use Pop\Queue\Adapter\AdapterInterface;
-use Pop\Queue\Processor\Jobs;
+use Pop\Queue\Processor;
 use Pop\Application;
 
 /**
@@ -55,12 +55,6 @@ class Queue
     protected array $workers = [];
 
     /**
-     * Queue schedulers
-     * @var array
-     */
-    protected array $schedulers = [];
-
-    /**
      * Constructor
      *
      * Instantiate the queue object
@@ -92,21 +86,15 @@ class Queue
             $jobs       = $adapter->getJobs($name);
             $fifoWorker = new Processor\Worker();
             $filoWorker = new Processor\Worker(Processor\Worker::FILO);
-            $scheduler  = new Processor\Scheduler();
 
             foreach ($jobs as $job) {
-                if ($job['payload'] instanceof Jobs\Schedule) {
-                    $scheduler->addSchedule($job['payload']);
-                } else if ($job['priority'] == Processor\Worker::FILO) {
+                if ($job['priority'] == Processor\Worker::FILO) {
                     $filoWorker->addJob($job['payload']);
                 } else {
                     $fifoWorker->addJob($job['payload']);
                 }
             }
 
-            if ($scheduler->hasSchedules()) {
-                $queue->addScheduler($scheduler);
-            }
             if ($fifoWorker->hasJobs()) {
                 $queue->addWorker($fifoWorker);
             }
@@ -206,76 +194,6 @@ class Queue
     }
 
     /**
-     * Add a scheduler
-     *
-     * @param  Processor\Scheduler $scheduler
-     * @return Queue
-     */
-    public function addScheduler(Processor\Scheduler $scheduler): Queue
-    {
-        $this->schedulers[] = $scheduler;
-        return $this;
-    }
-
-    /**
-     * Add schedulers
-     *
-     * @param  array $schedulers
-     * @return Queue
-     */
-    public function addSchedulers(array $schedulers): Queue
-    {
-        foreach ($schedulers as $scheduler) {
-            $this->addScheduler($scheduler);
-        }
-
-        return $this;
-    }
-
-    /**
-     * Get schedulers
-     *
-     * @return array
-     */
-    public function getSchedulers(): array
-    {
-        return $this->schedulers;
-    }
-
-    /**
-     * Has schedulers
-     *
-     * @return bool
-     */
-    public function hasSchedulers(): bool
-    {
-        return !empty($this->schedulers);
-    }
-
-    /**
-     * Push scheduled jobs to queue adapter
-     *
-     * @return array
-     */
-    public function pushSchedulers(): array
-    {
-        $pushed = [];
-
-        foreach ($this->schedulers as $scheduler) {
-            if ($scheduler->hasSchedules()) {
-                foreach ($scheduler->getSchedules() as $schedule) {
-                    $jobId = $this->adapter->push($this, $schedule);
-                    if (!empty($jobId)) {
-                        $pushed[$jobId] = $schedule->getJob()->getJobDescription();
-                    }
-                }
-            }
-        }
-
-        return $pushed;
-    }
-
-    /**
      * Push worker jobs to queue adapter
      *
      * @return array
@@ -299,32 +217,13 @@ class Queue
     }
 
     /**
-     * Push all jobs to queue adapter
+     * Push all jobs to queue adapter (alias)
      *
      * @return array
      */
     public function pushAll(): array
     {
-        $pushedScheduled = $this->pushSchedulers();
-        $pushedProcessed = $this->pushWorkers();
-
-        return $pushedScheduled + $pushedProcessed;
-    }
-
-    /**
-     * Process schedulers in the queue
-     *
-     * @return Queue
-     */
-    public function processSchedulers(): Queue
-    {
-        if ($this->hasSchedulers()) {
-            foreach ($this->schedulers as $scheduler) {
-                $scheduler->processNext($this);
-            }
-        }
-
-        return $this;
+        return $this->pushWorkers();
     }
 
     /**
@@ -346,16 +245,13 @@ class Queue
     }
 
     /**
-     * Process all schedulers and workers in the queue
+     * Process all schedulers and workers in the queue (alias)
      *
      * @return Queue
      */
     public function processAll(): Queue
     {
-        $this->processSchedulers();
-        $this->processWorkers();
-
-        return $this;
+        return $this->processWorkers();
     }
 
     /**

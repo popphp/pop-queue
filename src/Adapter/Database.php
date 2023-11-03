@@ -15,7 +15,7 @@ namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs;
+use Pop\Queue\Processor\AbstractJob;
 
 /**
  * Database queue adapter class
@@ -119,31 +119,53 @@ class Database extends AbstractAdapter
     }
 
     /**
+     * Save job in queue
+     *
+     * @param  string $queueName
+     * @param  mixed $job
+     * @param  array $jobData
+     * @return string
+     */
+    public function saveJob(string $queueName, mixed $job, array $jobData) : string
+    {
+        $sql = $this->db->createSql();
+        $sql->insert($this->table)->values([
+            'job_id'    => ':job_id',
+            'queue'     => ':queue',
+            'payload'   => ':payload',
+            'priority'  => ':priority',
+            'attempts'  => ':attempts',
+            'completed' => ':completed'
+        ]);
+
+        $this->db->prepare($sql);
+        $this->db->bindParams($jobData);
+        $this->db->execute();
+
+        return $jobData['job_id'];
+    }
+
+    /**
      * Update job from queue stack by job ID
      *
-     * @param  mixed $jobId
-     * @param  mixed $completed
-     * @param  mixed $increment
+     * @param  AbstractJob $job
      * @return void
      */
-    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void
+    public function updateJob(AbstractJob $job): void
     {
-        $jobRecord = $this->getJob($jobId);
+        $jobId     = $job->getJobId();
+        $jobData   = $this->getJob($jobId);
+        $completed = $job->getCompleted();
         $values    = [];
         $params    = [];
 
-        if ($completed !== false) {
+        if (!empty($completed)) {
             $values['completed'] = ':completed';
-            $params['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+            $params['completed'] = date('Y-m-d H:i:s', $completed);
         }
-        if ($increment !== false) {
+        if (isset($jobData['attempts'])) {
             $values['attempts'] = ':attempts';
-            if (($increment === true) && isset($jobRecord['attempts'])) {
-                $jobRecord['attempts']++;
-                $values['attempts'] = $jobRecord['attempts'];
-            } else {
-                $params['attempts'] = (int)$increment;
-            }
+            $params['attempts'] = $job->getAttempts();
         }
 
         $params['job_id'] = $jobId;
@@ -420,37 +442,17 @@ class Database extends AbstractAdapter
     public function push(mixed $queue, mixed $job, mixed $priority = null): string
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
-        $jobId     = null;
-
-        $sql = $this->db->createSql();
-        $sql->insert($this->table)->values([
-            'job_id'    => ':job_id',
-            'queue'     => ':queue',
-            'payload'   => ':payload',
-            'priority'  => ':priority',
-            'attempts'  => ':attempts',
-            'completed' => ':completed'
-        ]);
-
-        if ($job instanceof Jobs\Schedule) {
-            $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
-        } else if ($job instanceof Jobs\Job) {
-            $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
-        }
-
-        $this->db->prepare($sql);
-        $this->db->bindParams([
+        $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+        $jobData   = [
             'job_id'    => $jobId,
             'queue'     => $queueName,
             'payload'   => base64_encode(serialize(clone $job)),
             'priority'  => $priority,
             'attempts'  => 0,
             'completed' => null
-        ]);
+        ];
 
-        $this->db->execute();
-
-        return $jobId;
+        return $this->saveJob($queueName, $job, $jobData);
     }
 
     /**

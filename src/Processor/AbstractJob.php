@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Jobs;
+namespace Pop\Queue\Processor;
 
 use Pop\Application;
 use Pop\Utils\CallableObject;
@@ -61,40 +61,40 @@ abstract class AbstractJob implements JobInterface
     protected ?string $exec = null;
 
     /**
-     * Job running flag
-     * @var bool
+     * Job started timestamp
+     * @var ?int
      */
-    protected bool $running = false;
-
-    /**
-     * Job completed flag
-     * @var bool
-     */
-    protected bool $completed = false;
+    protected ?int $started = null;
 
     /**
      * Job completed timestamp
      * @var ?int
      */
-    protected ?int $completedTimestamp = null;
-
-    /**
-     * Job failed flag
-     * @var bool
-     */
-    protected bool $failed = false;
+    protected ?int $completed = null;
 
     /**
      * Job failed timestamp
      * @var ?int
      */
-    protected ?int $failedTimestamp = null;
+    protected ?int $failed = null;
 
     /**
-     * Attempt once flag
-     * @var bool
+     * Max attempts
+     * @var int
      */
-    protected bool $attemptOnce = false;
+    protected int $maxAttempts = 1;
+
+    /**
+     * Attempts
+     * @var int
+     */
+    protected int $attempts = 0;
+
+    /**
+     * Run until property
+     * @var int|string|null
+     */
+    protected int|string|null $runUntil = null;
 
     /**
      * Serialize closure
@@ -113,21 +113,17 @@ abstract class AbstractJob implements JobInterface
      *
      * Instantiate the job object
      *
-     * @param  mixed  $callable
-     * @param  mixed  $params
-     * @param  string $id
-     * @param  string $description
+     * @param  mixed   $callable
+     * @param  mixed   $params
+     * @param  ?string $id
      */
-    public function __construct(mixed $callable = null, mixed $params = null, ?string $id = null, ?string $description = null)
+    public function __construct(mixed $callable = null, mixed $params = null, ?string $id = null)
     {
         if ($callable !== null) {
             $this->setCallable($callable, $params);
         }
         if ($id !== null) {
             $this->setJobId($id);
-        }
-        if ($description !== null) {
-            $this->setJobDescription($description);
         }
     }
 
@@ -259,9 +255,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job callable
      *
-     * @return CallableObject
+     * @return ?CallableObject
      */
-    public function getCallable(): mixed
+    public function getCallable(): ?CallableObject
     {
         return $this->callable;
     }
@@ -269,7 +265,7 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job application command
      *
-     * @return s?tring
+     * @return ?string
      */
     public function getCommand(): ?string
     {
@@ -317,58 +313,217 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
-     * Set job to only attempt once
+     * Set max attempts
      *
-     * @param  bool $attemptOnce
+     * @param  int $maxAttempts
      * @return AbstractJob
      */
-    public function attemptOnce(bool $attemptOnce = true): AbstractJob
+    public function setMaxAttempts(int $maxAttempts): AbstractJob
     {
-        $this->attemptOnce = (bool)$attemptOnce;
+        $this->maxAttempts = $maxAttempts;
         return $this;
     }
 
     /**
-     * Set job to only attempt to run once
+     * Get max attempts
+     *
+     * @return int
+     */
+    public function getMaxAttempts(): int
+    {
+        return $this->maxAttempts;
+    }
+
+    /**
+     * Has max attempts
+     *
+     * @return bool
+     */
+    public function hasMaxAttempts(): bool
+    {
+        return ($this->maxAttempts > 0);
+    }
+
+    /**
+     * Is job set for only one max attempt
      *
      * @return bool
      */
     public function isAttemptOnce(): bool
     {
-        return $this->attemptOnce;
+        return ($this->maxAttempts == 1);
     }
 
     /**
-     * Set job as running
+     * Get actual attempts
      *
+     * @return int
+     */
+    public function getAttempts(): int
+    {
+        return $this->attempts;
+    }
+
+    /**
+     * Has actual attempts
+     *
+     * @return bool
+     */
+    public function hasAttempts(): bool
+    {
+        return ($this->attempts > 0);
+    }
+
+    /**
+     * Set the run until property
+     *
+     * @param  int|string $runUntil
      * @return AbstractJob
      */
-    public function setAsRunning(): AbstractJob
+    public function runUntil(int|string $runUntil): AbstractJob
     {
-        $this->running = true;
+        $this->runUntil = $runUntil;
         return $this;
     }
 
     /**
-     * Is job running
+     * Has run until
+     *
+     * @return bool
+     */
+    public function hasRunUntil(): bool
+    {
+        return ($this->runUntil !== null);
+    }
+
+    /**
+     * Get run until value
+     *
+     * @return int|string|null
+     */
+    public function getRunUntil(): int|string|null
+    {
+        return $this->runUntil;
+    }
+
+    /**
+     * Determine if the job has expired
+     *
+     * @return bool
+     */
+    public function isExpired(): bool
+    {
+        if (!empty($this->runUntil)) {
+            $runUntil = null;
+            if (is_string($this->runUntil) && (strtotime($this->runUntil) !== false)) {
+                $runUntil = strtotime($this->runUntil);
+            } else if (is_numeric($this->runUntil) && ((string)(int)$this->runUntil == $this->runUntil)) {
+                $runUntil = $this->runUntil;
+            }
+
+            if ($runUntil !== null) {
+                return (time() > $runUntil);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine if the job has exceeded max attempts
+     *
+     * @return bool
+     */
+    public function hasExceededMaxAttempts(): bool
+    {
+        if ($this->hasMaxAttempts()) {
+            return ($this->attempts >= $this->maxAttempts);
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine if the job is still valid
+     *
+     * @return bool
+     */
+    public function isValid(): bool
+    {
+        return ((!$this->isExpired()) && (!$this->hasExceededMaxAttempts()));
+    }
+
+    /**
+     * Has job run yet
+     *
+     * @return bool
+     */
+    public function hasNotRun(): bool
+    {
+        return (($this->started === null) && ($this->completed === null));
+    }
+
+    /**
+     * Start job
+     *
+     * @return AbstractJob
+     */
+    public function start(): AbstractJob
+    {
+        $this->started = time();
+        return $this;
+    }
+
+    /**
+     * Get started timestamp
+     *
+     * @return ?int
+     */
+    public function getStarted(): ?int
+    {
+        return $this->started;
+    }
+
+    /**
+     * Has job started
+     *
+     * @return bool
+     */
+    public function hasStarted(): bool
+    {
+        return ($this->started !== null);
+    }
+
+    /**
+     * Is job running and has not completed or failed yet
      *
      * @return bool
      */
     public function isRunning(): bool
     {
-        return $this->running;
+        return (($this->started !== null) && ($this->completed === null) && ($this->failed === null));
     }
 
     /**
-     * Set job as completed
+     * Complete job
      *
      * @return AbstractJob
      */
-    public function setAsCompleted(): AbstractJob
+    public function complete(): AbstractJob
     {
-        $this->completed          = true;
-        $this->completedTimestamp = time();
+        $this->completed = time();
+        $this->attempts++;
         return $this;
+    }
+
+    /**
+     * Get completed timestamp
+     *
+     * @return ?int
+     */
+    public function getCompleted(): ?int
+    {
+        return $this->completed;
     }
 
     /**
@@ -378,17 +533,7 @@ abstract class AbstractJob implements JobInterface
      */
     public function isComplete(): bool
     {
-        return $this->completed;
-    }
-
-    /**
-     * Get completed timestamp
-     *
-     * @return ?int
-     */
-    public function getCompletedTimestamp(): ?int
-    {
-        return $this->completedTimestamp;
+        return ($this->completed !== null);
     }
 
     /**
@@ -396,10 +541,10 @@ abstract class AbstractJob implements JobInterface
      *
      * @return AbstractJob
      */
-    public function setAsFailed(): AbstractJob
+    public function failed(): AbstractJob
     {
-        $this->failed          = true;
-        $this->failedTimestamp = time();
+        $this->failed = time();
+        $this->attempts++;
         return $this;
     }
 
@@ -410,7 +555,7 @@ abstract class AbstractJob implements JobInterface
      */
     public function hasFailed(): bool
     {
-        return $this->failed;
+        return ($this->failed !== null);
     }
 
     /**
@@ -418,9 +563,9 @@ abstract class AbstractJob implements JobInterface
      *
      * @return ?int
      */
-    public function getFailedTimestamp(): ?int
+    public function getFailed(): ?int
     {
-        return $this->failedTimestamp;
+        return $this->failed;
     }
 
     /**

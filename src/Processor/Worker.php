@@ -42,12 +42,6 @@ class Worker extends AbstractProcessor
     protected ?string $priority = 'FIFO';
 
     /**
-     * Worker jobs
-     * @var array
-     */
-    protected array $jobs = [];
-
-    /**
      * Constructor
      *
      * Instantiate the worker object
@@ -104,92 +98,10 @@ class Worker extends AbstractProcessor
     }
 
     /**
-     * Add job
-     *
-     * @param  AbstractJob $job
-     * @return Worker
-     */
-    public function addJob(AbstractJob $job): Worker
-    {
-        if ($this->isFilo()) {
-            array_unshift($this->jobs, $job);
-        } else {
-            $this->jobs[] = $job;
-        }
-        return $this;
-    }
-
-    /**
-     * Add jobs
-     *
-     * @param  array $jobs
-     * @return Worker
-     */
-    public function addJobs(array $jobs): Worker
-    {
-        foreach ($jobs as $job) {
-            $this->addJob($job);
-        }
-        return $this;
-    }
-
-    /**
-     * Get jobs
-     *
-     * @return array
-     */
-    public function getJobs(): array
-    {
-        return $this->jobs;
-    }
-
-    /**
-     * Get job
-     *
-     * @param  int $index
-     * @return AbstractJob|null
-     */
-    public function getJob(int $index): AbstractJob|null
-    {
-        return $this->jobs[$index] ?? null;
-    }
-
-    /**
-     * Has jobs
-     *
-     * @return bool
-     */
-    public function hasJobs(): bool
-    {
-        return (count($this->jobs) > 0);
-    }
-
-    /**
-     * Has job
-     *
-     * @param  int $index
-     * @return bool
-     */
-    public function hasJob(int $index): bool
-    {
-        return (isset($this->jobs[$index]));
-    }
-
-    /**
-     * Has next job
-     *
-     * @return bool
-     */
-    public function hasNextJob(): bool
-    {
-        $current = key($this->jobs);
-        return (($current !== null) && ($current < count($this->jobs)));
-    }
-
-    /**
      * Process next job
      *
      * @param  ?Queue $queue
+     * @throws Exception
      * @return mixed
      */
     public function processNext(?Queue $queue = null): mixed
@@ -197,24 +109,30 @@ class Worker extends AbstractProcessor
         $nextIndex = $this->getNextIndex();
 
         if ($this->hasJob($nextIndex)) {
-            try {
-                $application = (($queue !== null) && ($queue->hasApplication() !== null)) ? $queue->application() : null;
-                $this->results[$nextIndex] = $this->jobs[$nextIndex]->run($application);
-                $this->jobs[$nextIndex]->setAsCompleted();
-                $this->completed[$nextIndex] = $this->jobs[$nextIndex];
+            $scheduleCheck = true;
+            $hasSeconds    = false;
 
-                if (($queue !== null) && ($this->jobs[$nextIndex]->hasJobId()) &&
-                    ($queue->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
-                    $queue->adapter()->updateJob($this->jobs[$nextIndex]->getJobId(), true, true);
+            // Check scheduled task
+            if ($this->jobs[$nextIndex] instanceof Task) {
+                $hasSeconds    = ($this->jobs[$nextIndex]->cron()->hasSeconds());
+                $scheduleCheck = $this->jobs[$nextIndex]->cron()->evaluate();
+            }
+
+            // If there is a sub-minute scheduled task
+            if ($hasSeconds) {
+                $timer = 0;
+                while ($timer < 60) {
+                    if (($this->jobs[$nextIndex]->isValid()) && ($scheduleCheck)) {
+                        $this->jobs[$nextIndex]->__wakeup();
+                        $this->processJob($nextIndex, $queue);
+                    }
+                    sleep(1);
+                    $scheduleCheck = $this->jobs[$nextIndex]->cron()->evaluate();
+                    $timer++;
                 }
-            } catch (\Exception $e) {
-                $this->jobs[$nextIndex]->setAsFailed();
-                $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
-                $this->failedExceptions[$nextIndex] = $e;
-                if (($queue !== null) && ($this->failed[$nextIndex]->hasJobId()) &&
-                    ($queue->adapter()->hasJob($this->failed[$nextIndex]->getJobId()))) {
-                    $queue->adapter()->failed($queue->getName(), $this->failed[$nextIndex]->getJobId(), $e);
-                }
+            // Else, process normal scheduled task
+            } else if (($this->jobs[$nextIndex]->isValid()) && ($scheduleCheck)) {
+                $this->processJob($nextIndex, $queue);
             }
         }
 
@@ -222,15 +140,33 @@ class Worker extends AbstractProcessor
     }
 
     /**
-     * Get next index
+     * Process job
      *
-     * @return int
+     * @param  int    $nextIndex
+     * @param  ?Queue $queue
+     * @return void
      */
-    public function getNextIndex(): int
+    public function processJob(int $nextIndex, ?Queue $queue = null): void
     {
-        $index = key($this->jobs);
-        next($this->jobs);
-        return $index;
+        try {
+            $application = (($queue !== null) && ($queue->hasApplication() !== null)) ? $queue->application() : null;
+            $this->results[$nextIndex] = $this->jobs[$nextIndex]->run($application);
+            $this->jobs[$nextIndex]->complete();
+            $this->completed[$nextIndex] = $this->jobs[$nextIndex];
+
+            if (($queue !== null) && ($this->jobs[$nextIndex]->hasJobId()) &&
+                ($queue->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
+                $queue->adapter()->updateJob($this->jobs[$nextIndex]);
+            }
+        } catch (\Exception $e) {
+            $this->jobs[$nextIndex]->failed();
+            $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
+            $this->failedExceptions[$nextIndex] = $e;
+            if (($queue !== null) && ($this->failed[$nextIndex]->hasJobId()) &&
+                ($queue->adapter()->hasJob($this->failed[$nextIndex]->getJobId()))) {
+                $queue->adapter()->failed($queue->getName(), $this->failed[$nextIndex]->getJobId(), $e);
+            }
+        }
     }
 
 }

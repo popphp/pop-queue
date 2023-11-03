@@ -14,7 +14,6 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Abstract process class
@@ -28,6 +27,12 @@ use Pop\Queue\Processor\Jobs\AbstractJob;
  */
 abstract class AbstractProcessor implements ProcessorInterface
 {
+
+    /**
+     * Processor jobs
+     * @var array
+     */
+    protected array $jobs = [];
 
     /**
      * Job results
@@ -52,6 +57,133 @@ abstract class AbstractProcessor implements ProcessorInterface
      * @var array
      */
     protected array $failedExceptions = [];
+
+    /**
+     * Add job
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $maxAttempts
+     * @return AbstractProcessor
+     */
+    public function addJob(AbstractJob $job, ?int $maxAttempts = null): AbstractProcessor
+    {
+        if ($maxAttempts !== null) {
+            $job->setMaxAttempts($maxAttempts);
+        }
+        if ($this->isFilo()) {
+            array_unshift($this->jobs, $job);
+        } else {
+            $this->jobs[] = $job;
+        }
+        return $this;
+    }
+
+    /**
+     * Add jobs
+     *
+     * @param  array $jobs
+     * @param  ?int  $maxAttempts
+     * @return AbstractProcessor
+     */
+    public function addJobs(array $jobs, ?int $maxAttempts = null): AbstractProcessor
+    {
+        foreach ($jobs as $job) {
+            $this->addJob($job, $maxAttempts);
+        }
+        return $this;
+    }
+
+    /**
+     * Add task (alias)
+     *
+     * @param  Task $task
+     * @param  ?int $maxAttempts
+     * @return AbstractProcessor
+     */
+    public function addTask(Task $task, ?int $maxAttempts = 0): AbstractProcessor
+    {
+        return $this->addJob($task, $maxAttempts);
+    }
+
+    /**
+     * Add tasks
+     *
+     * @param  array $tasks
+     * @param  ?int  $maxAttempts
+     * @return AbstractProcessor
+     */
+    public function addTasks(array $tasks, ?int $maxAttempts = null): AbstractProcessor
+    {
+        foreach ($tasks as $task) {
+            $this->addTask($task, $maxAttempts);
+        }
+        return $this;
+    }
+
+    /**
+     * Get jobs
+     *
+     * @return array
+     */
+    public function getJobs(): array
+    {
+        return $this->jobs;
+    }
+
+    /**
+     * Get job
+     *
+     * @param  int $index
+     * @return AbstractJob|null
+     */
+    public function getJob(int $index): AbstractJob|null
+    {
+        return $this->jobs[$index] ?? null;
+    }
+
+    /**
+     * Has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool
+    {
+        return (count($this->jobs) > 0);
+    }
+
+    /**
+     * Has job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    public function hasJob(int $index): bool
+    {
+        return (isset($this->jobs[$index]));
+    }
+
+    /**
+     * Has next job
+     *
+     * @return bool
+     */
+    public function hasNextJob(): bool
+    {
+        $current = key($this->jobs);
+        return (($current !== null) && ($current < count($this->jobs)));
+    }
+
+    /**
+     * Get next index
+     *
+     * @return int
+     */
+    public function getNextIndex(): int
+    {
+        $index = key($this->jobs);
+        next($this->jobs);
+        return $index;
+    }
 
     /**
      * Get job results

@@ -14,7 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs;
+use Pop\Queue\Processor\AbstractJob;
 
 /**
  * File queue adapter class
@@ -105,34 +105,50 @@ class File extends AbstractAdapter
     }
 
     /**
+     * Save job in queue
+     *
+     * @param  string $queueName
+     * @param  mixed $job
+     * @param  array $jobData
+     * @return string
+     */
+    public function saveJob(string $queueName, mixed $job, array $jobData) : string
+    {
+        $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
+
+        file_put_contents($this->folder . '/' . $queueName . '/' . $jobId, serialize($jobData));
+        file_put_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload', serialize(clone $job));
+
+        return $jobId;
+    }
+
+    /**
      * Update job from queue stack by job ID
      *
-     * @param  mixed $jobId
-     * @param  mixed $completed
-     * @param  mixed $increment
+     * @param  AbstractJob $job
      * @return void
      */
-    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void
+    public function updateJob(AbstractJob $job): void
     {
-        $jobData = $this->getJob($jobId);
+        $jobId     = $job->getJobId();
+        $jobData   = $this->getJob($jobId);
+        $completed = $job->getCompleted();
 
         if (!empty($jobData)) {
             $queueName = $jobData['queue'];
             if (isset($jobData['payload'])) {
-                unset($jobData['payload']);
+                $jobData['payload'] = $job;
             }
-            if ($increment !== false) {
-                if (($increment === true) && isset($jobData['attempts'])) {
-                    $jobData['attempts']++;
-                } else {
-                    $jobData['attempts'] = (int)$increment;
-                }
+            if (isset($jobData['attempts'])) {
+                $jobData['attempts'] = $job->getAttempts();
             }
-            if ($completed !== false) {
-                $jobData['completed'] = ($completed === true) ? date('Y-m-d H:i:s') : $completed;
+            if (!empty($completed)) {
+                $jobData['completed'] = date('Y-m-d H:i:s', $completed);
 
-                file_put_contents($this->folder . '/' . $queueName . '/completed/' . $jobId, serialize($jobData));
-                if (file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
+                $this->saveJob($queueName, $job, $jobData);
+
+                file_put_contents($this->folder . '/' . $queueName . '/completed/' . $jobId . '-' . $completed, serialize($jobData));
+                if ((!$job->isValid()) && file_exists($this->folder . '/' . $queueName . '/' . $jobId)) {
                     unlink($this->folder . '/' . $queueName . '/' . $jobId);
                 }
             } else {
@@ -388,13 +404,7 @@ class File extends AbstractAdapter
     public function push(mixed $queue, mixed $job, mixed $priority = null) : string
     {
         $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
-        $jobId     = '';
-
-        if ($job instanceof Jobs\Schedule) {
-            $jobId = ($job->getJob()->hasJobId()) ? $job->getJob()->getJobId() :$job->getJob()->generateJobId();
-        } else if ($job instanceof Jobs\Job) {
-            $jobId = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
-        }
+        $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
 
         $this->initFolders($queueName);
 
@@ -406,10 +416,7 @@ class File extends AbstractAdapter
             'completed' => null
         ];
 
-        file_put_contents($this->folder . '/' . $queueName . '/' . $jobId, serialize($jobData));
-        file_put_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload', serialize(clone $job));
-
-        return $jobId;
+        return $this->saveJob($queueName, $job, $jobData);
     }
 
     /**

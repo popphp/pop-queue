@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor\Jobs;
+namespace Pop\Queue\Processor;
 
 /**
  * Job class
@@ -25,6 +25,19 @@ namespace Pop\Queue\Processor\Jobs;
  */
 class Job extends AbstractJob
 {
+
+    /**
+     * Create job
+     *
+     * @param  mixed   $callable
+     * @param  mixed   $params
+     * @param  ?string $id
+     * @return Job
+     */
+    public static function create(mixed $callable = null, mixed $params = null, ?string $id = null): Job
+    {
+        return new self($callable, $params, $id);
+    }
 
     /**
      * Create a job object with an application command

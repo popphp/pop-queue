@@ -13,8 +13,7 @@
  */
 namespace Pop\Queue\Adapter;
 
-use Pop\Queue\Processor\Jobs\AbstractJob;
-use Pop\Queue\Queue;
+use Pop\Queue\Processor\AbstractJob;
 
 /**
  * Queue adapter interface
@@ -47,14 +46,22 @@ interface AdapterInterface
     public function getJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
+     * Save job in queue
+     *
+     * @param  string $queueName
+     * @param  mixed $job
+     * @param  array $jobData
+     * @return string
+     */
+    public function saveJob(string $queueName, mixed $job, array $jobData) : string;
+
+    /**
      * Update job from queue stack by job ID
      *
-     * @param  mixed $jobId
-     * @param  mixed $completed
-     * @param  mixed $increment
+     * @param  AbstractJob $job
      * @return void
      */
-    public function updateJob(mixed $jobId, mixed $completed = false, mixed $increment = false): void;
+    public function updateJob(AbstractJob $job): void;
 
     /**
      * Check if queue adapter has jobs
