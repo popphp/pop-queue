@@ -32,8 +32,8 @@ Overview
 --------
 `pop-queue` is a job queue component that provides the ability to pass an executable job off to a
 queue to be processed at a later date and time. Queues can either process jobs or scheduled tasks
-via workers. The jobs are stored in an available storage adapter. The available storage adapters
-for the queue component are:
+via workers. The jobs are stored in an available storage adapter until they are called to executed.
+The available storage adapters for the queue component are:
 
 - Database
 - Redis
