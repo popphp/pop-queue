@@ -126,7 +126,7 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), $application);
 
 A `Pop\Application` object can be passed to the queue should any of the jobs' or tasks' callable objects
 need it. Or, an application command can be directly set as the job or task callable, so the application
-object would be needed then as well. (More on working with a [application commands](*application-commands) below.) 
+object would be needed then as well. (More on working with a [application commands](#application-commands) below.) 
 
 ### Completed Jobs
 
