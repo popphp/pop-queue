@@ -14,6 +14,7 @@ pop-queue
     - [Completed Jobs](#completed-jobs)
     - [Failed Jobs](#failed-jobs)
     - [Clear Queue](#clear-queue)
+* [Manager](#manager)
 * [Adapters](#adapters)
     - [File](#file)
     - [Database](#database)
@@ -25,7 +26,7 @@ pop-queue
     - [CLI Commands](*cli-commands)
 * [Tasks](#tasks)
     - [Scheduling](#scheduling)
-* [Tips](#tips)
+* [Configuration Tips](#configuration-tips)
 
 Overview
 --------
@@ -105,17 +106,26 @@ This is job #1
 Queues
 ------
 
-The queue object utilizes worker objects as managers of the jobs and tasks assigned to them.
-The jobs are stored with the selected storage adapter. You can assign multiple jobs or tasks
-to a worker. And you can assign multiple workers to a queue. For reference, queues have a name,
-which is passed to the constructor, along with the adapter object and an optional application
-object.
+As shown in the [quickstart](#quickstart) example above, the queue object utilizes worker objects as
+managers of the jobs and tasks assigned to them. The jobs are stored with the selected storage
+adapter. You can assign multiple jobs or tasks to a worker. And you can assign multiple workers
+to a queue. The basic idea is that you can define your jobs or tasks and pass those to the
+worker or workers. Then register the workers with the queue and "push" them to the storage to
+be stored for execution at a later time.
 
-The basic idea is that you can define your jobs or tasks and pass those to the worker or workers.
-Then register the workers with the queue and "push" them to the storage to be stored for 
-execution at a later time.
+For reference, queues have a name, which is passed to the constructor, along with
+the storage adapter object and an optional application object.
 
-See the [quickstart](#quickstart) section above for an example.  
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), $application);
+```
+
+A `Pop\Application` object can be passed to the queue should any of the jobs' or tasks' callable objects
+need it. Or, an application command can be directly set as the job or task callable, so the application
+object would be needed then as well. (More on working with a [application commands](*application-commands) below.) 
 
 ### Completed Jobs
 
@@ -131,7 +141,7 @@ $queue->getCompletedJob($jobId); // mixed
 
 ### Failed Jobs
 
-Jobs that run unsuccessfully and fail with an exception thrown get marked as `failed`. There are
+Jobs that run unsuccessfully and fail with an exception get marked as `failed`. There are
 a number of methods available within the queue object to get information on failed jobs:
 
 ```php
@@ -160,6 +170,41 @@ $queue->flush();       // Clears jobs across all possible queue namespaces
 $queue->flushAll();    // Clears everything across all possible queue namespaces
 ```
 
+[Top](#pop-queue)
+
+Manager
+-------
+
+The manager object provides a way to manage multiple queues at the same time. You can add
+queues to it and call them up at a later time:
+
+##### Add queues to a manager object
+
+```php
+use Pop\Queue\Manager;
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+
+$adapter = new File(__DIR__ . '/queue');
+
+$queue1 = new Queue('pop-queue1', $adapter);
+$queue2 = new Queue('pop-queue2', $adapter);
+$queue3 = new Queue('pop-queue3', $adapter);
+
+$manager = new Manager();
+$manager->addQueues([
+    $queue1, $queue2, $queue3
+]);
+```
+
+##### Get queues from a manager object
+
+```php
+use Pop\Queue\Manager;
+
+$manager = new Manager();
+$queue1  = $manager->getQueue('pop-queue1');
+```
 [Top](#pop-queue)
 
 Adapters
@@ -238,7 +283,7 @@ Tasks
 
 ### Scheduling
 
-Tips
-----
+Configuration Tips
+------------------
 
 [Top](#pop-queue)
