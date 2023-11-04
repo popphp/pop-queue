@@ -13,6 +13,7 @@ pop-queue
 * [Queues](#queues)
     - [Completed Jobs](#completed-jobs)
     - [Failed Jobs](#failed-jobs)
+    - [Clear Queue](#clear-queue)
 * [Adapters](#adapters)
     - [File](#file)
     - [Database](#database)
@@ -74,8 +75,7 @@ $job1 = Job::create(function() {
 });
 
 // Create a worker and add the job to the worker
-$worker = new Worker();
-$worker->addJob($job1);
+$worker = Worker::create($job1);
 
 // Create the queue object, add the worker and push to the queue
 $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
@@ -107,22 +107,113 @@ Queues
 
 The queue object utilizes worker objects as managers of the jobs and tasks assigned to them.
 The jobs are stored with the selected storage adapter. You can assign multiple jobs or tasks
-to a worker. And you can assign multiple works to a queue. For reference, queues have a name, which 
+to a worker. And you can assign multiple works to a queue. For reference, queues have a name,
+which is passed to the constructor, along with the adapter object and an optional application
+object.
+
+The basic idea is that you can define your jobs or tasks and pass those to the worker or workers.
+Then register the workers with the queue and "push" them to the storage to be stored for 
+execution at a later time.
+
+See the [quickstart](#quickstart) section above for an example.  
 
 ### Completed Jobs
 
+Jobs that run successfully get marked as `completed`. There are a number of methods available
+within the queue object to get information on completed jobs:
+
+```php
+$queue->hasCompletedJobs();      // bool
+$queue->hasCompletedJob($jobId); // bool
+$queue->getCompletedJobs();      // array
+$queue->getCompletedJob($jobId); // mixed
+```
+
 ### Failed Jobs
+
+Jobs that fun unsuccessfully and fail with an exception thrown get marked as `failed`. There are
+a number of methods available within the queue object to get information on failed jobs:
+
+```php
+$queue->hasFailedJobs();      // bool
+$queue->hasFailedJob($jobId); // bool
+$queue->getFailedJobs();      // array
+$queue->getFailedJob($jobId); // mixed
+```
+
+### Clear Queue
+                     
+The queue can be cleared out in a number of ways.
+
+**Clearing the Queue**
+
+```php
+$queue->clearFailed();            // Clears only the failed jobs within the queue namespace
+$queue->clear(bool $all = false); // Clears all jobs within the queue namespace
+```
+
+**Flushing the Queue**
+
+```php
+$queue->flushFailed(); // Clears only the failed jobs across all possible queue namespaces
+$queue->flush();       // Clears jobs across all possible queue namespaces
+$queue->flushAll();    // Clears everything across all possible queue namespaces
+```
 
 [Top](#pop-queue)
 
 Adapters
 --------
 
+By default, there are three available adapters, but additional ones could be created as
+long as they implement `Pop\Queue\Adapter\AdapterInterface`.
+
 ### File
+
+The file adapter only requires the location on disk where the queue data will be stored:
+
+```php
+use Pop\Queue\Adapter\File;
+
+$adapter = new File(__DIR__ . '/queues'); 
+```
 
 ### Database
 
+The database adapter requires the use of the `pop-db` component and a database adapter
+from that component:
+
+```php
+use Pop\Queue\Adapter\Database;
+use Pop\Db\Db;
+
+$db = Db::mysqlConnect([
+    'database' => 'DATABASE',
+    'username' => 'DB_USER',
+    'password' => 'DB_PASS'
+]);
+
+$adapter = new Database($db); 
+```
+
 ### Redis
+
+The Redis adapter requires Redis to be correctly configured and running on the server, as well as
+the `redis` extension installed with PHP:
+
+```php
+use Pop\Queue\Adapter\Redis;
+
+$adapter = new Redis();
+```
+
+Once the adapter object is created, it can be passed into the queue object:
+
+```php
+use Pop\Queue\Queue;
+
+$queue = Queue::create('pop-queue', $adapter); 
+```
 
 [Top](#pop-queue)
 
