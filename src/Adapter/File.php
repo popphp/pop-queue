@@ -56,6 +56,18 @@ class File extends AbstractAdapter
     }
 
     /**
+     * Create file adapter
+     *
+     * @param  string $folder
+     * @throws Exception
+     * @return File
+     */
+    public static function create(string $folder): File
+    {
+        return new self($folder);
+    }
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

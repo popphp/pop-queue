@@ -14,7 +14,6 @@
 namespace Pop\Queue\Processor;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Processor\Jobs\AbstractJob;
 
 /**
  * Worker class
@@ -51,6 +50,31 @@ class Worker extends AbstractProcessor
     public function __construct(string $priority = 'FIFO')
     {
         $this->setPriority($priority);
+    }
+
+    /**
+     * Create a worker with jobs
+     *
+     * @param  AbstractJob|array $jobs
+     * @param  string            $priority
+     * @return Worker
+     */
+    public static function create(AbstractJob|array $jobs, string $priority = 'FIFO'): Worker
+    {
+        $worker = new self($priority);
+
+        if (!is_array($jobs)) {
+            $jobs = [$jobs];
+        }
+        foreach ($jobs as $job) {
+            if ($job instanceof Task) {
+                $worker->addTask($job);
+            } else if ($job instanceof Job) {
+                $worker->addJob($job);
+            }
+        }
+
+        return $worker;
     }
 
     /**

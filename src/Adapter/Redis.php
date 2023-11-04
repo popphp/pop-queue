@@ -57,6 +57,19 @@ class Redis extends AbstractAdapter
     }
 
     /**
+     * Create file adapter
+     *
+     * @param  string     $host
+     * @param  int|string $port
+     * @throws Exception|\RedisException
+     * @return Redis
+     */
+    public static function create(string $host = 'localhost', int|string $port = 6379): Redis
+    {
+        return new self($host, $port);
+    }
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

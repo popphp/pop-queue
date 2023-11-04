@@ -71,6 +71,19 @@ class Queue
     }
 
     /**
+     * Create a new queue instance
+     *
+     * @param  string                   $name
+     * @param  Adapter\AdapterInterface $adapter
+     * @param  ?Application             $application
+     * @return Queue
+     */
+    public static function create(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null): Queue
+    {
+        return new self($name, $adapter, $application);
+    }
+
+    /**
      * Load queue from adapter
      *
      * @param  string                   $name

@@ -15,7 +15,7 @@ class QueueManagerTest extends TestCase
         mkdir(__DIR__ . '/tmp/test-queue');
         $fileQueue  = new Queue('test-queue1', new Adapter\File(__DIR__ . '/tmp/test-queue'));
         $redisQueue = new Queue('test-queue2', new Adapter\Redis());
-        $manager1   = new Manager($fileQueue);
+        $manager1   = Manager::create($fileQueue);
         $manager2   = new Manager([$fileQueue, $redisQueue]);
         $this->assertInstanceOf('Pop\Queue\Manager', $manager1);
         $this->assertInstanceOf('Pop\Queue\Manager', $manager2);

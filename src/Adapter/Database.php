@@ -57,7 +57,9 @@ class Database extends AbstractAdapter
      * @param string    $table
      * @param string    $failedTable
      */
-    public function __construct(DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs')
+    public function __construct(
+        DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs'
+    )
     {
         $this->db          = $db;
         $this->table       = $table;
@@ -69,6 +71,21 @@ class Database extends AbstractAdapter
         if (!$this->db->hasTable($failedTable)) {
             $this->createFailedTable($failedTable);
         }
+    }
+
+    /**
+     * Create database adapter
+     *
+     * @param  DbAdapter $db
+     * @param  string    $table
+     * @param  string    $failedTable
+     * @return Database
+     */
+    public static function create(
+        DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs'
+    ): Database
+    {
+        return new self($db, $table, $failedTable);
     }
 
     /**

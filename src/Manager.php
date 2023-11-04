@@ -53,6 +53,17 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
+     * Create queue manager
+     *
+     * @param  mixed $queues
+     * @return Manager
+     */
+    public static function create(mixed $queues = null): Manager
+    {
+        return new self($queues);
+    }
+
+    /**
      * Add queue
      *
      * @param  Queue $queue

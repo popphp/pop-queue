@@ -52,7 +52,7 @@ class WorkerTest extends TestCase
         $this->assertTrue($worker->isFifo());
     }
 
-    public function testAddJobs()
+    public function testAddJobs1()
     {
         $job1 = new Job(function() {
             echo 'This is job #1' . PHP_EOL;
@@ -68,7 +68,33 @@ class WorkerTest extends TestCase
         $this->assertEquals(1, $job2->getMaxAttempts());
     }
 
-    public function testAddTasks()
+    public function testAddJobs2()
+    {
+        $job1 = new Job(function() {
+            echo 'This is job #1' . PHP_EOL;
+        });
+        $job2 = new Job(function() {
+            echo 'This is job #2' . PHP_EOL;
+        });
+        $worker = Worker::create([$job1, $job2]);
+
+        $this->assertTrue($worker->hasJobs());
+        $this->assertEquals(1, $job1->getMaxAttempts());
+        $this->assertEquals(1, $job2->getMaxAttempts());
+    }
+
+    public function testAddJobs3()
+    {
+        $job1 = new Job(function() {
+            echo 'This is job #1' . PHP_EOL;
+        });
+        $worker = Worker::create($job1);
+
+        $this->assertTrue($worker->hasJobs());
+        $this->assertEquals(1, $job1->getMaxAttempts());
+    }
+
+    public function testAddTasks1()
     {
         $task1 = new Task(function() {
             echo 'This is job #1' . PHP_EOL;
@@ -78,6 +104,29 @@ class WorkerTest extends TestCase
         });
         $worker = new Worker();
         $worker->addTasks([$task1, $task2]);
+
+        $this->assertTrue($worker->hasJobs());
+    }
+
+    public function testAddTasks2()
+    {
+        $task1 = new Task(function() {
+            echo 'This is job #1' . PHP_EOL;
+        });
+        $task2 = new Task(function() {
+            echo 'This is job #2' . PHP_EOL;
+        });
+        $worker = Worker::create([$task1, $task2]);
+
+        $this->assertTrue($worker->hasJobs());
+    }
+
+    public function testAddTasks3()
+    {
+        $task1 = new Task(function() {
+            echo 'This is job #1' . PHP_EOL;
+        });
+        $worker = Worker::create($task1);
 
         $this->assertTrue($worker->hasJobs());
     }

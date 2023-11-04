@@ -29,7 +29,7 @@ pop-queue
 Overview
 --------
 `pop-queue` is a job queue component that provides the ability to pass an executable job off to a
-queue to be processed at a later date and time. Queues can either process jobs and scheduled tasks
+queue to be processed at a later date and time. Queues can either process jobs or scheduled tasks
 via workers. The available storage adapters for the queue component are:
 
 - Database
@@ -94,7 +94,7 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->processAll(); 
 ```
 
-If the job is valid, it will run. In this case, it will produce this to the screen:
+If the job is valid, it will run. In this case, it will produce this output:
 
 ```text
 This is job #1
@@ -106,7 +106,8 @@ Queues
 ------
 
 The queue object utilizes worker objects as managers of the jobs and tasks assigned to them.
-The jobs are stored with the selected storage adapter. For reference, queues have a name.
+The jobs are stored with the selected storage adapter. You can assign multiple jobs or tasks
+to a worker. And you can assign multiple works to a queue. For reference, queues have a name, which 
 
 ### Completed Jobs
 

@@ -14,7 +14,7 @@ class QueueTest extends TestCase
 
     public function testConstructor()
     {
-        $queue = new Queue('pop-queue', new Adapter\Redis());
+        $queue = Queue::create('pop-queue', new Adapter\Redis());
         $this->assertInstanceOf('Pop\Queue\Queue', $queue);
     }
 
