@@ -1,9 +1,9 @@
 <?php
 
-namespace Pop\Queue\Test;
+namespace Pop\Queue\Test\Processor;
 
 use Pop\Application;
-use Pop\Queue\Processor\Jobs\Job;
+use Pop\Queue\Processor\Job;
 use PHPUnit\Framework\TestCase;
 use Pop\Utils\CallableObject;
 
@@ -12,14 +12,86 @@ class JobTest extends TestCase
 
     public function testConstructor()
     {
-        $job = new Job(function(){echo 1;}, null, 1, 'Test Desc');
+        $job = new Job(function(){echo 1;}, null, 1);
         $this->assertEquals(1, $job->getJobId());
-        $this->assertEquals('Test Desc', $job->getJobDescription());
-        $this->assertTrue($job->hasJobDescription());
         $this->assertInstanceOf('Pop\Utils\CallableObject', $job->getCallable());
         $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
         $this->assertFalse($job->isComplete());
         $this->assertFalse($job->hasFailed());
+    }
+
+    public function testCreate()
+    {
+        $job = Job::create(function(){echo 1;}, null, 1);
+        $this->assertEquals(1, $job->getJobId());
+        $this->assertInstanceOf('Pop\Utils\CallableObject', $job->getCallable());
+        $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
+        $this->assertFalse($job->isComplete());
+        $this->assertFalse($job->hasFailed());
+    }
+
+    public function testSetJobDescription()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->setJobDescription('This is a test');
+        $this->assertTrue($job->hasJobDescription());
+        $this->assertEquals('This is a test', $job->getJobDescription());
+    }
+
+    public function testSetMaxAttempts()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->setMaxAttempts(1);
+        $this->assertTrue($job->hasMaxAttempts());
+        $this->assertTrue($job->isAttemptOnce());
+        $this->assertFalse($job->hasAttempts());
+        $this->assertFalse($job->hasExceededMaxAttempts());
+        $this->assertEquals(1, $job->getMaxAttempts());
+    }
+
+    public function testExceededMaxAttempts()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->setMaxAttempts(0);
+        $this->assertFalse($job->hasExceededMaxAttempts());
+    }
+
+    public function testRunUntil1()
+    {
+        $dateTime = date('Y-m-d H:i:s', time() + 10000000);
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->runUntil($dateTime);
+        $this->assertTrue($job->hasRunUntil());
+        $this->assertEquals($dateTime, $job->getRunUntil());
+        $this->assertFalse($job->isExpired());
+        $this->assertTrue($job->hasNotRun());
+    }
+
+    public function testRunUntil2()
+    {
+        $dateTime = time() + 10000000;
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->runUntil($dateTime);
+        $this->assertTrue($job->hasRunUntil());
+        $this->assertEquals($dateTime, $job->getRunUntil());
+        $this->assertFalse($job->isExpired());
+    }
+
+    public function testStart()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->start();
+        $this->assertTrue($job->hasStarted());
+        $this->assertTrue($job->isRunning());
+        $this->assertNotEmpty($job->getStarted());
+    }
+
+    public function testFailed()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->failed();
+        $this->assertTrue($job->hasFailed());
+        $this->assertNotEmpty($job->getFailed());
     }
 
     public function testSetCallableObject1()
@@ -52,20 +124,6 @@ class JobTest extends TestCase
         $job = Job::exec('ls -la');
         $this->assertEquals('ls -la', $job->getExec());
         $this->assertTrue($job->hasExec());
-    }
-
-    public function testAttemptOnce()
-    {
-        $job = new Job(function(){echo 1;});
-        $job->attemptOnce(true);
-        $this->assertTrue($job->isAttemptOnce());
-    }
-
-    public function testRunning()
-    {
-        $job = new Job(function(){echo 1;});
-        $job->setAsRunning();
-        $this->assertTrue($job->isRunning());
     }
 
     public function testRunExec()

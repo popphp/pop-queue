@@ -4,8 +4,7 @@ namespace Pop\Queue\Test\Adapter;
 
 use Pop\Db\Db as PopDb;
 use Pop\Queue\Adapter\Database;
-use Pop\Queue\Processor\Jobs\Job;
-use Pop\Queue\Processor\Jobs\Schedule;
+use Pop\Queue\Processor\Job;
 use PHPUnit\Framework\TestCase;
 
 class DatabaseTest extends TestCase
@@ -56,8 +55,8 @@ class DatabaseTest extends TestCase
         $jobId = $job->generateJobId();
 
         $adapter->push('pop-queue', $job);
-        $adapter->updateJob($jobId, true, true);
-        $adapter->updateJob($jobId, true, 1);
+        $job->complete();
+        $adapter->updateJob($job);
 
         $this->assertTrue($adapter->hasCompletedJob($jobId));
         $this->assertNotNull($adapter->getCompletedJob($jobId));
@@ -99,24 +98,6 @@ class DatabaseTest extends TestCase
         $this->assertTrue($adapter->hasJob($jobId));
         $adapter->pop($jobId);
         $this->assertFalse($adapter->hasJob($jobId));
-    }
-
-    public function testPushSchedule()
-    {
-        $db = PopDb::sqliteConnect([
-            'database' => __DIR__ . '/../tmp/test.sqlite'
-        ]);
-        $adapter = new Database($db);
-
-        $job   = new Job(function(){echo 'Hello World!';});
-        $jobId = $job->generateJobId();
-
-        $adapter->push('pop-queue', new Schedule($job));
-
-        $this->assertTrue($adapter->hasJob($jobId));
-        $this->assertNotNull($adapter->getJob($jobId));
-        $this->assertTrue($adapter->hasJobs('pop-queue'));
-        $this->assertNotEmpty($adapter->getJobs('pop-queue'));
     }
 
     public function testClear()

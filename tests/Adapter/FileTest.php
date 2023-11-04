@@ -3,7 +3,7 @@
 namespace Pop\Queue\Test\Adapter;
 
 use Pop\Queue\Adapter\File;
-use Pop\Queue\Processor\Jobs\Job;
+use Pop\Queue\Processor\Job;
 use PHPUnit\Framework\TestCase;
 
 class FileTest extends TestCase
@@ -45,8 +45,8 @@ class FileTest extends TestCase
         $jobId = $job->generateJobId();
 
         $adapter->push('pop-queue-test', $job);
-        $adapter->updateJob($jobId, true, true);
-        $adapter->updateJob($jobId, true, 1);
+        $job->complete();
+        $adapter->updateJob($job);
 
         $this->assertTrue($adapter->hasCompletedJob($jobId));
         $this->assertNotNull($adapter->getCompletedJob($jobId));
@@ -62,7 +62,8 @@ class FileTest extends TestCase
         $jobId = $job->generateJobId();
 
         $adapter->push('pop-queue-test', $job);
-        $adapter->updateJob($jobId, true, 1);
+        $job->complete();
+        $adapter->updateJob($job);
 
         $this->assertTrue($adapter->hasCompletedJob($jobId));
         $this->assertNotNull($adapter->getCompletedJob($jobId));
@@ -78,6 +79,7 @@ class FileTest extends TestCase
         $jobId = $job->generateJobId();
 
         $adapter->push('pop-queue-test', $job);
+        $job->failed();
         $adapter->failed('pop-queue-test', $jobId,  new \Exception('Whoops!'));
 
         $this->assertTrue($adapter->hasFailedJob($jobId));

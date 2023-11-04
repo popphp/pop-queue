@@ -63,7 +63,7 @@ class File extends AbstractAdapter
      */
     public function hasJob(mixed $jobId): bool
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
         $hasJob       = false;
 
         foreach ($queueFolders as $queueFolder) {
@@ -85,7 +85,7 @@ class File extends AbstractAdapter
      */
     public function getJob(mixed $jobId, bool $unserialize = true): array
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
         $job          = [];
 
         foreach ($queueFolders as $queueFolder) {
@@ -211,17 +211,22 @@ class File extends AbstractAdapter
      */
     public function hasCompletedJob(mixed $jobId): bool
     {
-        $queueFolders = $this->getFiles($this->folder);
-        $hasJob       = false;
+        $queueFolders   = $this->getFolders($this->folder);
+        $hasCompleteJob = false;
 
         foreach ($queueFolders as $queueFolder) {
-            if (file_exists($this->folder . '/' . $queueFolder . '/completed/' . $jobId)) {
-                $hasJob = true;
-                break;
+            if (file_exists($this->folder . '/' . $queueFolder . '/completed')) {
+                $completedFiles = $this->getFiles($this->folder . '/' . $queueFolder . '/completed');
+                foreach ($completedFiles as $completedFile) {
+                    if (str_starts_with($completedFile, $jobId)) {
+                        $hasCompleteJob = true;
+                        break;
+                    }
+                }
             }
         }
 
-        return $hasJob;
+        return $hasCompleteJob;
     }
 
     /**
@@ -245,19 +250,26 @@ class File extends AbstractAdapter
      */
     public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
         $job          = [];
 
         foreach ($queueFolders as $queueFolder) {
-            if (file_exists($this->folder . '/' . $queueFolder . '/completed/' . $jobId)) {
-                $job = unserialize(file_get_contents($this->folder . '/' . $queueFolder . '/completed/' . $jobId));
-                if (file_exists($this->folder . '/' . $queueFolder . '/' . $jobId . '-payload')) {
-                    $jobPayload = file_get_contents($this->folder . '/' . $queueFolder . '/' . $jobId . '-payload');
-                    if ($jobPayload !== false) {
-                        $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
+            if (file_exists($this->folder . '/' . $queueFolder . '/completed')) {
+                $completedFiles = $this->getFiles($this->folder . '/' . $queueFolder . '/completed');
+                foreach ($completedFiles as $completedFile) {
+                    if (str_starts_with($completedFile, $jobId)) {
+                        $job = unserialize(
+                            file_get_contents($this->folder . '/' . $queueFolder . '/completed/' . $completedFile)
+                        );
+                        if (file_exists($this->folder . '/' . $queueFolder . '/' . $jobId . '-payload')) {
+                            $jobPayload = file_get_contents($this->folder . '/' . $queueFolder . '/' . $jobId . '-payload');
+                            if ($jobPayload !== false) {
+                                $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
+                            }
+                        }
+                        break;
                     }
                 }
-                break;
             }
         }
 
@@ -279,19 +291,10 @@ class File extends AbstractAdapter
 
         if (count($queueCompletedJobs) > 0) {
             foreach ($queueCompletedJobs as $jobId) {
-                if (file_exists($this->folder . '/' . $queueName . '/completed/' . $jobId)) {
-                    $completedJob = unserialize(file_get_contents($this->folder . '/' . $queueName . '/completed/' . $jobId));
-                    if (file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
-                        $jobPayload = file_get_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload');
-                        if ($unserialize) {
-                            $jobPayload = unserialize($jobPayload);
-                        }
-
-                        $completedJob['payload'] = $jobPayload;
-                    }
-
-                    $completedJobs[$jobId] = $completedJob;
+                if (str_contains($jobId, '-')) {
+                    $jobId = substr($jobId, 0, strpos($jobId, '-'));
                 }
+                $completedJobs[$jobId] = $this->getCompletedJob($jobId);
             }
         }
 
@@ -306,7 +309,7 @@ class File extends AbstractAdapter
      */
     public function hasFailedJob(mixed $jobId): bool
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
         $hasJob       = false;
 
         foreach ($queueFolders as $queueFolder) {
@@ -328,7 +331,7 @@ class File extends AbstractAdapter
      */
     public function getFailedJob(mixed $jobId, bool $unserialize = true): array
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
         $job          = [];
 
         foreach ($queueFolders as $queueFolder) {
@@ -374,19 +377,7 @@ class File extends AbstractAdapter
 
         if (count($queueFailedJobs) > 0) {
             foreach ($queueFailedJobs as $jobId) {
-                if (file_exists($this->folder . '/' . $queueName . '/failed/' . $jobId)) {
-                    $failedJob = unserialize(file_get_contents($this->folder . '/' . $queueName . '/failed/' . $jobId));
-                    if (file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
-                        $jobPayload = file_get_contents($this->folder . '/' . $queueName . '/' . $jobId . '-payload');
-                        if ($unserialize) {
-                            $jobPayload = unserialize($jobPayload);
-                        }
-
-                        $failedJob['payload'] = $jobPayload;
-                    }
-
-                    $failedJobs[$jobId] = $failedJob;
-                }
+                $failedJobs[$jobId] = $this->getFailedJob($jobId);
             }
         }
 
@@ -452,9 +443,10 @@ class File extends AbstractAdapter
      *
      * @param  mixed $jobId
      * @param  bool  $payload
+     * @param  bool  $failed
      * @return void
      */
-    public function pop(mixed $jobId, bool $payload = true): void
+    public function pop(mixed $jobId, bool $payload = true, bool $failed = false): void
     {
         $jobData   = $this->getJob($jobId);
         $queueName = $jobData['queue'];
@@ -465,9 +457,16 @@ class File extends AbstractAdapter
         if (($payload) && file_exists($this->folder . '/' . $queueName . '/' . $jobId . '-payload')) {
             unlink($this->folder . '/' . $queueName . '/' . $jobId . '-payload');
         }
-        if (file_exists($this->folder . '/' . $queueName . '/completed/' . $jobId)) {
-            unlink($this->folder . '/' . $queueName . '/completed/' . $jobId);
+        if (($failed) && file_exists($this->folder . '/' . $queueName . '/failed/' . $jobId)) {
+            unlink($this->folder . '/' . $queueName . '/failed/' . $jobId);
         }
+        $completeFiles = $this->getFiles($this->folder . '/' . $queueName . '/completed');
+        foreach ($completeFiles as $completeFile) {
+            if (file_exists($this->folder . '/' . $queueName . '/completed/' . $completeFile)) {
+                unlink($this->folder . '/' . $queueName . '/completed/' . $completeFile);
+            }
+        }
+
     }
 
     /**
@@ -484,11 +483,25 @@ class File extends AbstractAdapter
         if (file_exists($this->folder . '/' . $queueName)) {
             $this->clearFolder($this->folder . '/' . $queueName);
         }
-        if (($all) && file_exists($this->folder . '/' . $queueName . '/completed')) {
+
+        if (file_exists($this->folder . '/' . $queueName . '/completed')) {
             $this->clearFolder($this->folder . '/' . $queueName . '/completed');
+            if (($all) && is_dir($this->folder . '/' . $queueName . '/completed') &&
+                count(scandir($this->folder . '/' . $queueName . '/completed')) == 2) {
+                rmdir($this->folder . '/' . $queueName . '/completed');
+            }
         }
 
-        if (is_dir($this->folder . '/' . $queueName) && count(scandir($this->folder . '/' . $queueName)) == 2) {
+        if (file_exists($this->folder . '/' . $queueName . '/failed')) {
+            $this->clearFolder($this->folder . '/' . $queueName . '/failed');
+            if (($all) && is_dir($this->folder . '/' . $queueName . '/failed') &&
+                count(scandir($this->folder . '/' . $queueName . '/failed')) == 2) {
+                rmdir($this->folder . '/' . $queueName . '/failed');
+            }
+        }
+
+        if (($all) && is_dir($this->folder . '/' . $queueName) &&
+            count(scandir($this->folder . '/' . $queueName)) == 2) {
             rmdir($this->folder . '/' . $queueName);
         }
     }
@@ -520,7 +533,7 @@ class File extends AbstractAdapter
      */
     public function flush(bool $all = false): void
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
 
         foreach ($queueFolders as $queueFolder) {
             $this->clear($queueFolder, $all);
@@ -534,7 +547,7 @@ class File extends AbstractAdapter
      */
     public function flushFailed(): void
     {
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
 
         foreach ($queueFolders as $queueFolder) {
             $this->clearFailed($queueFolder);
@@ -551,7 +564,7 @@ class File extends AbstractAdapter
         $this->flushFailed();
         $this->flush(true);
 
-        $queueFolders = $this->getFiles($this->folder);
+        $queueFolders = $this->getFolders($this->folder);
 
         foreach ($queueFolders as $queueFolder) {
             if (is_dir($this->folder . '/' . $queueFolder) && count(scandir($this->folder . '/' . $queueFolder)) == 2) {
@@ -579,13 +592,16 @@ class File extends AbstractAdapter
     public function initFolders(string $queueName): File
     {
         if (!file_exists($this->folder . '/' . $queueName)) {
-            mkdir($this->folder . '/' . $queueName, 0777);
+            mkdir($this->folder . '/' . $queueName);
+            chmod($this->folder . '/' . $queueName, 0777);
         }
         if (!file_exists($this->folder . '/' . $queueName . '/completed')) {
-            mkdir($this->folder . '/' . $queueName . '/completed', 0777);
+            mkdir($this->folder . '/' . $queueName . '/completed');
+            chmod($this->folder . '/' . $queueName . '/completed', 0777);
         }
         if (!file_exists($this->folder . '/' . $queueName . '/failed')) {
-            mkdir($this->folder . '/' . $queueName . '/failed', 0777);
+            mkdir($this->folder . '/' . $queueName . '/failed');
+            chmod($this->folder . '/' . $queueName . '/failed', 0777);
         }
 
         return $this;
@@ -637,6 +653,23 @@ class File extends AbstractAdapter
     }
 
     /**
+     * Get folders
+     *
+     * @param  string $folder
+     * @return array
+     */
+    public function getFolders(string $folder): array
+    {
+        if (is_dir($folder)) {
+            return array_values(array_filter(scandir($folder), function($value) use ($folder) {
+                return (($value != '.') && ($value != '..') && ($value != '.empty') && is_dir($folder . '/' . $value));
+            }));
+        } else {
+            return [];
+        }
+    }
+
+    /**
      * Get files from folder
      *
      * @param  string $folder
@@ -645,8 +678,8 @@ class File extends AbstractAdapter
     public function getFiles(string $folder): array
     {
         if (is_dir($folder)) {
-            return array_values(array_filter(scandir($folder), function($value){
-                return (($value != '.') && ($value != '..') && ($value != 'completed') && ($value != 'failed'));
+            return array_values(array_filter(scandir($folder), function($value) use ($folder) {
+                return (($value != '.') && ($value != '..') && ($value != '.empty') && !is_dir($folder . '/' . $value));
             }));
         } else {
             return [];

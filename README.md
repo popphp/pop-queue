@@ -68,14 +68,17 @@ use Pop\Queue\Adapter\File;
 use Pop\Queue\Processor\Worker;
 use Pop\Queue\Processor\Job;
 
-$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
-$job1  = Job::create(function() {
+// Create a job
+$job1 = Job::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 
+// Create a worker and add the job to the worker
 $worker = new Worker();
 $worker->addJob($job1);
 
+// Create the queue object, add the worker and push to the queue
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->addWorker($worker);
 $queue->pushAll();
 ```
@@ -86,6 +89,7 @@ $queue->pushAll();
 use Pop\Queue\Queue;
 use Pop\Queue\Adapter\File;
 
+// Call up the queue object and process all valid jobs 
 $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->processAll(); 
 ```

@@ -104,10 +104,32 @@ class Task extends Job
      * @param  int $buffer
      * @return Task
      */
+    public function setBuffer(int $buffer): Task
+    {
+        $this->cron->setBuffer($buffer);
+        return $this;
+    }
+
+    /**
+     * Set time buffer (alias)
+     *
+     * @param  int $buffer
+     * @return Task
+     */
     public function buffer(int $buffer): Task
     {
         $this->cron->setBuffer($buffer);
         return $this;
+    }
+
+    /**
+     * Get time buffer
+     *
+     * @return int
+     */
+    public function getBuffer(): int
+    {
+        return $this->cron->getBuffer();
     }
 
     /**
@@ -118,6 +140,16 @@ class Task extends Job
     public function hasCron(): bool
     {
         return ($this->cron !== null);
+    }
+
+    /**
+     * Get seconds
+     *
+     * @return array
+     */
+    public function getSeconds(): array
+    {
+        return $this->cron->getSeconds();
     }
 
     /**

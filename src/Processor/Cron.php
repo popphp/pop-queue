@@ -303,6 +303,9 @@ class Cron
             $schedule[] = $this->daysOfTheWeek[0];
         }
 
+        if (empty($schedule)) {
+            throw new Exception('Error: The cron schedule has not been set.');
+        }
 
         $this->schedule = implode(' ', $schedule);
         return $this;
@@ -984,7 +987,7 @@ class Cron
             return (($value % $step) == 0);
         } else if (str_contains($expression, '-')) {
             list($min, $max) = explode('-', $expression);
-            return (($value >= $min) || ($value <= $max));
+            return (($value >= $min) && ($value <= $max));
         }
 
         return false;

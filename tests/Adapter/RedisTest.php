@@ -3,8 +3,7 @@
 namespace Pop\Queue\Test\Adapter;
 
 use Pop\Queue\Adapter\Redis;
-use Pop\Queue\Processor\Jobs\Job;
-use Pop\Queue\Processor\Jobs\Schedule;
+use Pop\Queue\Processor\Job;
 use PHPUnit\Framework\TestCase;
 
 class RedisTest extends TestCase
@@ -41,8 +40,8 @@ class RedisTest extends TestCase
         $jobId = $job->generateJobId();
 
         $adapter->push('pop-queue-test', $job);
-        $adapter->updateJob($jobId, true, true);
-        $adapter->updateJob($jobId, true, 1);
+        $job->complete();
+        $adapter->updateJob($job);
 
         $this->assertTrue($adapter->hasCompletedJob($jobId));
         $this->assertFalse($adapter->hasCompletedJob($jobId . '-bad'));
@@ -68,21 +67,6 @@ class RedisTest extends TestCase
         $this->assertTrue($adapter->hasFailedJobs('pop-queue-test'));
         $this->assertFalse($adapter->hasFailedJobs('pop-queue-bad'));
         $this->assertNotEmpty($adapter->getFailedJobs('pop-queue-test'));
-    }
-
-    public function testPushSchedule()
-    {
-        $adapter = new Redis();
-
-        $job   = new Job(function(){echo 'Hello World!';});
-        $jobId = $job->generateJobId();
-
-        $adapter->push('pop-queue-test', new Schedule($job));
-
-        $this->assertTrue($adapter->hasJob($jobId));
-        $this->assertNotNull($adapter->getJob($jobId));
-        $this->assertTrue($adapter->hasJobs('pop-queue-test'));
-        $this->assertNotEmpty($adapter->getJobs('pop-queue-test'));
     }
 
     public function testClear()
