@@ -131,7 +131,7 @@ $queue->getCompletedJob($jobId); // mixed
 
 ### Failed Jobs
 
-Jobs that fun unsuccessfully and fail with an exception thrown get marked as `failed`. There are
+Jobs that run unsuccessfully and fail with an exception thrown get marked as `failed`. There are
 a number of methods available within the queue object to get information on failed jobs:
 
 ```php
