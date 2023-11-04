@@ -108,7 +108,7 @@ Queues
 ------
 
 As shown in the [quickstart](#quickstart) example above, the queue object utilizes worker objects as
-managers of the jobs and tasks assigned to them. The jobs are stored with the selected storage
+owners of the jobs and tasks assigned to them. The jobs are stored with the selected storage
 adapter. You can assign multiple jobs or tasks to a worker. And you can assign multiple workers
 to a queue. The basic idea is that you can define your jobs or tasks and pass those to the
 worker or workers. Then register the workers with the queue and "push" them to the storage to
