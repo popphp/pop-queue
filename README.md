@@ -107,7 +107,7 @@ Queues
 
 The queue object utilizes worker objects as managers of the jobs and tasks assigned to them.
 The jobs are stored with the selected storage adapter. You can assign multiple jobs or tasks
-to a worker. And you can assign multiple works to a queue. For reference, queues have a name,
+to a worker. And you can assign multiple workers to a queue. For reference, queues have a name,
 which is passed to the constructor, along with the adapter object and an optional application
 object.
 
