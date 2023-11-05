@@ -84,7 +84,7 @@ $task = Task::create(function() {
 })->every30Minutes();
 
 // Create a worker and add the job and task to the worker
-$worker = new Worker()
+$worker = new Worker();
 $worker->addJob($job)
     ->addTask($task);
 
