@@ -99,6 +99,18 @@ class Task extends Job
     }
 
     /**
+     * Schedule cront
+     *
+     * @param  $schedule
+     * @return Task
+     */
+    public function schedule(string $schedule): Task
+    {
+        $this->cron->schedule($schedule);
+        return $this;
+    }
+
+    /**
      * Set time buffer
      *
      * @param  int $buffer

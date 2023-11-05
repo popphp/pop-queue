@@ -24,8 +24,10 @@ pop-queue
     - [Callables](#callables)
     - [Application Commands](#application-commands)
     - [CLI Commands](#cli-commands)
+    - [Attempts](#attempts)
 * [Tasks](#tasks)
     - [Scheduling](#scheduling)
+    - [Run Until](#run-until)
 * [Configuration Tips](#configuration-tips)
 
 Overview
@@ -273,23 +275,247 @@ $queue = Queue::create('pop-queue', $adapter);
 Workers
 -------
 
+Worker objects server as the owners of the jobs and tasks that are assigned to them.
+Once jobs or tasks are registered with a worker object, the worker object can be
+added to the queue object and them pushed to the storage adapter.
+
+```php
+use Pop\Queue\Processor\Worker;
+use Pop\Queue\Processor\Job;
+
+// Create a job
+$job1 = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+// Create a worker and add the job to the worker
+$worker = Worker::create($job1);
+```
+
+The worker object has a number of methods to assist in managing jobs and tasks:
+
+- `addJob(AbstractJob $job, ?int $maxAttempts = null)`
+- `addJobs(array $jobs, ?int $maxAttempts = null)`
+- `addTask(Task $task, ?int $maxAttempts = 0)`
+- `addTasks(array $tasks, ?int $maxAttempts = null)`
+- `getJobs()`
+- `getJob(int $index)`
+- `hasJobs()`
+- `hasJob(int $index)`
+
+If any jobs return any results, those can be accessed like this:
+
+- `getJobResults()`
+- `getJobResult(mixed $index)`
+- `hasJobResults()`
+
+You can access completed jobs within the worker object like this:
+
+- `getCompletedJobs()`
+- `getCompletedJob(mixed $index)`
+- `hasCompletedJobs()`
+
+You can access failed jobs anf their exceptions within the worker object like this:
+
+- `getFailedJobs()`
+- `getFailedJob(mixed $index)`
+- `hasFailedJobs()`
+- `getFailedExceptions()`
+- `getFailedException($index)`
+- `hasFailedExceptions()`
+
+
 [Top](#pop-queue)
 
 Jobs
 ----
 
+Job objects are at the heart of the `pop-queue` component. They are objects have can execute
+either a callable, an application command or even a CLI-based command (if the environment is
+set up to allow that.)
+
 ### Callables
+
+Any callable object can be passed into a job object.
+
+```php
+use Pop\Queue\Processor\Job;
+
+// Create a job from a closure
+$job1 = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+// Create a job from a class static method
+$job2 = Job::create('MyApp\Service\SomeService::doSomething');
+```
 
 ### Application Commands
 
+An application command can be registered with a job object as well. You would register
+what is the "route" portion of the command. For example, if the command/route exists:
+
+```bash
+$ ./app hello world
+```
+
+You would register the command with a job object like this:
+
+```php
+use Pop\Queue\Processor\Job;
+
+// Create a job from an application command
+$job = Job::command('hello world');
+```
 ### CLI Commands
+
+If the environment is set up to allow executable commands from within PHP, you can
+register CLI-based commands with a job object like this:
+
+```php
+use Pop\Queue\Processor\Job;
+
+// Create a job from an application command
+$job = Job::exec('ls -la');
+```
+
+Jobs get assigned an ID hash by default for reference.
+
+```php
+var_dump($job->hasJobId());
+$id = $job->getJobId();
+```
+
+As a job is picked up by a worker object and "started", is "running" or has completed
+(of failed), there are a number of methods to assist with working with the status of a job:
+
+```php
+var_dump($job->hasStarted()); // Has a started timestamp
+var_dump($job->hasNotRun());  // No started timestamp and no completed timestamp
+var_dump($job->isRunning());  // Has a started timestamp, but not a completed/failed
+var_dump($job->isComplete()); // Has a completed timestamp
+var_dump($job->hasFailed());  // Has a failed timestamp
+var_dump($job->getStarted());
+var_dump($job->getCompleted());
+var_dump($job->getFailed());
+```
+
+### Attempts
+
+By default, a job is configured to run only once. However, if you need the job to stay
+registered with the worker and run more than once, you can control that by setting the
+max attempts.
+
+```php
+use Pop\Queue\Processor\Job;
+
+$job = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+$job->setMaxAttempts(10);
+var_dump($job->isAttemptOnce()); // Returns false
+```
+
+If you want the job to never unregister and execute everytime the queue processes the
+worker object, you can set the max attempts to `0`:
+
+```php
+$job->setMaxAttempts(0);
+```
+
+And you can check the number of attempts vs. the max attempts like this:
+
+```php
+var_dump($job->hasExceededMaxAttempts());
+```
+
+The `isValid()` method is also available and checks both the max attempts and the
+"run until" setting (which is used more with task objects - see below.) 
 
 [Top](#pop-queue)
 
 Tasks
 -----
 
+A task object is an extension of a job object with scheduling capabilities. It has a `Cron`
+object and supports a cron-like scheduling format. However, unlike cron, it supports sub-minute
+scheduling down to the second.
+
+Here's an example task object where the schedule is set to every 5 minutes:
+
+```php
+use Pop\Queue\Processor\Task;
+
+$task = Task::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+})->every5Minutes();
+```
+
 ### Scheduling
+
+Here is a list of available methods to assist with setting common schedules:
+
+- `everySecond()`
+- `every5Seconds()`
+- `every10Seconds()`
+- `every15Seconds()`
+- `every20Seconds()`
+- `every30Seconds()`
+- `seconds(mixed $seconds)`
+- `everyMinute()`
+- `every5Minutes()`
+- `every10Minutes()`
+- `every15Minutes()`
+- `every20Minutes()`
+- `every30Minutes()`
+- `minutes(mixed $minutes)`
+- `hours(mixed $hours, mixed $minutes = null)`
+- `hourly(mixed $minutes = null)`
+- `daily(mixed $hours, mixed $minutes = null)`
+- `dailyAt(string $time)`
+- `weekly(mixed $day, mixed $hours = null, mixed $minutes = null)`
+- `monthly(mixed $day, mixed $hours = null, mixed $minutes = null)`
+- `quarterly(mixed $hours = null, mixed $minutes = null)`
+- `yearly(bool $endOfYear = false, mixed $hours = null, mixed $minutes = null)`
+- `weekdays()`
+- `weekends()`
+- `sundays()`
+- `mondays()`
+- `tuesdays()`
+- `wednesdays()`
+- `thursdays()`
+- `fridays()`
+- `saturdays()`
+- `between(int $start, int $end)`
+
+If there is a need for a more custom schedule value, you can schedule that directly:
+
+```php
+use Pop\Queue\Processor\Task;
+
+$task = Task::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+// Submit a cron formatted schedule string
+$task->schedule('* */2 1,15 1-4 *')
+```
+
+### Run Until
+
+A "run until" value can be set with the task object to give it an "expiration" date:
+
+```php
+use Pop\Queue\Processor\Task;
+
+$task = Task::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+$task->every30Minutes()->runUntil('2023-11-30 23:59:59');
+```
+
+The `isExpired()` method will evaluate if the job is beyond the "run until" value.
+Also the `isValid()` method will evaluate both the "run until" and max attempts settings.
 
 Configuration Tips
 ------------------
