@@ -105,7 +105,7 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->processAll(); 
 ```
 
-If the job is valid, it will run. In this case, it will produce this output:
+If the job and task are valid, they will run. In this case, it will produce this output:
 
 ```text
 This is job #1
