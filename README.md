@@ -316,7 +316,7 @@ Workers
 
 Worker objects serve as the owners of the jobs and tasks that are assigned to them.
 Once jobs or tasks are registered with a worker object, the worker object can be
-added to the queue object and then pushed to the storage adapter.
+added to the queue object and then their jobs can be pushed to the storage adapter.
 
 ```php
 use Pop\Queue\Processor\Worker;
