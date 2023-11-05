@@ -130,6 +130,8 @@ A `Pop\Application` object can be passed to the queue should any of the jobs' or
 need it. Or, an application command can be directly set as the job or task callable, so the application
 object would be needed then as well. (More on working with a [application commands](#application-commands) below.) 
 
+[Top](#pop-queue)
+
 ### Completed Jobs
 
 Jobs that run successfully get marked as `completed`. There are a number of methods available
@@ -142,6 +144,8 @@ $queue->getCompletedJobs();      // array
 $queue->getCompletedJob($jobId); // mixed
 ```
 
+[Top](#pop-queue)
+
 ### Failed Jobs
 
 Jobs that run unsuccessfully and fail with an exception get marked as `failed`. There are
@@ -153,6 +157,8 @@ $queue->hasFailedJob($jobId); // bool
 $queue->getFailedJobs();      // array
 $queue->getFailedJob($jobId); // mixed
 ```
+
+[Top](#pop-queue)
 
 ### Clear Queue
                      
@@ -233,6 +239,8 @@ use Pop\Queue\Adapter\File;
 $adapter = new File(__DIR__ . '/queues'); 
 ```
 
+[Top](#pop-queue)
+
 ### Database
 
 The database adapter requires the use of the `pop-db` component and a database adapter
@@ -250,6 +258,8 @@ $db = Db::mysqlConnect([
 
 $adapter = new Database($db); 
 ```
+
+[Top](#pop-queue)
 
 ### Redis
 
@@ -355,6 +365,8 @@ var_dump($job->getCompleted());
 var_dump($job->getFailed());
 ```
 
+[Top](#pop-queue)
+
 ### Callables
 
 Any callable object can be passed into a job object:
@@ -370,6 +382,8 @@ $job1 = Job::create(function() {
 // Create a job from a static class method
 $job2 = Job::create('MyApp\Service\SomeService::doSomething');
 ```
+
+[Top](#pop-queue)
 
 ### Application Commands
 
@@ -388,6 +402,9 @@ use Pop\Queue\Processor\Job;
 // Create a job from an application command
 $job = Job::command('hello world');
 ```
+
+[Top](#pop-queue)
+
 ### CLI Commands
 
 If the environment is set up to allow executable commands from within PHP, you can
@@ -401,6 +418,8 @@ $job = Job::exec('ls -la');
 ```
 
 For security reasons, you should exercise caution when using this.
+
+[Top](#pop-queue)
 
 ### Attempts
 
@@ -453,6 +472,8 @@ $task = Task::create(function() {
 })->every5Minutes();
 ```
 
+[Top](#pop-queue)
+
 ### Scheduling
 
 Here is a list of available methods to assist with setting common schedules:
@@ -503,6 +524,8 @@ $task = Task::create(function() {
 $task->schedule('* */2 1,15 1-4 *')
 ```
 
+[Top](#pop-queue)
+
 ### Run Until
 
 By default, a task is set to an unlimited number of attempts and is expected to continue
@@ -520,8 +543,5 @@ $task->every30Minutes()->runUntil('2023-11-30 23:59:59');
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
 Also, the `isValid()` method will evaluate both the "run until" and max attempts settings.
-
-Configuration Tips
-------------------
 
 [Top](#pop-queue)
