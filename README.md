@@ -647,7 +647,15 @@ use Pop\Queue\Processor\Task;
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
+// Using a valid date/time string
 $task->every30Minutes()->runUntil('2023-11-30 23:59:59');
+```
+
+It can also accept a timestamp:
+
+```php
+// Using a valid UNIX timestamp
+$task->every30Minutes()->runUntil(1701410399);
 ```
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
