@@ -293,9 +293,9 @@ use Pop\Queue\Adapter\Redis;
 $adapter = new Redis();
 ```
 
-The Redis adapter uses `localhost` and port 6379 as defaults. It also manages the jobs with the
+The Redis adapter uses `localhost` and port `6379` as defaults. It also manages the jobs with the
 Redis server by means of a key prefix. By default, that prefix is set to `pop-queue-`. If you would
-like to use alternate values for these, you can pass them into the constructor:
+like to use alternate values for any these, you can pass them into the constructor:
 
 ```php
 $adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
