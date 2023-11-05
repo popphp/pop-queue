@@ -533,8 +533,8 @@ Tasks
 -----
 
 A task object is an extension of a job object with scheduling capabilities. It has a `Cron`
-object and supports a cron-like scheduling format. However, unlike cron, it supports sub-minute
-scheduling down to the second.
+object and supports a cron-like scheduling format. However, unlike cron, it can also supports
+sub-minute scheduling down to the second.
 
 Here's an example task object where the schedule is set to every 5 minutes:
 
