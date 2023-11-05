@@ -559,9 +559,10 @@ Also, the `isValid()` method will evaluate both the "run until" and max attempts
 ### Buffer
 
 By default, a scheduled task's time evaluation is strict, which in most cases means that the
-execution time will happen on the `00` second. If, for some reason, there is a concern or
-possibility that the execution of a task would be delayed - and not be evaluated on a `00`
-timestamp - you can set a time buffer to "soften" the strictness of the scheduled time evaluation.
+execution time will happen on the `00` second of the timestamp. If, for some reason, there is
+a concern or possibility that the execution of a task would be delayed - and not be evaluated
+on a `00` second timestamp - you can set a time buffer to "soften" the strictness of the
+scheduled time evaluation.
 
 The below example gives a 10 second "cushion" to ensure that if there were any processing delay,
 the task's scheduled time evaluation should evaluate to `true` in the window of 0-10 seconds of the
