@@ -461,7 +461,8 @@ $queue->processAll();
 ### Application Commands
 
 An application command can be registered with a job object as well. You would register
-the "route" portion of the command. For example, if the application command route exists:
+the "route" portion of the command. For example, if the following application command
+route exists:
 
 ```bash
 $ ./app hello world
@@ -486,7 +487,7 @@ register CLI-based commands with a job object like this:
 ```php
 use Pop\Queue\Processor\Job;
 
-// Create a job from an application command
+// Create a job from an executable CLI command
 $job = Job::exec('ls -la');
 ```
 
