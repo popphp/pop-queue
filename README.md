@@ -64,21 +64,29 @@ Or, require it in your composer.json file
 Quickstart
 ----------
 
-#### Configure a job and push to the queue
+#### Create a job and a task and push to the queue
 
 ```php
 use Pop\Queue\Queue;
 use Pop\Queue\Adapter\File;
 use Pop\Queue\Processor\Worker;
 use Pop\Queue\Processor\Job;
+use Pop\Queue\Processor\Task;
 
 // Create a job
-$job1 = Job::create(function() {
+$job = Job::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 
-// Create a worker and add the job to the worker
-$worker = Worker::create($job1);
+// Create a task
+$task = Task::create(function() {
+    echo 'This is task #1' . PHP_EOL;
+})->every30Minutes();
+
+// Create a worker and add the job and task to the worker
+$worker = new Worker()
+$worker->addJob($job)
+    ->addTask($task);
 
 // Create the queue object, add the worker and push to the queue
 $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
@@ -101,6 +109,7 @@ If the job is valid, it will run. In this case, it will produce this output:
 
 ```text
 This is job #1
+This is task #1
 ```
 
 [Top](#pop-queue)
