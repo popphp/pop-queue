@@ -19,11 +19,17 @@ class DatabaseTest extends TestCase
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
 
-        $adapter = new Database($db);
-        $this->assertInstanceOf('Pop\Queue\Adapter\Database', $adapter);
-        $this->assertInstanceOf('Pop\Db\Adapter\Sqlite', $adapter->db());
-        $this->assertEquals('pop_queue_jobs', $adapter->getTable());
-        $this->assertEquals('pop_queue_failed_jobs', $adapter->getFailedTable());
+        $adapter1 = new Database($db);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Database', $adapter1);
+        $this->assertInstanceOf('Pop\Db\Adapter\Sqlite', $adapter1->db());
+        $this->assertEquals('pop_queue_jobs', $adapter1->getTable());
+        $this->assertEquals('pop_queue_failed_jobs', $adapter1->getFailedTable());
+
+        $adapter2 = Database::create($db);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Database', $adapter2);
+        $this->assertInstanceOf('Pop\Db\Adapter\Sqlite', $adapter2->db());
+        $this->assertEquals('pop_queue_jobs', $adapter2->getTable());
+        $this->assertEquals('pop_queue_failed_jobs', $adapter2->getFailedTable());
     }
 
     public function testGetJobs()
@@ -42,6 +48,17 @@ class DatabaseTest extends TestCase
         $this->assertNotNull($adapter->getJob($jobId));
         $this->assertTrue($adapter->hasJobs('pop-queue'));
         $this->assertNotEmpty($adapter->getJobs('pop-queue'));
+    }
+
+    public function testGetQueues()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $queues = $adapter->getQueues();
+        $this->assertCount(1, $queues);
+        $this->assertTrue(in_array('pop-queue', $queues));
     }
 
     public function testGetCompletedJobs()

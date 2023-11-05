@@ -29,6 +29,13 @@ abstract class AbstractAdapter implements AdapterInterface
 {
 
     /**
+     * Get all queues currently registered with this adapter
+     *
+     * @return array
+     */
+    abstract public function getQueues(): array;
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

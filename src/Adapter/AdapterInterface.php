@@ -29,6 +29,13 @@ interface AdapterInterface
 {
 
     /**
+     * Get all queues currently registered with this adapter
+     *
+     * @return array
+     */
+    public function getQueues(): array;
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

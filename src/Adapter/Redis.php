@@ -70,6 +70,23 @@ class Redis extends AbstractAdapter
     }
 
     /**
+     * Get all queues currently registered with this adapter
+     *
+     * @return array
+     */
+    public function getQueues(): array
+    {
+        $queueKeys = array_map(function($value) {
+            return substr($value, 10);
+        }, $this->redis->keys('pop-queue-*'));
+
+        return array_filter($queueKeys, function($value){
+            return (!str_contains($value, '-payload') && !str_contains($value, '-completed') &&
+                !str_contains($value, '-failed') && (strlen($value) != 40));
+        });
+    }
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

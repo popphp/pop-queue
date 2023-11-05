@@ -68,6 +68,16 @@ class File extends AbstractAdapter
     }
 
     /**
+     * Get all queues currently registered with this adapter
+     *
+     * @return array
+     */
+    public function getQueues(): array
+    {
+        return $this->getFolders($this->folder);
+    }
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

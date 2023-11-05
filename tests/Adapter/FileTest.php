@@ -16,6 +16,13 @@ class FileTest extends TestCase
         $this->assertStringContainsString('/tmp', $adapter->folder());
     }
 
+    public function testCreate()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp');
+        $this->assertInstanceOf('Pop\Queue\Adapter\File', $adapter);
+        $this->assertStringContainsString('/tmp', $adapter->folder());
+    }
+
     public function testConstructorException()
     {
         $this->expectException('Pop\Queue\Adapter\Exception');

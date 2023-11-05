@@ -5,6 +5,8 @@ namespace Pop\Queue\Test;
 use Pop\Queue\Queue;
 use Pop\Queue\Manager;
 use Pop\Queue\Adapter;
+use Pop\Queue\Processor\Worker;
+use Pop\Queue\Processor\Job;
 use PHPUnit\Framework\TestCase;
 
 class QueueManagerTest extends TestCase
@@ -14,11 +16,20 @@ class QueueManagerTest extends TestCase
     {
         mkdir(__DIR__ . '/tmp/test-queue');
         $fileQueue  = new Queue('test-queue1', new Adapter\File(__DIR__ . '/tmp/test-queue'));
+        $fileQueue->addWorker(Worker::create(Job::create(function(){echo 123;})));
+        $fileQueue->pushAll();
         $redisQueue = new Queue('test-queue2', new Adapter\Redis());
         $manager1   = Manager::create($fileQueue);
         $manager2   = new Manager([$fileQueue, $redisQueue]);
         $this->assertInstanceOf('Pop\Queue\Manager', $manager1);
         $this->assertInstanceOf('Pop\Queue\Manager', $manager2);
+    }
+
+    public function testLoad()
+    {
+        $adapter = new Adapter\File(__DIR__ . '/tmp/test-queue');
+        $manager = Manager::load($adapter);
+        $this->assertEquals(1, count($manager->getQueues()));
     }
 
     public function testGetQueues()
@@ -63,6 +74,8 @@ class QueueManagerTest extends TestCase
 
         unset($manager['test']);
         $this->assertFalse(isset($manager->test));
+
+        $fileQueue->flushAll();
         rmdir(__DIR__ . '/tmp/test-queue');
     }
 

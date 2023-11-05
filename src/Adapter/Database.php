@@ -89,6 +89,22 @@ class Database extends AbstractAdapter
     }
 
     /**
+     * Get all queues currently registered with this adapter
+     *
+     * @return array
+     */
+    public function getQueues(): array
+    {
+        $sql = $this->db->createSql();
+        $sql->select('queue')->from($this->table);
+
+        $this->db->query($sql);
+
+        $rows = $this->db->fetchAll();
+        return array_column($rows, 'queue');
+    }
+
+    /**
      * Check if queue stack has job
      *
      * @param  mixed $jobId

@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use ArrayIterator;
+use Pop\Queue\Adapter\AbstractAdapter;
 
 /**
  * Queue manager class
@@ -43,7 +44,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function __construct(mixed $queues = null)
     {
-        if ($queues !== null) {
+        if (!empty($queues)) {
             if (is_array($queues)) {
                 $this->addQueues($queues);
             } else if ($queues instanceof Queue) {
@@ -60,6 +61,24 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public static function create(mixed $queues = null): Manager
     {
+        return new self($queues);
+    }
+
+    /**
+     * Attempt to load pre-existing queues from adapter
+     *
+     * @param  AbstractAdapter $adapter
+     * @return Manager
+     */
+    public static function load(AbstractAdapter $adapter): Manager
+    {
+        $queueNames = $adapter->getQueues();
+        $queues     = [];
+
+        foreach ($queueNames as $queueName) {
+            $queues[] = new Queue($queueName, $adapter);
+        }
+
         return new self($queues);
     }
 

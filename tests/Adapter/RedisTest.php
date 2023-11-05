@@ -16,6 +16,13 @@ class RedisTest extends TestCase
         $this->assertInstanceOf('Redis', $adapter->redis());
     }
 
+    public function testCreate()
+    {
+        $adapter = Redis::create();
+        $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
+        $this->assertInstanceOf('Redis', $adapter->redis());
+    }
+
     public function testGetJobs()
     {
         $adapter = new Redis();
@@ -30,6 +37,14 @@ class RedisTest extends TestCase
         $this->assertTrue($adapter->hasJobs('pop-queue-test'));
         $this->assertFalse($adapter->hasJobs('pop-queue-bad'));
         $this->assertNotEmpty($adapter->getJobs('pop-queue-test'));
+    }
+
+    public function testGetQueues()
+    {
+        $adapter = new Redis();
+        $queues = $adapter->getQueues();
+        $this->assertCount(1, $queues);
+        $this->assertTrue(in_array('pop-queue-test', $queues));
     }
 
     public function testGetCompletedJobs()
