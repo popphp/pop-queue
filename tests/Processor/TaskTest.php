@@ -21,6 +21,8 @@ class TaskTest extends TestCase
     {
         $task = Task::create(function(){echo 1;});
         $this->assertInstanceOf('Pop\Queue\Processor\Task', $task);
+        $task->schedule('* * * * *');
+        $this->assertEquals('* * * * *', $task->cron()->getSchedule());
     }
 
     public function testBuffer()

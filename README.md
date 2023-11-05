@@ -28,6 +28,8 @@ pop-queue
 * [Tasks](#tasks)
     - [Scheduling](#scheduling)
     - [Run Until](#run-until)
+    - [Buffer](#buffer)
+* [Configuration](#configuration)
 
 Overview
 --------
@@ -551,5 +553,66 @@ $task->every30Minutes()->runUntil('2023-11-30 23:59:59');
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
 Also, the `isValid()` method will evaluate both the "run until" and max attempts settings.
+
+[Top](#pop-queue)
+
+### Buffer
+
+By default, a scheduled task's time evaluation is strict, which in most cases means that the
+execution time will happen on the `00` second. If, for some reason, there is a concern or
+possibility that the execution of a task would be delayed - and not be evaluated on a `00`
+timestamp - you can set a time buffer to "soften" the strictness of the scheduled time evaluation.
+
+The below example gives a 10 second "cushion" to ensure that if there were any processing delay,
+the task's scheduled time evaluation should evaluate to `true` in the window of 0-10 seconds of the
+evaluated timestamp.
+
+```php
+use Pop\Queue\Processor\Task;
+
+$task = Task::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+$task->every30Minutes()
+$task->setBuffer(10);
+```
+
+If you want to set it so that the task runs no matter what, as long as the evaluated timestamp
+is at or past the scheduled time, you can set the buffer to `-1`:
+
+```php
+use Pop\Queue\Processor\Task;
+
+$task = Task::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+$task->every30Minutes()
+$task->setBuffer(-1);
+```
+
+[Top](#pop-queue)
+
+Configuration
+-------------
+
+If you have a CLI application that is aware of your queues and has access to them, you can
+use that application to be the "manager" of your queues, checking them and processing them
+as needed. Assuming you have a CLI application that processes the queue via a command like:
+
+```bash
+$ ./app manage queue
+```
+
+You could set up a cron job to trigger this application every minute:
+
+```bash
+* * * * * cd /path/to/your/project && ./app manage queue
+```
+
+Or, if you'd like any output to be routed to `/dev/null`:
+
+```bash
+* * * * * cd /path/to/your/project && ./app manage queue >> /dev/null 2>&1
+```
 
 [Top](#pop-queue)
