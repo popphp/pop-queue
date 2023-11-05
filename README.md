@@ -585,7 +585,8 @@ Here is a list of available methods to assist with setting common schedules:
 - `saturdays()`
 - `between(int $start, int $end)`
 
-If there is a need for a more custom schedule value, you can schedule that directly:
+If there is a need for a more custom schedule value, you can schedule that directly with a 
+cron-formatted string:
 
 ```php
 use Pop\Queue\Processor\Task;
@@ -594,8 +595,39 @@ $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 
-// Submit a cron formatted schedule string
+// Submit a cron-formatted schedule string
 $task->schedule('* */2 1,15 1-4 *')
+```
+
+Or, you can use the non-standard format to prepend a "seconds" value to the string:
+
+```php
+// Submit a non-standard cron-formatted schedule string
+// that includes a prepended"seconds" value 
+$task->schedule('*/10 * */2 1,15 1-4 *')
+```
+
+FYI, the standard cron string supports 5 values for
+
+- Minutes
+- Hours
+- Days of the month
+- Months
+- Days of the week
+
+in the format of:
+
+```text
+min  hour  dom  month  dow
+ *    *     *     *     *
+```
+
+To keep with that format and support a non-standard "seconds" value,
+that value is prepended to the string creating 6 values:
+
+```text     
+sec  min  hour  dom  month  dow
+ *    *    *     *     *     *
 ```
 
 [Top](#pop-queue)
