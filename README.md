@@ -208,7 +208,9 @@ $adapter = new File(__DIR__ . '/queue');
 $manager = Manager::load($adapter);
 ```
 
-However, if the queue is empty or no queues are registered with that adapter, then
+Following, the above example where 3 separate queues were created with the file adapter,
+the manager would now be loaded with those three queues, if they still exist and contain
+jobs. However, if a queue is empty or no queues are registered with that adapter, then
 no queues will be loaded into the manager.
 
 [Top](#pop-queue)
