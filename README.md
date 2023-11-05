@@ -330,7 +330,7 @@ You can access failed jobs anf their exceptions within the worker object like th
 Jobs
 ----
 
-Job objects are at the heart of the `pop-queue` component. They are objects have can execute
+Job objects are at the heart of the `pop-queue` component. They are objects that can execute
 either a callable, an application command or even a CLI-based command (if the environment is
 set up to allow that.)
 
