@@ -271,9 +271,10 @@ $db = Db::mysqlConnect([
 $adapter = new Database($db); 
 ```
 
-Two tables are created in the database to manage the jobs. By default, they are named
-`pop_queue_jobs` and `pop_queue_failed_jobs`. If you would like to name them something
-else, you can pass those names into the constructor:
+Two tables are utilized in the database to manage the jobs. If they do not exist, they
+will be automatically created. By default, they are named `pop_queue_jobs` and
+`pop_queue_failed_jobs`. If you would like to name them something else, you can pass
+those names into the constructor:
 
 ```php
 $adapter = new Database($db, 'my_jobs', 'my_failed_jobs'); 
