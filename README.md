@@ -603,11 +603,11 @@ Or, you can use the non-standard format to prepend a "seconds" value to the stri
 
 ```php
 // Submit a non-standard cron-formatted schedule string
-// that includes a prepended"seconds" value 
+// that includes a prepended "seconds" value 
 $task->schedule('*/10 * */2 1,15 1-4 *')
 ```
 
-FYI, the standard cron string supports 5 values for
+The standard cron string supports 5 values for
 
 - Minutes
 - Hours
@@ -629,6 +629,9 @@ that value is prepended to the string creating 6 values:
 sec  min  hour  dom  month  dow
  *    *    *     *     *     *
 ```
+
+If a task is schedule using seconds, it will trigger the worker to process the task
+at the sub-minute level.
 
 [Top](#pop-queue)
 
