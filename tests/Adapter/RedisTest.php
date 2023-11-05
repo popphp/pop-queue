@@ -14,6 +14,7 @@ class RedisTest extends TestCase
         $adapter = new Redis();
         $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
         $this->assertInstanceOf('Redis', $adapter->redis());
+        $this->assertEquals('pop-queue-', $adapter->getPrefix());
     }
 
     public function testCreate()

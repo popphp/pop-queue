@@ -35,14 +35,15 @@ Overview
 --------
 `pop-queue` is a job queue component that provides the ability to pass an executable job off to a
 queue to be processed at a later date and time. Queues can either process jobs or scheduled tasks
-via workers. The jobs are stored in an available storage adapter until they are called to executed.
+via workers. The jobs are stored in an available storage adapter until they are called to be executed.
 The available storage adapters for the queue component are:
 
 - Database
 - Redis
 - File
 
-And others can be written as needed, implementing the `AdapterInterface` and extending the `AbstractAdapter`.
+Others can be written as needed, implementing the `Pop\Queue\Adapter\AdapterInterface` and extending
+the `Pop\Queue\Adapter\AbstractAdapter`.
 
 `pop-queue` is a component of the [Pop PHP Framework](http://www.popphp.org/).
 
@@ -77,12 +78,12 @@ use Pop\Queue\Processor\Task;
 
 // Create a job
 $job = Job::create(function() {
-    echo 'This is job #1' . PHP_EOL;
+    echo 'This is job' . PHP_EOL;
 });
 
 // Create a scheduled task
 $task = Task::create(function() {
-    echo 'This is task #1' . PHP_EOL;
+    echo 'This is a scheduled task' . PHP_EOL;
 })->every30Minutes();
 
 // Create a worker and add the job and task to the worker
@@ -110,8 +111,8 @@ $queue->processAll();
 If the job and task are valid, they will run. In this case, it will produce this output:
 
 ```text
-This is job #1
-This is task #1
+This is a job
+This is scheduled task
 ```
 
 [Top](#pop-queue)
@@ -237,11 +238,12 @@ Adapters
 --------
 
 By default, there are three available adapters, but additional ones could be created as
-long as they implement `Pop\Queue\Adapter\AdapterInterface`.
+long as they implement `Pop\Queue\Adapter\AdapterInterface` and extend
+`Pop\Queue\Adapter\AbstractAdapter`.
 
 ### File
 
-The file adapter only requires the location on disk where the queue data will be stored:
+The file adapter only requires the location on disk where the queues will be stored:
 
 ```php
 use Pop\Queue\Adapter\File;
@@ -269,6 +271,14 @@ $db = Db::mysqlConnect([
 $adapter = new Database($db); 
 ```
 
+Two tables are created in the database to manage the jobs. By default, they are named
+`pop_queue_jobs` and `pop_queue_failed_jobs`. If you would like to name them something
+else, you can pass those names into the constructor:
+
+```php
+$adapter = new Database($db, 'my_jobs', 'my_failed_jobs'); 
+```
+
 [Top](#pop-queue)
 
 ### Redis
@@ -280,6 +290,14 @@ the `redis` extension installed with PHP:
 use Pop\Queue\Adapter\Redis;
 
 $adapter = new Redis();
+```
+
+The Redis adapter uses `localhost` and port 6379 as defaults. It also manages the jobs with the
+Redis server by means of a key prefix. By default, that prefix is set to `pop-queue-`. If you would
+like to use alternate values for these, you can pass them into the constructor:
+
+```php
+$adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
 ```
 
 Once the adapter object is created, it can be passed into the queue object:

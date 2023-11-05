@@ -38,15 +38,15 @@ class Database extends AbstractAdapter
 
     /**
      * Job table
-     * @var ?string
+     * @var string
      */
-    protected ?string $table = null;
+    protected string $table = 'pop_queue_jobs';
 
     /**
      * Failed job table
      * @var ?string
      */
-    protected ?string $failedTable = null;
+    protected string $failedTable = 'pop_queue_failed_jobs';
 
     /**
      * Constructor
