@@ -443,8 +443,9 @@ $queue->addWorker($worker);
 $queue->pushAll();
 ```
 
-When the time comes to execute the job, the application object will get passed
-down and prepended the application object to the callable object's parameters:
+When the time comes to execute the job, the application object can be passed into
+the queue object. From there, the application object will get passed down and prepended
+to the callable object's parameters:
 
 ```php
 use Pop\Queue\Queue;
