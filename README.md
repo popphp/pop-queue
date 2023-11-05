@@ -192,20 +192,25 @@ $queue1 = new Queue('pop-queue1', $adapter);
 $queue2 = new Queue('pop-queue2', $adapter);
 $queue3 = new Queue('pop-queue3', $adapter);
 
-$manager = new Manager();
-$manager->addQueues([
-    $queue1, $queue2, $queue3
-]);
+$manager = Manager::create([$queue1, $queue2, $queue3]);
 ```
 
-##### Get queues from a manager object
+##### Load pre-existing queues into a manager object
+
+If it's known that a queue exists containing jobs within a particular storage object,
+you can load those pre-existing queues like this:
 
 ```php
 use Pop\Queue\Manager;
+use Pop\Queue\Adapter\File;
 
-$manager = new Manager();
-$queue1  = $manager->getQueue('pop-queue1');
+$adapter = new File(__DIR__ . '/queue');
+$manager = Manager::load($adapter);
 ```
+
+However, if the queue is empty or no queues are registered with that adapter, then
+no queues will be loaded into the manager.
+
 [Top](#pop-queue)
 
 Adapters
