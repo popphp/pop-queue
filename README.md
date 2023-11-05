@@ -515,7 +515,7 @@ $task->every30Minutes()->runUntil('2023-11-30 23:59:59');
 ```
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
-Also the `isValid()` method will evaluate both the "run until" and max attempts settings.
+Also, the `isValid()` method will evaluate both the "run until" and max attempts settings.
 
 Configuration Tips
 ------------------
