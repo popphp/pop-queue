@@ -78,7 +78,7 @@ $job = Job::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 
-// Create a task
+// Create a scheduled task
 $task = Task::create(function() {
     echo 'This is task #1' . PHP_EOL;
 })->every30Minutes();
