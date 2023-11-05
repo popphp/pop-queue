@@ -410,6 +410,49 @@ $job1 = Job::create(function() {
 
 // Create a job from a static class method
 $job2 = Job::create('MyApp\Service\SomeService::doSomething');
+
+// Create a job with parameters
+$closure = function($num) {
+    echo 'This is job ' . $num . PHP_EOL;
+};
+
+// The second argument passed is the callable's parameter(s) 
+$job3 = Job::create($closure, 1);
+```
+
+If the callable needs access to the main application object, you can pass that to the
+queue object and it will be added to the parameters of the callable object:
+
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+use Pop\Queue\Processor\Worker;
+use Pop\Queue\Processor\Job;
+
+// Create a job that needs the application object
+$job = Job::create(function($application) {
+    // Do something with the application
+});
+
+// Create a worker and add the job and task to the worker
+$worker = new Worker::create($job);
+
+// Create the queue object, add the worker and push to the queue
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), $application);
+$queue->addWorker($worker);
+$queue->pushAll();
+```
+
+When the time comes to execute the job, the application object will get passed
+down and prepended the application object to the callable object's parameters:
+
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+
+$adapter = new File(__DIR__ . '/queue');
+$queue   = Queue::load('pop-queue', $adapter, $application);
+$queue->processAll();
 ```
 
 [Top](#pop-queue)
