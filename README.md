@@ -28,7 +28,6 @@ pop-queue
 * [Tasks](#tasks)
     - [Scheduling](#scheduling)
     - [Run Until](#run-until)
-* [Configuration Tips](#configuration-tips)
 
 Overview
 --------
