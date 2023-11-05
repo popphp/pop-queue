@@ -357,7 +357,7 @@ var_dump($job->getFailed());
 
 ### Callables
 
-Any callable object can be passed into a job object.
+Any callable object can be passed into a job object:
 
 ```php
 use Pop\Queue\Processor\Job;
@@ -374,7 +374,7 @@ $job2 = Job::create('MyApp\Service\SomeService::doSomething');
 ### Application Commands
 
 An application command can be registered with a job object as well. You would register
-what is the "route" portion of the command. For example, if the command route exists:
+the "route" portion of the command. For example, if the application command route exists:
 
 ```bash
 $ ./app hello world
