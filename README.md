@@ -505,7 +505,9 @@ $task->schedule('* */2 1,15 1-4 *')
 
 ### Run Until
 
-A "run until" value can be set with the task object to give it an "expiration" date:
+By default, a task is set to an unlimited number of attempts and is expected to continue
+to execute at its scheduled time. However, a "run until" value can be set with the task
+object to give it an "expiration" date:
 
 ```php
 use Pop\Queue\Processor\Task;
