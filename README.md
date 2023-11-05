@@ -277,7 +277,7 @@ Workers
 
 Worker objects server as the owners of the jobs and tasks that are assigned to them.
 Once jobs or tasks are registered with a worker object, the worker object can be
-added to the queue object and them pushed to the storage adapter.
+added to the queue object and then pushed to the storage adapter.
 
 ```php
 use Pop\Queue\Processor\Worker;
@@ -334,6 +334,27 @@ Job objects are at the heart of the `pop-queue` component. They are objects have
 either a callable, an application command or even a CLI-based command (if the environment is
 set up to allow that.)
 
+Jobs get assigned an ID hash by default for reference.
+
+```php
+var_dump($job->hasJobId());
+$id = $job->getJobId();
+```
+
+As a job is picked up by a worker object to be executed, there are a number of methods to
+assist with the status of a job:
+
+```php
+var_dump($job->hasStarted()); // Has a started timestamp
+var_dump($job->hasNotRun());  // No started timestamp and no completed timestamp
+var_dump($job->isRunning());  // Has a started timestamp, but not a completed/failed
+var_dump($job->isComplete()); // Has a completed timestamp
+var_dump($job->hasFailed());  // Has a failed timestamp
+var_dump($job->getStarted());
+var_dump($job->getCompleted());
+var_dump($job->getFailed());
+```
+
 ### Callables
 
 Any callable object can be passed into a job object.
@@ -346,14 +367,14 @@ $job1 = Job::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 
-// Create a job from a class static method
+// Create a job from a static class method
 $job2 = Job::create('MyApp\Service\SomeService::doSomething');
 ```
 
 ### Application Commands
 
 An application command can be registered with a job object as well. You would register
-what is the "route" portion of the command. For example, if the command/route exists:
+what is the "route" portion of the command. For example, if the command route exists:
 
 ```bash
 $ ./app hello world
@@ -379,26 +400,7 @@ use Pop\Queue\Processor\Job;
 $job = Job::exec('ls -la');
 ```
 
-Jobs get assigned an ID hash by default for reference.
-
-```php
-var_dump($job->hasJobId());
-$id = $job->getJobId();
-```
-
-As a job is picked up by a worker object and "started", is "running" or has completed
-(of failed), there are a number of methods to assist with working with the status of a job:
-
-```php
-var_dump($job->hasStarted()); // Has a started timestamp
-var_dump($job->hasNotRun());  // No started timestamp and no completed timestamp
-var_dump($job->isRunning());  // Has a started timestamp, but not a completed/failed
-var_dump($job->isComplete()); // Has a completed timestamp
-var_dump($job->hasFailed());  // Has a failed timestamp
-var_dump($job->getStarted());
-var_dump($job->getCompleted());
-var_dump($job->getFailed());
-```
+For security reasons, you should exercise caution when using this.
 
 ### Attempts
 
