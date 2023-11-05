@@ -527,6 +527,9 @@ var_dump($job->hasExceededMaxAttempts());
 The `isValid()` method is also available and checks both the max attempts and the
 "run until" setting (which is used more with task objects - see below.) 
 
+**NOTE:** The [run until](#run-until) can be enforced on a non-scheduled job and the
+[max attempts](#attempts) can be enforced on a scheduled task. 
+
 [Top](#pop-queue)
 
 Tasks
@@ -660,6 +663,9 @@ $task->every30Minutes()->runUntil(1701410399);
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
 Also, the `isValid()` method will evaluate both the "run until" and max attempts settings.
+
+**NOTE:** The [run until](#run-until) can be enforced on a non-scheduled job and the
+[max attempts](#attempts) can be enforced on a scheduled task.
 
 [Top](#pop-queue)
 
