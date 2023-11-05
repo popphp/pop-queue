@@ -293,7 +293,7 @@ $queue = Queue::create('pop-queue', $adapter);
 Workers
 -------
 
-Worker objects server as the owners of the jobs and tasks that are assigned to them.
+Worker objects serve as the owners of the jobs and tasks that are assigned to them.
 Once jobs or tasks are registered with a worker object, the worker object can be
 added to the queue object and then pushed to the storage adapter.
 
