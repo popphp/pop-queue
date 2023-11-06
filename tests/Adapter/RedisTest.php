@@ -14,7 +14,7 @@ class RedisTest extends TestCase
         $adapter = new Redis();
         $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
         $this->assertInstanceOf('Redis', $adapter->redis());
-        $this->assertEquals('pop-queue-', $adapter->getPrefix());
+        $this->assertEquals('pop-worker-', $adapter->getPrefix());
     }
 
     public function testCreate()
@@ -31,21 +31,21 @@ class RedisTest extends TestCase
         $job   = new Job(function(){echo 'Hello World!';});
         $jobId = $job->generateJobId();
 
-        $adapter->push('pop-queue-test', $job);
+        $adapter->push('pop-worker-test', $job);
 
         $this->assertTrue($adapter->hasJob($jobId));
         $this->assertNotNull($adapter->getJob($jobId));
-        $this->assertTrue($adapter->hasJobs('pop-queue-test'));
-        $this->assertFalse($adapter->hasJobs('pop-queue-bad'));
-        $this->assertNotEmpty($adapter->getJobs('pop-queue-test'));
+        $this->assertTrue($adapter->hasJobs('pop-worker-test'));
+        $this->assertFalse($adapter->hasJobs('pop-worker-bad'));
+        $this->assertNotEmpty($adapter->getJobs('pop-worker-test'));
     }
 
     public function testGetQueues()
     {
         $adapter = new Redis();
-        $queues = $adapter->getQueues();
-        $this->assertCount(1, $queues);
-        $this->assertTrue(in_array('pop-queue-test', $queues));
+        $workers = $adapter->getWorkers();
+        $this->assertCount(1, $workers);
+        $this->assertTrue(in_array('pop-worker-test', $workers));
     }
 
     public function testGetCompletedJobs()
@@ -55,7 +55,7 @@ class RedisTest extends TestCase
         $job   = new Job(function(){echo 'Hello World 2!';});
         $jobId = $job->generateJobId();
 
-        $adapter->push('pop-queue-test', $job);
+        $adapter->push('pop-worker-test', $job);
         $job->complete();
         $adapter->updateJob($job);
 
@@ -63,9 +63,9 @@ class RedisTest extends TestCase
         $this->assertFalse($adapter->hasCompletedJob($jobId . '-bad'));
         $this->assertNotNull($adapter->getCompletedJob($jobId));
         $this->assertEmpty($adapter->getCompletedJob($jobId . '-bad'));
-        $this->assertTrue($adapter->hasCompletedJobs('pop-queue-test'));
-        $this->assertFalse($adapter->hasCompletedJobs('pop-queue-bad'));
-        $this->assertNotEmpty($adapter->getCompletedJobs('pop-queue-test'));
+        $this->assertTrue($adapter->hasCompletedJobs('pop-worker-test'));
+        $this->assertFalse($adapter->hasCompletedJobs('pop-worker-bad'));
+        $this->assertNotEmpty($adapter->getCompletedJobs('pop-worker-test'));
     }
 
     public function testGetFailedJobs()
@@ -75,26 +75,26 @@ class RedisTest extends TestCase
         $job   = new Job(function(){throw new \Exception('Whoops!');});
         $jobId = $job->generateJobId();
 
-        $adapter->push('pop-queue-test', $job);
-        $adapter->failed('pop-queue-test', $jobId,  new \Exception('Whoops!'));
+        $adapter->push('pop-worker-test', $job);
+        $adapter->failed('pop-worker-test', $jobId,  new \Exception('Whoops!'));
 
         $this->assertTrue($adapter->hasFailedJob($jobId));
         $this->assertNotNull($adapter->getFailedJob($jobId));
-        $this->assertTrue($adapter->hasFailedJobs('pop-queue-test'));
-        $this->assertFalse($adapter->hasFailedJobs('pop-queue-bad'));
-        $this->assertNotEmpty($adapter->getFailedJobs('pop-queue-test'));
+        $this->assertTrue($adapter->hasFailedJobs('pop-worker-test'));
+        $this->assertFalse($adapter->hasFailedJobs('pop-worker-bad'));
+        $this->assertNotEmpty($adapter->getFailedJobs('pop-worker-test'));
     }
 
     public function testClear()
     {
         $adapter = new Redis();
 
-        $adapter->clear('pop-queue-test');
-        $adapter->clear('pop-queue-test', true);
-        $adapter->clearFailed('pop-queue-test');
+        $adapter->clear('pop-worker-test');
+        $adapter->clear('pop-worker-test', true);
+        $adapter->clearFailed('pop-worker-test');
 
-        $this->assertFalse($adapter->hasJobs('pop-queue-test'));
-        $this->assertFalse($adapter->hasFailedJobs('pop-queue-test'));
+        $this->assertFalse($adapter->hasJobs('pop-worker-test'));
+        $this->assertFalse($adapter->hasFailedJobs('pop-worker-test'));
     }
 
     public function testFlush()
@@ -106,8 +106,8 @@ class RedisTest extends TestCase
         $adapter->flushFailed();
         $adapter->flushAll();
 
-        $this->assertFalse($adapter->hasJobs('pop-queue-test'));
-        $this->assertFalse($adapter->hasFailedJobs('pop-queue-test'));
+        $this->assertFalse($adapter->hasJobs('pop-worker-test'));
+        $this->assertFalse($adapter->hasFailedJobs('pop-worker-test'));
     }
 
 }

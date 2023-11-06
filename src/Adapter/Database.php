@@ -14,11 +14,11 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
-use Pop\Queue\Queue;
+use Pop\Queue\Worker;
 use Pop\Queue\Processor\AbstractJob;
 
 /**
- * Database queue adapter class
+ * Database worker adapter class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -40,25 +40,25 @@ class Database extends AbstractAdapter
      * Job table
      * @var string
      */
-    protected string $table = 'pop_queue_jobs';
+    protected string $table = 'pop_worker_jobs';
 
     /**
      * Failed job table
      * @var ?string
      */
-    protected string $failedTable = 'pop_queue_failed_jobs';
+    protected string $failedTable = 'pop_worker_failed_jobs';
 
     /**
      * Constructor
      *
-     * Instantiate the database queue object
+     * Instantiate the database worker object
      *
      * @param DbAdapter $db
      * @param string    $table
      * @param string    $failedTable
      */
     public function __construct(
-        DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs'
+        DbAdapter $db, string $table = 'pop_worker_jobs', string $failedTable = 'pop_worker_failed_jobs'
     )
     {
         $this->db          = $db;
@@ -82,30 +82,30 @@ class Database extends AbstractAdapter
      * @return Database
      */
     public static function create(
-        DbAdapter $db, string $table = 'pop_queue_jobs', string $failedTable = 'pop_queue_failed_jobs'
+        DbAdapter $db, string $table = 'pop_worker_jobs', string $failedTable = 'pop_worker_failed_jobs'
     ): Database
     {
         return new self($db, $table, $failedTable);
     }
 
     /**
-     * Get all queues currently registered with this adapter
+     * Get all workers currently registered with this adapter
      *
      * @return array
      */
-    public function getQueues(): array
+    public function getWorkers(): array
     {
         $sql = $this->db->createSql();
-        $sql->select('queue')->from($this->table);
+        $sql->select('worker')->from($this->table);
 
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
-        return array_column($rows, 'queue');
+        return array_column($rows, 'worker');
     }
 
     /**
-     * Check if queue stack has job
+     * Check if worker stack has job
      *
      * @param  mixed $jobId
      * @return bool
@@ -123,7 +123,7 @@ class Database extends AbstractAdapter
     }
 
     /**
-     * Get job from queue stack by job ID
+     * Get job from worker stack by job ID
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -152,19 +152,19 @@ class Database extends AbstractAdapter
     }
 
     /**
-     * Save job in queue
+     * Save job in worker
      *
-     * @param  string $queueName
+     * @param  string $workerName
      * @param  mixed $job
      * @param  array $jobData
      * @return string
      */
-    public function saveJob(string $queueName, mixed $job, array $jobData) : string
+    public function saveJob(string $workerName, mixed $job, array $jobData) : string
     {
         $sql = $this->db->createSql();
         $sql->insert($this->table)->values([
             'job_id'       => ':job_id',
-            'queue'        => ':queue',
+            'worker'       => ':worker',
             'payload'      => ':payload',
             'priority'     => ':priority',
             'max_attempts' => ':max_attempts',
@@ -180,7 +180,7 @@ class Database extends AbstractAdapter
     }
 
     /**
-     * Update job from queue stack by job ID
+     * Update job from worker stack by job ID
      *
      * @param  AbstractJob $job
      * @return void
@@ -216,65 +216,65 @@ class Database extends AbstractAdapter
     }
 
     /**
-     * Check if queue has jobs
+     * Check if worker has jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    public function hasJobs(mixed $queue): bool
+    public function hasJobs(mixed $worker): bool
     {
-        $queueName   = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName  = ($worker instanceof Worker) ? $worker->getName() : $worker;
         $placeholder = $this->db->createSql()->getPlaceholder();
 
         if ($placeholder == ':') {
-            $placeholder .= 'queue';
+            $placeholder .= 'worker';
         } else if ($placeholder == '$') {
             $placeholder .= '1';
         }
 
         $sqlString = <<<SQL
 SELECT *
-FROM `pop_queue_jobs`
+FROM `pop_worker_jobs`
 WHERE
-  `queue` = {$placeholder} AND
+  `worker` = {$placeholder} AND
   ((`completed` IS NULL) OR ((`completed` IS NOT NULL) AND ((`max_attempts` = 0) OR (`attempts` < `max_attempts`))));
 SQL;
 
         $this->db->prepare($sqlString);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         return (count($this->db->fetchAll()) > 0);
     }
 
     /**
-     * Get queue jobs
+     * Get worker jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    public function getJobs(mixed $queue, bool $unserialize = true): array
+    public function getJobs(mixed $worker, bool $unserialize = true): array
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName  = ($worker instanceof Worker) ? $worker->getName() : $worker;
         $placeholder = $this->db->createSql()->getPlaceholder();
 
         if ($placeholder == ':') {
-            $placeholder .= 'queue';
+            $placeholder .= 'worker';
         } else if ($placeholder == '$') {
             $placeholder .= '1';
         }
 
         $sqlString = <<<SQL
 SELECT *
-FROM `pop_queue_jobs`
+FROM `pop_worker_jobs`
 WHERE
-  `queue` = {$placeholder} AND
+  `worker` = {$placeholder} AND
   ((`completed` IS NULL) OR ((`completed` IS NOT NULL) AND ((`max_attempts` = 0) OR (`attempts` < `max_attempts`))));
 SQL;
 
         $this->db->prepare($sqlString);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
@@ -289,7 +289,7 @@ SQL;
     }
 
     /**
-     * Check if queue stack has completed job
+     * Check if worker stack has completed job
      *
      * @param  mixed $jobId
      * @return bool
@@ -309,29 +309,29 @@ SQL;
     }
 
     /**
-     * Check if queue has completed jobs
+     * Check if worker has completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    public function hasCompletedJobs(mixed $queue): bool
+    public function hasCompletedJobs(mixed $worker): bool
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)
-            ->where('queue = :queue')
+            ->where('worker = :worker')
             ->where('completed IS NOT NULL');
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         return (count($this->db->fetchAll()) > 0);
     }
 
     /**
-     * Get queue completed job
+     * Get worker completed job
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -362,23 +362,23 @@ SQL;
     }
 
     /**
-     * Get queue completed jobs
+     * Get worker completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    public function getCompletedJobs(mixed $queue, bool $unserialize = true): array
+    public function getCompletedJobs(mixed $worker, bool $unserialize = true): array
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
         $sql->select()->from($this->table)
-            ->where('queue = :queue')
+            ->where('worker = :worker')
             ->where('completed IS NOT NULL');
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
@@ -393,7 +393,7 @@ SQL;
     }
 
     /**
-     * Check if queue stack has failed job
+     * Check if worker stack has failed job
      *
      * @param  mixed $jobId
      * @return bool
@@ -411,7 +411,7 @@ SQL;
     }
 
     /**
-     * Get failed job from queue stack by job ID
+     * Get failed job from worker stack by job ID
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -440,41 +440,41 @@ SQL;
     }
 
     /**
-     * Check if queue adapter has failed jobs
+     * Check if worker adapter has failed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    public function hasFailedJobs(mixed $queue): bool
+    public function hasFailedJobs(mixed $worker): bool
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
-        $sql->select()->from($this->failedTable)->where('queue = :queue');
+        $sql->select()->from($this->failedTable)->where('worker = :worker');
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         return (count($this->db->fetchAll()) > 0);
     }
 
     /**
-     * Get queue jobs
+     * Get worker jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    public function getFailedJobs(mixed $queue, bool $unserialize = true): array
+    public function getFailedJobs(mixed $worker, bool $unserialize = true): array
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
-        $sql->select()->from($this->failedTable)->where("queue = :queue");
+        $sql->select()->from($this->failedTable)->where("worker = :worker");
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
 
         $rows = $this->db->fetchAll();
@@ -489,20 +489,20 @@ SQL;
     }
 
     /**
-     * Push job onto queue stack
+     * Push job onto worker stack
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  mixed $job
      * @param  mixed $priority
      * @return string
      */
-    public function push(mixed $queue, mixed $job, mixed $priority = null): string
+    public function push(mixed $worker, mixed $job, mixed $priority = null): string
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
         $jobId     = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
         $jobData   = [
             'job_id'       => $jobId,
-            'queue'        => $queueName,
+            'worker'       => $workerName,
             'payload'      => base64_encode(serialize(clone $job)),
             'priority'     => $priority,
             'max_attempts' => $job->getMaxAttempts(),
@@ -510,25 +510,25 @@ SQL;
             'completed'    => null
         ];
 
-        return $this->saveJob($queueName, $job, $jobData);
+        return $this->saveJob($workerName, $job, $jobData);
     }
 
     /**
-     * Move failed job to failed queue stack
+     * Move failed job to failed worker stack
      *
-     * @param  mixed           $queue
+     * @param  mixed           $worker
      * @param  mixed           $failedJob
      * @param  \Exception|null $exception
      * @return void
      */
-    public function failed(mixed $queue, mixed $failedJob, \Exception|null $exception = null): void
+    public function failed(mixed $worker, mixed $failedJob, \Exception|null $exception = null): void
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
         $sql->insert($this->failedTable)->values([
             'job_id'    => ':job_id',
-            'queue'     => ':queue',
+            'worker'    => ':worker',
             'payload'   => ':payload',
             'exception' => ':exception',
             'failed'    => ':failed'
@@ -539,7 +539,7 @@ SQL;
         $this->db->prepare($sql);
         $this->db->bindParams([
             'job_id'    => $failedJob,
-            'queue'     => $queueName,
+            'worker'    => $workerName,
             'payload'   => (isset($jobRecord['payload'])) ? $jobRecord['payload'] : null,
             'exception' => ($exception !== null) ? $exception->getMessage() : null,
             'failed'    => date('Y-m-d H:i:s')
@@ -553,7 +553,7 @@ SQL;
     }
 
     /**
-     * Pop job off of queue stack
+     * Pop job off of worker stack
      *
      * @param  mixed $jobId
      * @return void
@@ -569,50 +569,50 @@ SQL;
     }
 
     /**
-     * Clear jobs off of the queue stack
+     * Clear jobs off of the worker stack
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $all
      * @return void
      */
-    public function clear(mixed $queue, bool $all = false): void
+    public function clear(mixed $worker, bool $all = false): void
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
         $sql->delete($this->table)
-            ->where('queue = :queue');
+            ->where('worker = :worker');
 
         if (!$all) {
             $sql->delete()->where('completed IS NOT NULL');
         }
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
     }
 
     /**
-     * Clear failed jobs off of the queue stack
+     * Clear failed jobs off of the worker stack
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return void
      */
-    public function clearFailed(mixed $queue): void
+    public function clearFailed(mixed $worker): void
     {
-        $queueName = ($queue instanceof Queue) ? $queue->getName() : $queue;
+        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
 
         $sql = $this->db->createSql();
         $sql->delete($this->failedTable)
-            ->where('queue = :queue');
+            ->where('worker = :worker');
 
         $this->db->prepare($sql);
-        $this->db->bindParams(['queue' => $queueName]);
+        $this->db->bindParams(['worker' => $workerName]);
         $this->db->execute();
     }
 
     /**
-     * Flush all jobs off of the queue stack
+     * Flush all jobs off of the worker stack
      *
      * @param  bool $all
      * @return void
@@ -630,7 +630,7 @@ SQL;
     }
 
     /**
-     * Flush all failed jobs off of the queue stack
+     * Flush all failed jobs off of the worker stack
      *
      * @return void
      */
@@ -643,7 +643,7 @@ SQL;
     }
 
     /**
-     * Flush all pop queue items
+     * Flush all pop worker items
      *
      * @return void
      */
@@ -684,7 +684,7 @@ SQL;
     }
 
     /**
-     * Create the queue job table
+     * Create the worker job table
      *
      * @param  string $table
      * @return Database
@@ -696,7 +696,7 @@ SQL;
         $schema->create($table)
             ->int('id')->increment()
             ->varchar('job_id', 255)
-            ->varchar('queue', 255)
+            ->varchar('worker', 255)
             ->varchar('priority', 255)
             ->text('payload')
             ->int('max_attempts', 16)
@@ -710,7 +710,7 @@ SQL;
     }
 
     /**
-     * Create the queue failed job table
+     * Create the worker failed job table
      *
      * @param  string $failedTable
      * @return Database
@@ -722,7 +722,7 @@ SQL;
         $schema->create($failedTable)
             ->int('id', 16)->increment()
             ->varchar('job_id', 255)
-            ->varchar('queue', 255)
+            ->varchar('worker', 255)
             ->text('payload')
             ->text('exception')
             ->datetime('failed')

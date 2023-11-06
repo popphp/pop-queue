@@ -11,9 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue;
 
-use Pop\Queue\Queue;
+use Pop\Queue\Processor\AbstractJob;
+use Pop\Queue\Processor\Task;
 
 /**
  * Abstract process class
@@ -25,7 +26,7 @@ use Pop\Queue\Queue;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-abstract class AbstractProcessor implements ProcessorInterface
+abstract class AbstractQueue implements QueueInterface
 {
 
     /**
@@ -63,9 +64,9 @@ abstract class AbstractProcessor implements ProcessorInterface
      *
      * @param  AbstractJob $job
      * @param  ?int        $maxAttempts
-     * @return AbstractProcessor
+     * @return AbstractQueue
      */
-    public function addJob(AbstractJob $job, ?int $maxAttempts = null): AbstractProcessor
+    public function addJob(AbstractJob $job, ?int $maxAttempts = null): AbstractQueue
     {
         if ($maxAttempts !== null) {
             $job->setMaxAttempts($maxAttempts);
@@ -83,9 +84,9 @@ abstract class AbstractProcessor implements ProcessorInterface
      *
      * @param  array $jobs
      * @param  ?int  $maxAttempts
-     * @return AbstractProcessor
+     * @return AbstractQueue
      */
-    public function addJobs(array $jobs, ?int $maxAttempts = null): AbstractProcessor
+    public function addJobs(array $jobs, ?int $maxAttempts = null): AbstractQueue
     {
         foreach ($jobs as $job) {
             $this->addJob($job, $maxAttempts);
@@ -98,9 +99,9 @@ abstract class AbstractProcessor implements ProcessorInterface
      *
      * @param  Task $task
      * @param  ?int $maxAttempts
-     * @return AbstractProcessor
+     * @return AbstractQueue
      */
-    public function addTask(Task $task, ?int $maxAttempts = 0): AbstractProcessor
+    public function addTask(Task $task, ?int $maxAttempts = 0): AbstractQueue
     {
         return $this->addJob($task, $maxAttempts);
     }
@@ -110,9 +111,9 @@ abstract class AbstractProcessor implements ProcessorInterface
      *
      * @param  array $tasks
      * @param  ?int  $maxAttempts
-     * @return AbstractProcessor
+     * @return AbstractQueue
      */
-    public function addTasks(array $tasks, ?int $maxAttempts = null): AbstractProcessor
+    public function addTasks(array $tasks, ?int $maxAttempts = null): AbstractQueue
     {
         foreach ($tasks as $task) {
             $this->addTask($task, $maxAttempts);
@@ -312,9 +313,9 @@ abstract class AbstractProcessor implements ProcessorInterface
     /**
      * Process next job
      *
-     * @param  ?Queue $queue
+     * @param  ?Worker $worker
      * @return mixed
      */
-    abstract public function processNext(?Queue $queue = null): mixed;
+    abstract public function processNext(?Worker $worker = null): mixed;
 
 }

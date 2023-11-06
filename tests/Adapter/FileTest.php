@@ -95,7 +95,7 @@ class FileTest extends TestCase
         $this->assertNotEmpty($adapter->getFailedJobs('pop-queue-test'));
 
         $adapter->flushAll();
-        $adapter->removeQueueFolder('pop-queue-test');
+        $adapter->removeWorkerFolder('pop-queue-test');
     }
 
 }

@@ -17,7 +17,7 @@ use ArrayIterator;
 use Pop\Queue\Adapter\AbstractAdapter;
 
 /**
- * Queue manager class
+ * Worker manager class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -30,118 +30,118 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
 {
 
     /**
-     * Queues
+     * Workers
      * @var array
      */
-    protected array $queues = [];
+    protected array $workers = [];
 
     /**
      * Constructor
      *
-     * Instantiate the queue manager object.
+     * Instantiate the worker manager object.
      *
-     * @param  mixed $queues
+     * @param  mixed $workers
      */
-    public function __construct(mixed $queues = null)
+    public function __construct(mixed $workers = null)
     {
-        if (!empty($queues)) {
-            if (is_array($queues)) {
-                $this->addQueues($queues);
-            } else if ($queues instanceof Queue) {
-                $this->addQueue($queues);
+        if (!empty($workers)) {
+            if (is_array($workers)) {
+                $this->addWorkers($workers);
+            } else if ($workers instanceof Worker) {
+                $this->addWorker($workers);
             }
         }
     }
 
     /**
-     * Create queue manager
+     * Create worker manager
      *
-     * @param  mixed $queues
+     * @param  mixed $workers
      * @return Manager
      */
-    public static function create(mixed $queues = null): Manager
+    public static function create(mixed $workers = null): Manager
     {
-        return new self($queues);
+        return new self($workers);
     }
 
     /**
-     * Attempt to load pre-existing queues from adapter
+     * Attempt to load pre-existing workers from adapter
      *
      * @param  AbstractAdapter $adapter
      * @return Manager
      */
     public static function load(AbstractAdapter $adapter): Manager
     {
-        $queueNames = $adapter->getQueues();
-        $queues     = [];
+        $workerNames = $adapter->getWorkers();
+        $workers     = [];
 
-        foreach ($queueNames as $queueName) {
-            $queues[] = new Queue($queueName, $adapter);
+        foreach ($workerNames as $workerName) {
+            $workers[] = new Worker($workerName, $adapter);
         }
 
-        return new self($queues);
+        return new self($workers);
     }
 
     /**
-     * Add queue
+     * Add worker
      *
-     * @param  Queue $queue
+     * @param  Worker $worker
      * @return Manager
      */
-    public function addQueue(Queue $queue): Manager
+    public function addWorker(Worker $worker): Manager
     {
-        $this->queues[$queue->getName()] = $queue;
+        $this->workers[$worker->getName()] = $worker;
         return $this;
     }
 
     /**
-     * Add queues
+     * Add workers
      *
-     * @param  array $queues
+     * @param  array $workers
      * @return Manager
      */
-    public function addQueues(array $queues): Manager
+    public function addWorkers(array $workers): Manager
     {
-        foreach ($queues as $queue) {
-            $this->addQueue($queue);
+        foreach ($workers as $worker) {
+            $this->addWorker($worker);
         }
         return $this;
     }
 
     /**
-     * Get queues
+     * Get workers
      *
      * @return array
      */
-    public function getQueues(): array
+    public function getWorkers(): array
     {
-        return $this->queues;
+        return $this->workers;
     }
 
     /**
-     * Get queue
+     * Get worker
      *
-     * @param  string $queue
-     * @return Queue|null
+     * @param  string $worker
+     * @return Worker|null
      */
-    public function getQueue(string $queue): Queue|null
+    public function getWorker(string $worker): Worker|null
     {
-        return $this->queues[$queue] ?? null;
+        return $this->workers[$worker] ?? null;
     }
 
     /**
-     * Has queue
+     * Has worker
      *
-     * @param  string $queue
+     * @param  string $worker
      * @return bool
      */
-    public function hasQueue(string $queue): bool
+    public function hasWorker(string $worker): bool
     {
-        return (isset($this->queues[$queue]));
+        return (isset($this->workers[$worker]));
     }
 
     /**
-     * Register a queue with the manager
+     * Register a worker with the manager
      *
      * @param  string $name
      * @param  mixed $value
@@ -149,46 +149,46 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function __set(string $name, mixed $value): void
     {
-        $this->addQueue($value);
+        $this->addWorker($value);
     }
 
     /**
-     * Get a queue
+     * Get a worker
      *
      * @param  string $name
-     * @return ?Queue
+     * @return ?Worker
      */
-    public function __get(string $name): ?Queue
+    public function __get(string $name): ?Worker
     {
-        return $this->getQueue($name);
+        return $this->getWorker($name);
     }
 
     /**
-     * Determine if a queue is registered with the manager object
+     * Determine if a worker is registered with the manager object
      *
      * @param  string $name
      * @return bool
      */
     public function __isset(string $name): bool
     {
-        return isset($this->queues[$name]);
+        return isset($this->workers[$name]);
     }
 
     /**
-     * Unset a queue with the manager
+     * Unset a worker with the manager
      *
      * @param  string $name
      * @return void
      */
     public function __unset(string $name): void
     {
-        if (isset($this->queues[$name])) {
-            unset($this->queues[$name]);
+        if (isset($this->workers[$name])) {
+            unset($this->workers[$name]);
         }
     }
 
     /**
-     * Set a queue with the manager
+     * Set a worker with the manager
      *
      * @param  mixed $offset
      * @param  mixed $value
@@ -200,18 +200,18 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
-     * Get a queue
+     * Get a worker
      *
      * @param  mixed $offset
-     * @return ?Queue
+     * @return ?Worker
      */
-    public function offsetGet(mixed $offset): ?Queue
+    public function offsetGet(mixed $offset): ?Worker
     {
         return $this->__get($offset);
     }
 
     /**
-     * Determine if a queue is registered with the manager object
+     * Determine if a worker is registered with the manager object
      *
      * @param  mixed $offset
      * @return bool
@@ -222,7 +222,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
-     * Unset a queue from the manager
+     * Unset a worker from the manager
      *
      * @param  string $offset
      * @return void
@@ -239,7 +239,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function count(): int
     {
-        return count($this->queues);
+        return count($this->workers);
     }
 
     /**
@@ -249,7 +249,7 @@ class Manager implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function getIterator(): ArrayIterator
     {
-        return new ArrayIterator($this->queues);
+        return new ArrayIterator($this->workers);
     }
 
 }

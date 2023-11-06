@@ -16,7 +16,7 @@ namespace Pop\Queue\Adapter;
 use Pop\Queue\Processor\AbstractJob;
 
 /**
- * Queue adapter abstract class
+ * Worker adapter abstract class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -29,14 +29,14 @@ abstract class AbstractAdapter implements AdapterInterface
 {
 
     /**
-     * Get all queues currently registered with this adapter
+     * Get all workers currently registered with this adapter
      *
      * @return array
      */
-    abstract public function getQueues(): array;
+    abstract public function getWorkers(): array;
 
     /**
-     * Check if queue stack has job
+     * Check if worker has job
      *
      * @param  mixed $jobId
      * @return bool
@@ -44,7 +44,7 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function hasJob(mixed $jobId): bool;
 
     /**
-     * Get job from queue stack by job ID
+     * Get job from worker by job ID
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -53,17 +53,17 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
-     * Save job in queue
+     * Save job in worker
      *
-     * @param  string $queueName
+     * @param  string $workerName
      * @param  mixed $job
      * @param  array $jobData
      * @return string
      */
-    abstract public function saveJob(string $queueName, mixed $job, array $jobData) : string;
+    abstract public function saveJob(string $workerName, mixed $job, array $jobData) : string;
 
     /**
-     * Update job from queue stack by job ID
+     * Update job from worker by job ID
      *
      * @param  AbstractJob $job
      * @return void
@@ -71,24 +71,24 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function updateJob(AbstractJob $job): void;
 
     /**
-     * Check if queue adapter has jobs
+     * Check if worker adapter has jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    abstract public function hasJobs(mixed $queue): bool;
+    abstract public function hasJobs(mixed $worker): bool;
 
     /**
-     * Get queue jobs
+     * Get worker jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    abstract public function getJobs(mixed $queue, bool $unserialize = true): array;
+    abstract public function getJobs(mixed $worker, bool $unserialize = true): array;
 
     /**
-     * Check if queue stack has completed job
+     * Check if worker has completed job
      *
      * @param  mixed $jobId
      * @return bool
@@ -96,15 +96,15 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function hasCompletedJob(mixed $jobId): bool;
 
     /**
-     * Check if queue adapter has completed jobs
+     * Check if worker adapter has completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    abstract public function hasCompletedJobs(mixed $queue): bool;
+    abstract public function hasCompletedJobs(mixed $worker): bool;
 
     /**
-     * Get queue completed job
+     * Get worker completed job
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -113,16 +113,16 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getCompletedJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
-     * Get queue completed jobs
+     * Get worker completed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    abstract public function getCompletedJobs(mixed $queue, bool $unserialize = true): array;
+    abstract public function getCompletedJobs(mixed $worker, bool $unserialize = true): array;
 
     /**
-     * Check if queue stack has failed job
+     * Check if worker has failed job
      *
      * @param  mixed $jobId
      * @return bool
@@ -130,7 +130,7 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function hasFailedJob(mixed $jobId): bool;
 
     /**
-     * Get failed job from queue stack by job ID
+     * Get failed job from worker by job ID
      *
      * @param  mixed $jobId
      * @param  bool  $unserialize
@@ -139,44 +139,44 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function getFailedJob(mixed $jobId, bool $unserialize = true): array;
 
     /**
-     * Check if queue adapter has failed jobs
+     * Check if worker adapter has failed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return bool
      */
-    abstract public function hasFailedJobs(mixed $queue): bool;
+    abstract public function hasFailedJobs(mixed $worker): bool;
 
     /**
-     * Get queue failed jobs
+     * Get worker failed jobs
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $unserialize
      * @return array
      */
-    abstract public function getFailedJobs(mixed $queue, bool $unserialize = true): array;
+    abstract public function getFailedJobs(mixed $worker, bool $unserialize = true): array;
 
     /**
-     * Push job onto queue stack
+     * Push job onto worker
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  mixed $job
      * @param  mixed $priority
      * @return string
      */
-    abstract public function push(mixed $queue, mixed $job, mixed $priority = null): string;
+    abstract public function push(mixed $worker, mixed $job, mixed $priority = null): string;
 
     /**
-     * Move failed job to failed queue stack
+     * Move failed job to failed worker
      *
-     * @param  mixed           $queue
+     * @param  mixed           $worker
      * @param  mixed           $failedJob
      * @param  \Exception|null $exception
      * @return void
      */
-    abstract public function failed(mixed $queue, mixed $failedJob, \Exception|null $exception = null): void;
+    abstract public function failed(mixed $worker, mixed $failedJob, \Exception|null $exception = null): void;
 
     /**
-     * Pop job off of queue stack
+     * Pop job off of worker
      *
      * @param  mixed $jobId
      * @return void
@@ -184,24 +184,24 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function pop(mixed $jobId): void;
 
     /**
-     * Clear completed jobs off of the queue stack
+     * Clear completed jobs off of the worker
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @param  bool  $all
      * @return void
      */
-    abstract public function clear(mixed $queue, bool $all = false): void;
+    abstract public function clear(mixed $worker, bool $all = false): void;
 
     /**
-     * Clear failed jobs off of the queue stack
+     * Clear failed jobs off of the worker
      *
-     * @param  mixed $queue
+     * @param  mixed $worker
      * @return void
      */
-    abstract public function clearFailed(mixed $queue): void;
+    abstract public function clearFailed(mixed $worker): void;
 
     /**
-     * Flush all jobs off of the queue stack
+     * Flush all jobs off of the worker
      *
      * @param  bool $all
      * @return void
@@ -209,14 +209,14 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function flush(bool $all = false): void;
 
     /**
-     * Flush all failed jobs off of the queue stack
+     * Flush all failed jobs off of the worker
      *
      * @return void
      */
     abstract public function flushFailed(): void;
 
     /**
-     * Flush all pop queue items
+     * Flush all pop worker items
      *
      * @return void
      */

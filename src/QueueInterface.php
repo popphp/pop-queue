@@ -11,12 +11,12 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue;
 
-use Pop\Queue\Queue;
+use Pop\Queue\Processor\AbstractJob;
 
 /**
- * Abstract processor class
+ * Abstract queue class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -25,7 +25,7 @@ use Pop\Queue\Queue;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-interface ProcessorInterface
+interface QueueInterface
 {
 
 
@@ -34,18 +34,18 @@ interface ProcessorInterface
      *
      * @param  AbstractJob $job
      * @param  ?int        $maxAttempts
-     * @return ProcessorInterface
+     * @return QueueInterface
      */
-    public function addJob(AbstractJob $job, ?int $maxAttempts = null): ProcessorInterface;
+    public function addJob(AbstractJob $job, ?int $maxAttempts = null): QueueInterface;
 
     /**
      * Add jobs
      *
      * @param  array $jobs
      * @param  ?int  $maxAttempts
-     * @return ProcessorInterface
+     * @return QueueInterface
      */
-    public function addJobs(array $jobs, ?int $maxAttempts = null): ProcessorInterface;
+    public function addJobs(array $jobs, ?int $maxAttempts = null): QueueInterface;
 
     /**
      * Get jobs
@@ -182,9 +182,9 @@ interface ProcessorInterface
     /**
      * Processor next job
      *
-     * @param  ?Queue $queue
+     * @param  ?Worker $worker
      * @return mixed
      */
-    public function processNext(?Queue $queue = null): mixed;
+    public function processNext(?Worker $worker = null): mixed;
 
 }
