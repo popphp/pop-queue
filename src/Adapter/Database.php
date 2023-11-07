@@ -105,7 +105,7 @@ class Database extends AbstractAdapter
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
-        return $rows[0]['index'] ?? 0;
+        return (isset($rows[0]['index'])) ? (int)$rows[0]['index'] : 0;
     }
 
     /**
@@ -113,14 +113,14 @@ class Database extends AbstractAdapter
      *
      * @return int
      */
-    public function getLength(): int
+    public function getEnd(): int
     {
         $sql = $this->db->createSql();
         $sql->select('index')->from($this->table)->orderBy('index', 'DESC')->limit(1);
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
-        return $rows[0]['index'] ?? 0;
+        return (isset($rows[0]['index'])) ? (int)$rows[0]['index'] : 0;
     }
 
     /**
@@ -136,7 +136,7 @@ class Database extends AbstractAdapter
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
-        return (int)$rows[0]['status'] ?? 0;
+        return (isset($rows[0]['status'])) ? (int)$rows[0]['status'] : 0;
     }
 
     /**
@@ -147,24 +147,38 @@ class Database extends AbstractAdapter
      */
     public function push(AbstractJob $job): Database
     {
-        $sql = $this->db->createSql();
-        $sql->insert($this->table)->values([
-            'index'   => ':index',
-            'type'    => ':type',
-            'job_id'  => ':job_id',
-            'payload' => ':payload'
-        ]);
+        $status = 1;
+        $index  = ($this->getEnd() + 1);
 
-        $jobData = [
-            'index'   => $this->getLength() + 1,
-            'type'    => 'job',
-            'job_id'  => $job->getJobId(),
-            'payload' => serialize(clone $job)
-        ];
+        if ($job->hasFailed()) {
+            $status = 2;
+            if ($this->isFilo()) {
+                $index = ($this->getStart() - 1);
+            }
+        }
 
-        $this->db->prepare($sql);
-        $this->db->bindParams($jobData);
-        $this->db->execute();
+        if ($job->isValid()) {
+            $sql = $this->db->createSql();
+            $sql->insert($this->table)->values([
+                'index'   => ':index',
+                'type'    => ':type',
+                'job_id'  => ':job_id',
+                'payload' => ':payload',
+                'status'  => ':status'
+            ]);
+
+            $jobData = [
+                'index'   => $index,
+                'type'    => 'job',
+                'job_id'  => $job->getJobId(),
+                'payload' => serialize(clone $job),
+                'status'  => $status
+            ];
+
+            $this->db->prepare($sql);
+            $this->db->bindParams($jobData);
+            $this->db->execute();
+        }
 
         return $this;
     }
@@ -177,41 +191,22 @@ class Database extends AbstractAdapter
     public function pop(): ?AbstractJob
     {
         $job    = false;
-        $length = $this->getLength();
+        $index  = ($this->isFifo()) ? $this->getStart() : $this->getEnd();
+        $status = $this->getStatus($index);
 
-        if ($this->isFilo()) {
-            $index  = $this->getStart();
-            $status = $this->getStatus($index);
-            if ($status == 1) {
-                $sql = $this->db->createSql();
-                $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$index);
-                $this->db->query($sql);
+        if ($status != 0) {
+            $sql = $this->db->createSql();
+            $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$index);
+            $this->db->query($sql);
 
-                $sql->select('payload')->from($this->table)->where('index = ' . (int)$index);
-                $this->db->query($sql);
-                $rows = $this->db->fetchAll();
-                if (isset($rows['0']) && isset($rows[0]['payload'])) {
-                    $job = $rows[0]['payload'];
-                }
-                $sql->delete()->from($this->table)->where('index = ' . (int)$index);
-                $this->db->query($sql);
+            $sql->select('payload')->from($this->table)->where('index = ' . (int)$index);
+            $this->db->query($sql);
+            $rows = $this->db->fetchAll();
+            if (isset($rows[0]['payload'])) {
+                $job = $rows[0]['payload'];
             }
-        } else {
-            $status = $this->getStatus($length);
-            if ($status == 1) {
-                $sql = $this->db->createSql();
-                $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$length);
-                $this->db->query($sql);
-
-                $sql->select('payload')->from($this->table)->where('index = ' . (int)$length);
-                $this->db->query($sql);
-                $rows = $this->db->fetchAll();
-                if (isset($rows['0']) && isset($rows[0]['payload'])) {
-                    $job = $rows[0]['payload'];
-                }
-                $sql->delete()->from($this->table)->where('index = ' . (int)$length);
-                $this->db->query($sql);
-            }
+            $sql->delete()->from($this->table)->where('index = ' . (int)$index);
+            $this->db->query($sql);
         }
 
         return ($job !== false) ? unserialize($job) : null;
@@ -280,7 +275,7 @@ class Database extends AbstractAdapter
         $this->db->execute();
         $rows = $this->db->fetchAll();
 
-        return (isset($rows[0]) && isset($rows[0]['payload'])) ? unserialize($rows[0]['payload']) : null;
+        return (isset($rows[0]['payload'])) ? unserialize($rows[0]['payload']) : null;
     }
 
     /**
@@ -295,7 +290,7 @@ class Database extends AbstractAdapter
         $this->db->query($sql);
         $rows = $this->db->fetchAll();
 
-        return $rows[0]['total'] ?? 0;
+        return (isset($rows[0]['total'])) ? (int)$rows[0]['total'] : 0;
 
     }
 
@@ -325,7 +320,7 @@ class Database extends AbstractAdapter
             ->varchar('type', 255)
             ->varchar('job_id', 255)
             ->text('payload')
-            ->int('status', 16)->defaultIs(1)
+            ->int('status', 1)->defaultIs(1)
             ->primary('id');
 
         $this->db->query($schema);

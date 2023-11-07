@@ -115,11 +115,18 @@ abstract class AbstractAdapter implements AdapterInterface
     }
 
     /**
-     * Get queue length
+     * Get queue start index
      *
      * @return int
      */
-    abstract public function getLength(): int;
+    abstract public function getStart(): int;
+
+    /**
+     * Get queue end index
+     *
+     * @return int
+     */
+    abstract public function getEnd(): int;
 
     /**
      * Get queue job status

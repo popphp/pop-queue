@@ -69,11 +69,21 @@ class Sqs extends AbstractAdapter
     }
 
     /**
-     * Get queue length
+     * Get queue start index
      *
      * @return int
      */
-    public function getLength(): int
+    public function getStart(): int
+    {
+
+    }
+
+    /**
+     * Get queue end index
+     *
+     * @return int
+     */
+    public function getEnd(): int
     {
 
     }
@@ -148,6 +158,16 @@ class Sqs extends AbstractAdapter
      * @return int
      */
     public function getTaskCount(): int
+    {
+
+    }
+
+    /**
+     * Has scheduled tasks
+     *
+     * @return bool
+     */
+    public function hasTasks(): bool
     {
 
     }

@@ -118,11 +118,21 @@ class Redis extends AbstractAdapter
     }
 
     /**
+     * Get queue start index
+     *
+     * @return int
+     */
+    public function getStart(): int
+    {
+        return 0;
+    }
+
+    /**
      * Get queue length
      *
      * @return int
      */
-    public function getLength(): int
+    public function getEnd(): int
     {
         return $this->redis->lLen($this->prefix);
     }
@@ -146,9 +156,19 @@ class Redis extends AbstractAdapter
      */
     public function push(AbstractJob $job): Redis
     {
-        if (($this->redis->lPush($this->prefix, serialize(clone $job))) !== false) {
-            $this->redis->lPush($this->prefix . ':status', 1);
+        $status = ($job->hasFailed()) ? 2 : 1;
+        if ($job->isValid()) {
+            if (($job->hasFailed()) && ($this->isFilo())) {
+                if (($this->redis->rPush($this->prefix, serialize(clone $job))) !== false) {
+                    $this->redis->rPush($this->prefix . ':status', $status);
+                }
+            } else {
+                if (($this->redis->lPush($this->prefix, serialize(clone $job))) !== false) {
+                    $this->redis->lPush($this->prefix . ':status', $status);
+                }
+            }
         }
+
         return $this;
     }
 
@@ -160,18 +180,18 @@ class Redis extends AbstractAdapter
     public function pop(): ?AbstractJob
     {
         $job    = false;
-        $length = $this->getLength();
+        $length = $this->getEnd();
 
         if ($this->isFilo()) {
             $status = $this->getStatus(0);
-            if ($status == 1) {
+            if ($status != 0) {
                 $this->redis->lSet($this->prefix . ':status', 0, 0);
                 $job = $this->redis->lPop($this->prefix);
                 $this->redis->lPop($this->prefix . ':status');
             }
         } else {
             $status = $this->getStatus($length - 1);
-            if ($status == 1) {
+            if ($status != 0) {
                 $this->redis->lSet($this->prefix . ':status', $length - 1, 0);
                 $job = $this->redis->rPop($this->prefix);
                 $this->redis->rPop($this->prefix . ':status');

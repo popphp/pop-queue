@@ -291,9 +291,10 @@ interface JobInterface
     /**
      * Set job as failed
      *
-     * @return JobInterface
+     * @param  ?string $message
+     * @return AbstractJob
      */
-    public function failed(): JobInterface;
+    function failed(?string $message = null): JobInterface;
 
     /**
      * Has job failed

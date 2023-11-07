@@ -88,7 +88,7 @@ abstract class AbstractJob implements JobInterface
      * Max attempts
      * @var int
      */
-    protected int $maxAttempts = 1;
+    protected int $maxAttempts = 0;
 
     /**
      * Attempts
@@ -548,12 +548,18 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job as failed
      *
+     * @param  ?string $message
      * @return AbstractJob
      */
-    public function failed(): AbstractJob
+    public function failed(?string $message = null): AbstractJob
     {
         $this->failed = time();
         $this->attempts++;
+
+        if ($message !== null) {
+            $this->addFailedMessage($message);
+        }
+
         return $this;
     }
 
@@ -585,7 +591,8 @@ abstract class AbstractJob implements JobInterface
      */
     public function addFailedMessage(string $message): AbstractJob
     {
-        $this->failedMessages[] = $message;
+        $index = $this->failed ?? time();
+        $this->failedMessages[$index] = $message;
         return $this;
     }
 

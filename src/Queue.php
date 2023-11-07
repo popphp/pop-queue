@@ -189,7 +189,7 @@ class Queue
      * @param  ?int        $maxAttempts
      * @return Queue
      */
-    public function addJob(AbstractJob $job, ?int $maxAttempts = 1): Queue
+    public function addJob(AbstractJob $job, ?int $maxAttempts = null): Queue
     {
         if ($maxAttempts !== null) {
             $job->setMaxAttempts($maxAttempts);
@@ -206,7 +206,7 @@ class Queue
      * @param  ?int  $maxAttempts
      * @return Queue
      */
-    public function addJobs(array $jobs, ?int $maxAttempts = 1): Queue
+    public function addJobs(array $jobs, ?int $maxAttempts = null): Queue
     {
         foreach ($jobs as $job) {
             $this->addJob($job, $maxAttempts);
@@ -221,7 +221,7 @@ class Queue
      * @param  ?int $maxAttempts
      * @return Queue
      */
-    public function addTask(Task $task, ?int $maxAttempts = 0): Queue
+    public function addTask(Task $task, ?int $maxAttempts = null): Queue
     {
         return $this->addJob($task, $maxAttempts);
     }
@@ -233,7 +233,7 @@ class Queue
      * @param  ?int  $maxAttempts
      * @return Queue
      */
-    public function addTasks(array $tasks, ?int $maxAttempts = 0): Queue
+    public function addTasks(array $tasks, ?int $maxAttempts = null): Queue
     {
         foreach ($tasks as $task) {
             $this->addTask($task, $maxAttempts);

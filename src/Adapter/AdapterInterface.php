@@ -73,11 +73,18 @@ interface AdapterInterface
     public function isLifo(): bool;
 
     /**
-     * Get queue length
+     * Get queue start index
      *
      * @return int
      */
-    public function getLength(): int;
+    public function getStart(): int;
+
+    /**
+     * Get queue end index
+     *
+     * @return int
+     */
+    public function getEnd(): int;
 
     /**
      * Get queue job status

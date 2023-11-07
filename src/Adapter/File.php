@@ -91,13 +91,25 @@ class File extends AbstractAdapter
     }
 
     /**
-     * Get queue length
+     * Get queue start index
      *
      * @return int
      */
-    public function getLength(): int
+    public function getStart(): int
     {
+        $folders = $this->getFolders($this->folder);
+        return $folders[0] ?? 0;
+    }
 
+    /**
+     * Get queue end index
+     *
+     * @return int
+     */
+    public function getEnd(): int
+    {
+        $folders = $this->getFolders($this->folder);
+        return (!empty($folders)) ? end($folders) : 0;
     }
 
     /**
@@ -108,7 +120,8 @@ class File extends AbstractAdapter
      */
     public function getStatus(int $index): int
     {
-
+        return (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status')) ?
+            file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') : 0;
     }
 
     /**
@@ -119,6 +132,24 @@ class File extends AbstractAdapter
      */
     public function push(AbstractJob $job): File
     {
+        $status = 1;
+        $index  = ($this->getEnd() + 1);
+
+        if ($job->hasFailed()) {
+            $status = 2;
+            if ($this->isFilo()) {
+                $index = ($this->getStart() - 1);
+            }
+        }
+
+        if ($job->isValid()) {
+            if (!file_exists($this->folder . DIRECTORY_SEPARATOR . $index)) {
+                mkdir($this->folder . DIRECTORY_SEPARATOR . $index);
+            }
+            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', $status);
+        }
+
         return $this;
     }
 
@@ -129,7 +160,23 @@ class File extends AbstractAdapter
      */
     public function pop(): ?AbstractJob
     {
-        return null;
+        $job    = false;
+        $index  = ($this->isFifo()) ? $this->getStart() : $this->getEnd();
+        $status = $this->getStatus($index);
+
+        if ($status != 0) {
+            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload')) {
+                $job = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+                unlink($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+                if (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status')) {
+                    unlink($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status');
+                }
+                rmdir($this->folder . DIRECTORY_SEPARATOR . $index);
+            }
+        }
+
+        return ($job !== false) ? unserialize($job) : null;
     }
 
     /**
@@ -140,6 +187,9 @@ class File extends AbstractAdapter
      */
     public function schedule(Task $task): File
     {
+        file_put_contents(
+            $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+        );
         return $this;
     }
 
@@ -150,7 +200,16 @@ class File extends AbstractAdapter
      */
     public function getTasks(): array
     {
+        $files = $this->getFIles($this->folder);
+        $tasks = [];
 
+        foreach ($files as $file) {
+            if (str_starts_with($file, 'task-')) {
+                $tasks[] = substr($file, 5);
+            }
+        }
+
+        return $tasks;
     }
 
     /**
@@ -161,7 +220,8 @@ class File extends AbstractAdapter
      */
     public function getTask(string $taskId): ?Task
     {
-
+        return (file_exists($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) ?
+            unserialize(file_get_contents($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) : null;
     }
 
     /**
@@ -171,7 +231,7 @@ class File extends AbstractAdapter
      */
     public function getTaskCount(): int
     {
-
+        return count($this->getTasks());
     }
 
     /**
@@ -181,7 +241,7 @@ class File extends AbstractAdapter
      */
     public function hasTasks(): bool
     {
-
+        return ($this->getTaskCount() > 0);
     }
 
     /**
