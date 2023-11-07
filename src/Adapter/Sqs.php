@@ -13,11 +13,12 @@
  */
 namespace Pop\Queue\Adapter;
 
+use Aws\Sqs\SqsClient;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
 
 /**
- * Adapter interface
+ * SQS adapter class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -26,58 +27,56 @@ use Pop\Queue\Process\Task;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-interface AdapterInterface
+class Sqs extends AbstractAdapter
 {
 
     /**
-     * Set queue priority
-     *
-     * @param  string $priority
-     * @return AdapterInterface
+     * SQS client
+     * @var ?SqsClient
      */
-    public function setPriority(string $priority = 'FIFO'): AdapterInterface;
+    protected ?SqsClient $client = null;
+
 
     /**
-     * Get queue priority
+     * Constructor
      *
-     * @return string
+     * @param SqsClient $client
      */
-    public function getPriority(): string;
+    public function __construct(SqsClient $client, ?string $priority = null)
+    {
+        $this->client = $client;
+        parent::__construct($priority);
+    }
 
     /**
-     * Is FIFO
+     * Get SQS client
      *
-     * @return bool
+     * @return ?SqsClient
      */
-    public function isFifo(): bool;
+    public function getClient(): ?SqsClient
+    {
+        return $this->client;
+    }
 
     /**
-     * Is FILO
+     * Get SQS client (alias)
      *
-     * @return bool
+     * @return ?SqsClient
      */
-    public function isFilo(): bool;
-
-    /**
-     * Is LILO (alias to FIFO)
-     *
-     * @return bool
-     */
-    public function isLilo(): bool;
-
-    /**
-     * Is LIFO (alias to FILO)
-     *
-     * @return bool
-     */
-    public function isLifo(): bool;
+    public function client(): ?SqsClient
+    {
+        return $this->client;
+    }
 
     /**
      * Get queue length
      *
      * @return int
      */
-    public function getLength(): int;
+    public function getLength(): int
+    {
+
+    }
 
     /**
      * Get queue job status
@@ -85,37 +84,52 @@ interface AdapterInterface
      * @param  int $index
      * @return int
      */
-    public function getStatus(int $index): int;
+    public function getStatus(int $index): int
+    {
+
+    }
 
     /**
      * Push job on to queue
      *
      * @param  AbstractJob $job
-     * @return AdapterInterface
+     * @return Sqs
      */
-    public function push(AbstractJob $job): AdapterInterface;
+    public function push(AbstractJob $job): Sqs
+    {
+        return $this;
+    }
 
     /**
      * Pop job off of queue
      *
      * @return ?AbstractJob
      */
-    public function pop(): ?AbstractJob;
+    public function pop(): ?AbstractJob
+    {
+        return null;
+    }
 
     /**
      * Schedule job with queue
      *
      * @param  Task $task
-     * @return AdapterInterface
+     * @return Sqs
      */
-    public function schedule(Task $task): AdapterInterface;
+    public function schedule(Task $task): Sqs
+    {
+        return $this;
+    }
 
     /**
      * Get scheduled tasks
      *
      * @return array
      */
-    public function getTasks(): array;
+    public function getTasks(): array
+    {
+
+    }
 
     /**
      * Get scheduled task
@@ -123,20 +137,19 @@ interface AdapterInterface
      * @param  string $taskId
      * @return ?Task
      */
-    public function getTask(string $taskId): ?Task;
+    public function getTask(string $taskId): ?Task
+    {
+
+    }
 
     /**
      * Get scheduled tasks count
      *
      * @return int
      */
-    public function getTaskCount(): int;
+    public function getTaskCount(): int
+    {
 
-    /**
-     * Has scheduled tasks
-     *
-     * @return bool
-     */
-    public function hasTasks(): bool;
+    }
 
 }

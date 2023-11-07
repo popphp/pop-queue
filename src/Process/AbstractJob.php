@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue\Process;
 
 use Pop\Application;
 use Pop\Utils\CallableObject;
@@ -77,6 +77,12 @@ abstract class AbstractJob implements JobInterface
      * @var ?int
      */
     protected ?int $failed = null;
+
+    /**
+     * Job failed messages
+     * @var array
+     */
+    protected array $failedMessages = [];
 
     /**
      * Max attempts
@@ -157,6 +163,9 @@ abstract class AbstractJob implements JobInterface
      */
     public function getJobId(): ?string
     {
+        if (!$this->hasJobId()) {
+            $this->generateJobId();
+        }
         return $this->id;
     }
 
@@ -566,6 +575,38 @@ abstract class AbstractJob implements JobInterface
     public function getFailed(): ?int
     {
         return $this->failed;
+    }
+
+    /**
+     * Add failed message
+     *
+     * @param  string $message
+     * @return AbstractJob
+     */
+    public function addFailedMessage(string $message): AbstractJob
+    {
+        $this->failedMessages[] = $message;
+        return $this;
+    }
+
+    /**
+     * Has failed messages
+     *
+     * @return bool
+     */
+    public function hasFailedMessages(): bool
+    {
+        return !empty($this->failedMessages);
+    }
+
+    /**
+     * Get failed messages
+     *
+     * @return array
+     */
+    public function getFailedMessages(): array
+    {
+        return $this->failedMessages;
     }
 
     /**

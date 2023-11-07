@@ -11,10 +11,10 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue\Process;
 
 /**
- * Job cron class
+ * Cron class
  *
  * @category   Pop
  * @package    Pop\Queue

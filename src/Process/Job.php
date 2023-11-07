@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue\Process;
 
 /**
  * Job class

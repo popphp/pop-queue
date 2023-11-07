@@ -25,7 +25,8 @@
         "popphp/pop-db": "^6.0.0",
         "popphp/pop-utils": "^2.0.0",
         "opis/closure": "^3.6.3",
-        "ext-redis": "*"
+        "ext-redis": "*",
+        "aws/aws-sdk-php": "^3.283.11"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0.0"

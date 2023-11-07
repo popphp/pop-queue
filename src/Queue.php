@@ -13,9 +13,9 @@
  */
 namespace Pop\Queue;
 
-use Pop\Queue\Processor\AbstractJob;
-use Pop\Queue\Processor\Job;
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Adapter\AdapterInterface;
+use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\Task;
 
 /**
  * Queue class
@@ -27,175 +27,218 @@ use Pop\Queue\Processor\Task;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-class Queue extends AbstractQueue
+class Queue
 {
 
     /**
-     * Worker priority constants
+     * Queue priority constants
      */
     const FIFO = 'FIFO'; // Same as LILO
     const FILO = 'FILO'; // Same as LIFO
 
     /**
-     * Worker type
+     * Queue name
      * @var ?string
      */
-    protected ?string $priority = 'FIFO';
+    protected ?string $name = null;
+
+    /**
+     * Queue adapter
+     * @var ?AdapterInterface
+     */
+    protected ?AdapterInterface $adapter = null;
 
     /**
      * Constructor
      *
-     * Instantiate the worker object
+     * Instantiate the queue object
      *
-     * @param  string $priority
+     * @param string           $name
+     * @param AdapterInterface $adapter
+     * @param ?string          $priority
      */
-    public function __construct(string $priority = 'FIFO')
+    public function __construct(string $name, AdapterInterface $adapter, ?string $priority = null)
     {
-        $this->setPriority($priority);
+        $this->setName($name);
+        $this->setAdapter($adapter);
+        if ($priority !== null) {
+            $this->setPriority($priority);
+        }
     }
 
     /**
-     * Create a worker with jobs
+     * Set name
      *
-     * @param  AbstractJob|array $jobs
-     * @param  string            $priority
+     * @param  string $name
      * @return Queue
      */
-    public static function create(AbstractJob|array $jobs, string $priority = 'FIFO'): Queue
+    public function setName(string $name): Queue
     {
-        $queue = new self($priority);
-
-        if (!is_array($jobs)) {
-            $jobs = [$jobs];
-        }
-        foreach ($jobs as $job) {
-            if ($job instanceof Task) {
-                $queue->addTask($job);
-            } else if ($job instanceof Job) {
-                $queue->addJob($job);
-            }
-        }
-
-        return $queue;
+        $this->name = $name;
+        return $this;
     }
 
     /**
-     * Set worker priority
+     * Get name
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Set adapter
+     *
+     * @param  AdapterInterface $adapter
+     * @return Queue
+     */
+    public function setAdapter(AdapterInterface $adapter): Queue
+    {
+        $this->adapter = $adapter;
+        return $this;
+    }
+
+    /**
+     * Get adapter
+     *
+     * @return AdapterInterface
+     */
+    public function getAdapter(): AdapterInterface
+    {
+        return $this->adapter;
+    }
+
+    /**
+     * Get adapter (alias)
+     *
+     * @return AdapterInterface
+     */
+    public function adapter(): AdapterInterface
+    {
+        return $this->adapter;
+    }
+
+    /**
+     * Set queue priority
      *
      * @param  string $priority
      * @return Queue
      */
     public function setPriority(string $priority = 'FIFO'): Queue
     {
-        if (defined('self::' . $priority)) {
-            $this->priority = $priority;
-        }
+        $this->adapter->setPriority($priority);
         return $this;
     }
 
     /**
-     * Get worker priority
+     * Get queue priority
      *
      * @return string
      */
     public function getPriority(): string
     {
-        return $this->priority;
+        return $this->adapter->getPriority();
     }
 
     /**
-     * Is worker fifo
+     * Is FIFO
      *
      * @return bool
      */
     public function isFifo(): bool
     {
-        return ($this->priority == self::FIFO);
+        return $this->adapter->isFifo();
     }
 
     /**
-     * Is worker filo
+     * Is FILO
      *
      * @return bool
      */
     public function isFilo(): bool
     {
-        return ($this->priority == self::FILO);
+        return $this->adapter->isFilo();
     }
 
     /**
-     * Process next job
+     * Is LILO (alias to FIFO)
      *
-     * @param  ?Worker $worker
-     * @throws Exception
-     * @return mixed
+     * @return bool
      */
-    public function processNext(?Worker $worker = null): mixed
+    public function isLilo(): bool
     {
-        $nextIndex = $this->getNextIndex();
-
-        if ($this->hasJob($nextIndex)) {
-            $scheduleCheck = true;
-            $isSubMinute   = false;
-
-            // Check scheduled task
-            if ($this->jobs[$nextIndex] instanceof Task) {
-                $isSubMinute    = ($this->jobs[$nextIndex]->cron()->hasSeconds());
-                $scheduleCheck = $this->jobs[$nextIndex]->cron()->evaluate();
-            }
-
-            // If there is a sub-minute scheduled task
-            if ($isSubMinute) {
-                $timer = 0;
-                while ($timer < 60) {
-                    if (($this->jobs[$nextIndex]->isValid()) && ($scheduleCheck)) {
-                        $this->jobs[$nextIndex]->__wakeup();
-                        $this->processJob($nextIndex, $worker);
-                    }
-                    sleep(1);
-                    $scheduleCheck = $this->jobs[$nextIndex]->cron()->evaluate();
-                    $timer++;
-                }
-            // Else, process normal scheduled task
-            } else if (($this->jobs[$nextIndex]->isValid()) && ($scheduleCheck)) {
-                $this->processJob($nextIndex, $worker);
-            }
-        }
-
-        return $nextIndex;
+        return $this->adapter->isLilo();
     }
 
     /**
-     * Process job
+     * Is LIFO (alias to FILO)
      *
-     * @param  int     $nextIndex
-     * @param  ?Worker $worker
-     * @return void
+     * @return bool
      */
-    public function processJob(int $nextIndex, ?Worker $worker = null): void
+    public function isLifo(): bool
     {
-        try {
-            $application = (($worker !== null) && ($worker->hasApplication() !== null)) ? $worker->application() : null;
-            $results = $this->jobs[$nextIndex]->run($application);
-            if (!empty($results)) {
-                $this->results[$nextIndex] = $results;
-            }
-            $this->jobs[$nextIndex]->complete();
-            $this->completed[$nextIndex] = $this->jobs[$nextIndex];
-
-            if (($worker !== null) && ($this->jobs[$nextIndex]->hasJobId()) &&
-                ($worker->adapter()->hasJob($this->jobs[$nextIndex]->getJobId()))) {
-                $worker->adapter()->updateJob($this->jobs[$nextIndex]);
-            }
-        } catch (\Exception $e) {
-            $this->jobs[$nextIndex]->failed();
-            $this->failed[$nextIndex]           = $this->jobs[$nextIndex];
-            $this->failedExceptions[$nextIndex] = $e;
-            if (($worker !== null) && ($this->failed[$nextIndex]->hasJobId()) &&
-                ($worker->adapter()->hasJob($this->failed[$nextIndex]->getJobId()))) {
-                $worker->adapter()->failed($worker->getName(), $this->failed[$nextIndex]->getJobId(), $e);
-            }
-        }
+        return $this->adapter->isLifo();
     }
 
+    /**
+     * Add job
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $maxAttempts
+     * @return Queue
+     */
+    public function addJob(AbstractJob $job, ?int $maxAttempts = 1): Queue
+    {
+        if ($maxAttempts !== null) {
+            $job->setMaxAttempts($maxAttempts);
+        }
+        $this->adapter->push($job);
+
+        return $this;
+    }
+
+    /**
+     * Add jobs
+     *
+     * @param  array $jobs
+     * @param  ?int  $maxAttempts
+     * @return Queue
+     */
+    public function addJobs(array $jobs, ?int $maxAttempts = 1): Queue
+    {
+        foreach ($jobs as $job) {
+            $this->addJob($job, $maxAttempts);
+        }
+        return $this;
+    }
+
+    /**
+     * Add task (alias)
+     *
+     * @param  Task $task
+     * @param  ?int $maxAttempts
+     * @return Queue
+     */
+    public function addTask(Task $task, ?int $maxAttempts = 0): Queue
+    {
+        return $this->addJob($task, $maxAttempts);
+    }
+
+    /**
+     * Add tasks
+     *
+     * @param  array $tasks
+     * @param  ?int  $maxAttempts
+     * @return Queue
+     */
+    public function addTasks(array $tasks, ?int $maxAttempts = 0): Queue
+    {
+        foreach ($tasks as $task) {
+            $this->addTask($task, $maxAttempts);
+        }
+        return $this;
+    }
+    
 }

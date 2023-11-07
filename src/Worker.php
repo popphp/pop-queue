@@ -13,8 +13,7 @@
  */
 namespace Pop\Queue;
 
-use Pop\Queue\Adapter\AdapterInterface;
-use Pop\Application;
+use ArrayIterator;
 
 /**
  * Queue worker class
@@ -26,29 +25,11 @@ use Pop\Application;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-class Worker
+class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
 {
 
     /**
-     * Worker name
-     * @var ?string
-     */
-    protected ?string $name = null;
-
-    /**
-     * Worker adapter
-     * @var ?AdapterInterface
-     */
-    protected ?AdapterInterface $adapter = null;
-
-    /**
-     * Application object
-     * @var ?Application
-     */
-    protected ?Application $application = null;
-
-    /**
-     * Workers queues
+     * Queues
      * @var array
      */
     protected array $queues = [];
@@ -56,117 +37,41 @@ class Worker
     /**
      * Constructor
      *
-     * Instantiate the queue object
+     * Instantiate the queue worker object.
      *
-     * @param  string                   $name
-     * @param  Adapter\AdapterInterface $adapter
-     * @param  ?Application             $application
+     * @param  mixed $queues
      */
-    public function __construct(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null)
+    public function __construct(mixed $queues = null)
     {
-        $this->name        = $name;
-        $this->adapter     = $adapter;
-        $this->application = $application;
-    }
-
-    /**
-     * Create a new queue instance
-     *
-     * @param  string                   $name
-     * @param  Adapter\AdapterInterface $adapter
-     * @param  ?Application             $application
-     * @return Worker
-     */
-    public static function create(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null): Worker
-    {
-        return new self($name, $adapter, $application);
-    }
-
-    /**
-     * Load queue from adapter
-     *
-     * @param  string                   $name
-     * @param  Adapter\AdapterInterface $adapter
-     * @param  ?Application             $application
-     * @return Worker
-     */
-    public static function load(string $name, Adapter\AdapterInterface $adapter, ?Application $application = null): Worker
-    {
-        $worker = new static($name, $adapter, $application);
-
-        if ($adapter->hasJobs($name)) {
-            $jobs      = $adapter->getJobs($name);
-            $fifoQueue = new Queue();
-            $filoQueue = new Queue(Queue::FILO);
-
-            foreach ($jobs as $job) {
-                if ($job['priority'] == Queue::FILO) {
-                    $filoQueue->addJob($job['payload']);
-                } else {
-                    $fifoQueue->addJob($job['payload']);
-                }
-            }
-
-            if ($fifoQueue->hasJobs()) {
-                $worker->addQueue($fifoQueue);
-            }
-            if ($filoQueue->hasJobs()) {
-                $worker->addQueue($filoQueue);
+        if (!empty($queues)) {
+            if (is_array($queues)) {
+                $this->addQueues($queues);
+            } else if ($queues instanceof Queue) {
+                $this->addQueue($queues);
             }
         }
-
-        return $worker;
     }
 
     /**
-     * Get the queue name
+     * Create queue worker worker
      *
-     * @return ?string
+     * @param  mixed $queues
+     * @return Worker
      */
-    public function getName(): ?string
+    public static function create(mixed $queues = null): Worker
     {
-        return $this->name;
+        return new self($queues);
     }
 
     /**
-     * Get the adapter
-     *
-     * @return ?AdapterInterface
-     */
-    public function adapter(): ?AdapterInterface
-    {
-        return $this->adapter;
-    }
-
-    /**
-     * Get the application
-     *
-     * @return ?Application
-     */
-    public function application(): ?Application
-    {
-        return $this->application;
-    }
-
-    /**
-     * Has application
-     *
-     * @return bool
-     */
-    public function hasApplication(): bool
-    {
-        return ($this->application !== null);
-    }
-
-    /**
-     * Add a queue
+     * Add queue
      *
      * @param  Queue $queue
      * @return Worker
      */
     public function addQueue(Queue $queue): Worker
     {
-        $this->queues[] = $queue;
+        $this->queues[$queue->getName()] = $queue;
         return $this;
     }
 
@@ -181,7 +86,6 @@ class Worker
         foreach ($queues as $queue) {
             $this->addQueue($queue);
         }
-
         return $this;
     }
 
@@ -196,294 +100,137 @@ class Worker
     }
 
     /**
-     * Has queues
+     * Get queue
      *
-     * @return bool
+     * @param  string $queue
+     * @return ?Queue
      */
-    public function hasQueues(): bool
+    public function getQueue(string $queue): ?Queue
     {
-        return !empty($this->queues);
+        return $this->queues[$queue] ?? null;
     }
 
     /**
-     * Push queue jobs to queue adapter
+     * Has queue
      *
-     * @return array
+     * @param  string $queue
+     * @return bool
      */
-    public function pushQueues(): array
+    public function hasQueue(string $queue): bool
     {
-        $pushed = [];
+        return (isset($this->queues[$queue]));
+    }
 
-        foreach ($this->queues as $queue) {
-            if ($queue->hasJobs()) {
-                foreach ($queue->getJobs() as $job) {
-                    $jobId = $this->adapter->push($this, $job, $queue->getPriority());
-                    if (!empty($jobId)) {
-                        $pushed[$jobId] = $job->getJobDescription();
-                    }
-                }
-            }
+    /**
+     * Register a queue with the worker
+     *
+     * @param  string $name
+     * @param  mixed $value
+     * @return void
+     */
+    public function __set(string $name, mixed $value): void
+    {
+        $this->addQueue($value);
+    }
+
+    /**
+     * Get a queue
+     *
+     * @param  string $name
+     * @return ?Queue
+     */
+    public function __get(string $name): ?Queue
+    {
+        return $this->getQueue($name);
+    }
+
+    /**
+     * Determine if a queue is registered with the worker object
+     *
+     * @param  string $name
+     * @return bool
+     */
+    public function __isset(string $name): bool
+    {
+        return isset($this->queues[$name]);
+    }
+
+    /**
+     * Unset a queue with the worker
+     *
+     * @param  string $name
+     * @return void
+     */
+    public function __unset(string $name): void
+    {
+        if (isset($this->queues[$name])) {
+            unset($this->queues[$name]);
         }
-
-        return $pushed;
     }
 
     /**
-     * Push all jobs to queue adapter (alias)
+     * Set a queue with the worker
      *
-     * @return array
-     */
-    public function pushAll(): array
-    {
-        return $this->pushQueues();
-    }
-
-    /**
-     * Process schedulers in the queue
-     *
-     * @return array
-     */
-    public function processQueues(): array
-    {
-        $results = [];
-
-        if ($this->hasQueues()) {
-            foreach ($this->queues as $queue) {
-                while ($queue->hasNextJob()) {
-                    $queue->processNext($this);
-                }
-                if ($queue->hasJobResults()) {
-                    $results = array_merge($results, $queue->getJobResults());
-                }
-            }
-        }
-
-        return $results;
-    }
-
-    /**
-     * Process all schedulers and queues in the queue (alias)
-     *
-     * @return array
-     */
-    public function processAll(): array
-    {
-        return $this->processQueues();
-    }
-
-    /**
-     * Check if job is queued, but hasn't run yet
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function isQueued(mixed $jobId): bool
-    {
-        return (($this->adapter->hasJob($jobId)) && (!$this->adapter->hasCompletedJob($jobId)) &&
-            (!$this->adapter->hasFailedJob($jobId)));
-    }
-
-    /**
-     * Check if job is completed (alias)
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function isCompleted(mixed $jobId): bool
-    {
-        return $this->adapter->hasCompletedJob($jobId);
-    }
-
-    /**
-     * Check if job has failed (alias)
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function hasFailed(mixed $jobId): bool
-    {
-        return $this->adapter->hasFailedJob($jobId);
-    }
-
-    /**
-     * Check if queue has job
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function hasJob(mixed $jobId): bool
-    {
-        return $this->adapter->hasJob($jobId);
-    }
-
-    /**
-     * Get job
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getJob(mixed $jobId, bool $unserialize = true): array
-    {
-        return $this->adapter->getJob($jobId, $unserialize);
-    }
-
-    /**
-     * Check if queue has jobs
-     *
-     * @return bool
-     */
-    public function hasJobs(): bool
-    {
-        return $this->adapter->hasJobs($this->name);
-    }
-
-    /**
-     * Get queue jobs
-     *
-     * @return array
-     */
-    public function getJobs(): array
-    {
-        return $this->adapter->getJobs($this->name);
-    }
-
-    /**
-     * Check if queue has completed job
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function hasCompletedJob(mixed $jobId): bool
-    {
-        return $this->adapter->hasCompletedJob($jobId);
-    }
-
-    /**
-     * Get completed job
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
-    {
-        return $this->adapter->getCompletedJob($jobId, $unserialize);
-    }
-
-    /**
-     * Check if queue has completed jobs
-     *
-     * @return bool
-     */
-    public function hasCompletedJobs(): bool
-    {
-        return $this->adapter->hasCompletedJobs($this->name);
-    }
-
-    /**
-     * Get queue completed jobs
-     *
-     * @return array
-     */
-    public function getCompletedJobs(): array
-    {
-        return $this->adapter->getCompletedJobs($this->name);
-    }
-
-    /**
-     * Check if queue has failed job
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function hasFailedJob(mixed $jobId): bool
-    {
-        return $this->adapter->hasFailedJob($jobId);
-    }
-
-    /**
-     * Get failed job
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getFailedJob(mixed $jobId, bool $unserialize = true): array
-    {
-        return $this->adapter->getFailedJob($jobId, $unserialize);
-    }
-
-    /**
-     * Check if queue adapter has failed jobs
-     *
-     * @return bool
-     */
-    public function hasFailedJobs(): bool
-    {
-        return $this->adapter->hasFailedJobs($this->name);
-    }
-
-    /**
-     * Get queue failed jobs
-     *
-     * @return array
-     */
-    public function getFailedJobs(): array
-    {
-        return $this->adapter->getFailedJobs($this->name);
-    }
-
-    /**
-     * Clear jobs off of the queue stack
-     *
-     * @param  bool $all
+     * @param  mixed $offset
+     * @param  mixed $value
      * @return void
      */
-    public function clear(bool $all = false): void
+    public function offsetSet(mixed $offset, mixed $value): void
     {
-        $this->adapter->clear($this->name, $all);
+        $this->__set($offset, $value);
     }
 
     /**
-     * Clear failed jobs off of the queue stack
+     * Get a queue
      *
-     * @return void
+     * @param  mixed $offset
+     * @return ?Queue
      */
-    public function clearFailed(): void
+    public function offsetGet(mixed $offset): ?Queue
     {
-        $this->adapter->clearFailed($this->name);
+        return $this->__get($offset);
     }
 
     /**
-     * Flush all jobs off of the queue stack
+     * Determine if a queue is registered with the worker object
      *
-     * @param  bool $all
-     * @return void
+     * @param  mixed $offset
+     * @return bool
      */
-    public function flush(bool $all = false): void
+    public function offsetExists(mixed $offset): bool
     {
-        $this->adapter->flush($all);
+        return $this->__isset($offset);
     }
 
     /**
-     * Flush all failed jobs off of the queue stack
+     * Unset a queue from the worker
      *
+     * @param  string $offset
      * @return void
      */
-    public function flushFailed(): void
+    public function offsetUnset(mixed $offset): void
     {
-        $this->adapter->flushFailed();
+        $this->__unset($offset);
     }
 
     /**
-     * Flush all pop queue items
+     * Return count
      *
-     * @return void
+     * @return int
      */
-    public function flushAll(): void
+    public function count(): int
     {
-        $this->adapter->flushAll();
+        return count($this->queues);
+    }
+
+    /**
+     * Get iterator
+     *
+     * @return ArrayIterator
+     */
+    public function getIterator(): ArrayIterator
+    {
+        return new ArrayIterator($this->queues);
     }
 
 }

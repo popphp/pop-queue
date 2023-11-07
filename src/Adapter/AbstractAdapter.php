@@ -13,10 +13,12 @@
  */
 namespace Pop\Queue\Adapter;
 
-use Pop\Queue\Processor\AbstractJob;
+use Pop\Queue\Queue;
+use Pop\Queue\Process\Task;
+use Pop\Queue\Process\AbstractJob;
 
 /**
- * Worker adapter abstract class
+ * Adapter abstract class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -29,197 +31,154 @@ abstract class AbstractAdapter implements AdapterInterface
 {
 
     /**
-     * Get all workers currently registered with this adapter
-     *
-     * @return array
+     * Queue type
+     * @var string
      */
-    abstract public function getWorkers(): array;
+    protected string $priority = 'FIFO';
 
     /**
-     * Check if worker has job
+     * Constructor
      *
-     * @param  mixed $jobId
-     * @return bool
+     * Instantiate the adapter object
+     *
+     * @param ?string $priority
      */
-    abstract public function hasJob(mixed $jobId): bool;
+    public function __construct(?string $priority = null)
+    {
+        if ($priority !== null) {
+            $this->setPriority($priority);
+        }
+    }
 
     /**
-     * Get job from worker by job ID
+     * Set queue priority
      *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
+     * @param  string $priority
+     * @return AbstractAdapter
      */
-    abstract public function getJob(mixed $jobId, bool $unserialize = true): array;
+    public function setPriority(string $priority = 'FIFO'): AbstractAdapter
+    {
+        if (defined('Pop\Queue\Queue::' . $priority)) {
+            $this->priority = $priority;
+        }
+        return $this;
+    }
 
     /**
-     * Save job in worker
+     * Get queue priority
      *
-     * @param  string $workerName
-     * @param  mixed $job
-     * @param  array $jobData
      * @return string
      */
-    abstract public function saveJob(string $workerName, mixed $job, array $jobData) : string;
+    public function getPriority(): string
+    {
+        return $this->priority;
+    }
 
     /**
-     * Update job from worker by job ID
+     * Is FIFO
+     *
+     * @return bool
+     */
+    public function isFifo(): bool
+    {
+        return ($this->priority == Queue::FIFO);
+    }
+
+    /**
+     * Is FILO
+     *
+     * @return bool
+     */
+    public function isFilo(): bool
+    {
+        return ($this->priority == Queue::FILO);
+    }
+
+    /**
+     * Is LILO (alias to FIFO)
+     *
+     * @return bool
+     */
+    public function isLilo(): bool
+    {
+        return ($this->priority == Queue::FIFO);
+    }
+
+    /**
+     * Is LIFO (alias to FILO)
+     *
+     * @return bool
+     */
+    public function isLifo(): bool
+    {
+        return ($this->priority == Queue::FILO);
+    }
+
+    /**
+     * Get queue length
+     *
+     * @return int
+     */
+    abstract public function getLength(): int;
+
+    /**
+     * Get queue job status
+     *
+     * @param  int $index
+     * @return int
+     */
+    abstract public function getStatus(int $index): int;
+
+    /**
+     * Push job on to queue
      *
      * @param  AbstractJob $job
-     * @return void
+     * @return AdapterInterface
      */
-    abstract public function updateJob(AbstractJob $job): void;
+    abstract public function push(AbstractJob $job): AdapterInterface;
 
     /**
-     * Check if worker adapter has jobs
+     * Pop job off of queue
      *
-     * @param  mixed $worker
-     * @return bool
+     * @return ?AbstractJob
      */
-    abstract public function hasJobs(mixed $worker): bool;
+    abstract public function pop(): ?AbstractJob;
 
     /**
-     * Get worker jobs
+     * Schedule job with queue
      *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
+     * @param  Task $task
+     * @return AdapterInterface
+     */
+    abstract public function schedule(Task $task): AdapterInterface;
+
+    /**
+     * Get scheduled tasks
+     *
      * @return array
      */
-    abstract public function getJobs(mixed $worker, bool $unserialize = true): array;
+    abstract public function getTasks(): array;
 
     /**
-     * Check if worker has completed job
+     * Get scheduled task
      *
-     * @param  mixed $jobId
+     * @param  string $taskId
+     * @return ?Task
+     */
+    abstract public function getTask(string $taskId): ?Task;
+
+    /**
+     * Get scheduled tasks count
+     *
+     * @return int
+     */
+    abstract public function getTaskCount(): int;
+
+    /**
+     * Has scheduled tasks
+     *
      * @return bool
      */
-    abstract public function hasCompletedJob(mixed $jobId): bool;
-
-    /**
-     * Check if worker adapter has completed jobs
-     *
-     * @param  mixed $worker
-     * @return bool
-     */
-    abstract public function hasCompletedJobs(mixed $worker): bool;
-
-    /**
-     * Get worker completed job
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    abstract public function getCompletedJob(mixed $jobId, bool $unserialize = true): array;
-
-    /**
-     * Get worker completed jobs
-     *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
-     * @return array
-     */
-    abstract public function getCompletedJobs(mixed $worker, bool $unserialize = true): array;
-
-    /**
-     * Check if worker has failed job
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    abstract public function hasFailedJob(mixed $jobId): bool;
-
-    /**
-     * Get failed job from worker by job ID
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    abstract public function getFailedJob(mixed $jobId, bool $unserialize = true): array;
-
-    /**
-     * Check if worker adapter has failed jobs
-     *
-     * @param  mixed $worker
-     * @return bool
-     */
-    abstract public function hasFailedJobs(mixed $worker): bool;
-
-    /**
-     * Get worker failed jobs
-     *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
-     * @return array
-     */
-    abstract public function getFailedJobs(mixed $worker, bool $unserialize = true): array;
-
-    /**
-     * Push job onto worker
-     *
-     * @param  mixed $worker
-     * @param  mixed $job
-     * @param  mixed $priority
-     * @return string
-     */
-    abstract public function push(mixed $worker, mixed $job, mixed $priority = null): string;
-
-    /**
-     * Move failed job to failed worker
-     *
-     * @param  mixed           $worker
-     * @param  mixed           $failedJob
-     * @param  \Exception|null $exception
-     * @return void
-     */
-    abstract public function failed(mixed $worker, mixed $failedJob, \Exception|null $exception = null): void;
-
-    /**
-     * Pop job off of worker
-     *
-     * @param  mixed $jobId
-     * @return void
-     */
-    abstract public function pop(mixed $jobId): void;
-
-    /**
-     * Clear completed jobs off of the worker
-     *
-     * @param  mixed $worker
-     * @param  bool  $all
-     * @return void
-     */
-    abstract public function clear(mixed $worker, bool $all = false): void;
-
-    /**
-     * Clear failed jobs off of the worker
-     *
-     * @param  mixed $worker
-     * @return void
-     */
-    abstract public function clearFailed(mixed $worker): void;
-
-    /**
-     * Flush all jobs off of the worker
-     *
-     * @param  bool $all
-     * @return void
-     */
-    abstract public function flush(bool $all = false): void;
-
-    /**
-     * Flush all failed jobs off of the worker
-     *
-     * @return void
-     */
-    abstract public function flushFailed(): void;
-
-    /**
-     * Flush all pop worker items
-     *
-     * @return void
-     */
-    abstract public function flushAll(): void;
+    abstract public function hasTasks(): bool;
 
 }

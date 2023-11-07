@@ -11,12 +11,12 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue\Process;
 
 use Pop\Application;
 
 /**
- * Job class
+ * Job interface
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -287,6 +287,7 @@ interface JobInterface
      * @return bool
      */
     public function isComplete(): bool;
+
     /**
      * Set job as failed
      *
@@ -300,6 +301,28 @@ interface JobInterface
      * @return bool
      */
     public function hasFailed(): bool;
+
+    /**
+     * Add failed message
+     *
+     * @param  string $message
+     * @return JobInterface
+     */
+    public function addFailedMessage(string $message): JobInterface;
+
+    /**
+     * Has failed messages
+     *
+     * @return bool
+     */
+    public function hasFailedMessages(): bool;
+
+    /**
+     * Get failed messages
+     *
+     * @return array
+     */
+    public function getFailedMessages(): array;
 
     /**
      * Get failed timestamp

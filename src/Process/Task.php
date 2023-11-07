@@ -11,7 +11,7 @@
 /**
  * @namespace
  */
-namespace Pop\Queue\Processor;
+namespace Pop\Queue\Process;
 
 use Pop\Queue\Queue;
 
@@ -33,6 +33,12 @@ class Task extends Job
      * @var ?Cron
      */
     protected ?Cron $cron = null;
+
+    /**
+     * Max attempts
+     * @var int
+     */
+    protected int $maxAttempts = 0;
 
     /**
      * Constructor

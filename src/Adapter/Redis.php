@@ -13,11 +13,11 @@
  */
 namespace Pop\Queue\Adapter;
 
-use Pop\Queue\Worker;
-use Pop\Queue\Processor\AbstractJob;
+use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\Task;
 
 /**
- * Redis worker adapter class
+ * Redis adapter class
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -35,59 +35,80 @@ class Redis extends AbstractAdapter
      */
     protected \Redis|null $redis = null;
 
+
     /**
-     * Job key prefix
+     * Queue prefix
      * @var string
      */
-    protected string $prefix = 'pop-worker-';
+    protected string $prefix = 'pop-queue';
 
     /**
      * Constructor
      *
-     * Instantiate the redis worker object
+     * Instantiate the redis adapter
      *
      * @param  string     $host
      * @param  int|string $port
+     * @param  string     $prefix
+     * @param  ?string    $priority
      * @throws Exception|\RedisException
      */
-    public function __construct(string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-worker-')
+    public function __construct(
+        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null
+    )
     {
         if (!class_exists('Redis', false)) {
             throw new Exception('Error: Redis is not available.');
         }
 
-        $this->redis = new \Redis();
+        $this->redis  = new \Redis();
         $this->prefix = $prefix;
         if (!$this->redis->connect($host, (int)$port)) {
             throw new Exception('Error: Unable to connect to the redis server.');
         }
+
+        parent::__construct($priority);
     }
 
     /**
-     * Create file adapter
+     * Create Redis adapter
      *
      * @param  string     $host
      * @param  int|string $port
+     * @param  string     $prefix
+     * @param  ?string    $priority
      * @throws Exception|\RedisException
      * @return Redis
      */
-    public static function create(string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-worker-'): Redis
+    public static function create(
+        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null
+    ): Redis
     {
-        return new self($host, $port, $prefix);
+        return new self($host, $port, $prefix, $priority);
     }
 
     /**
-     * Get the redis object
+     * Get Redis object
      *
-     * @return \Redis
+     * @return \Redis|null
      */
-    public function redis(): \Redis
+    public function getRedis(): \Redis|null
     {
         return $this->redis;
     }
 
     /**
-     * Get the key prefix
+     * Get Redis object (alias)
+     *
+     * @return \Redis|null
+     */
+    public function redis(): \Redis|null
+    {
+        return $this->redis;
+    }
+
+    /**
+     * Get prefix
      *
      * @return string
      */
@@ -97,505 +118,130 @@ class Redis extends AbstractAdapter
     }
 
     /**
-     * Get all workers currently registered with this adapter
+     * Get queue length
      *
-     * @return array
+     * @return int
      */
-    public function getWorkers(): array
+    public function getLength(): int
     {
-        $workerKeys = array_map(function($value) {
-            return substr($value, strlen($this->prefix));
-        }, $this->redis->keys($this->prefix . '*'));
-
-        return array_filter($workerKeys, function($value){
-            return (!str_contains($value, '-payload') && !str_contains($value, '-completed') &&
-                !str_contains($value, '-failed') && (strlen($value) != 40));
-        });
+        return $this->redis->lLen($this->prefix);
     }
 
     /**
-     * Check if worker has job
+     * Get queue job status
      *
-     * @param  mixed $jobId
-     * @return bool
+     * @param  int $index
+     * @return int
      */
-    public function hasJob(mixed $jobId): bool
+    public function getStatus(int $index): int
     {
-        return ($this->redis->get($this->prefix . $jobId) !== false);
+        return (int)$this->redis->lIndex($this->prefix . ':status', $index);
     }
 
     /**
-     * Get job from worker by job ID
-     *
-     * @param  mixed $jobId
-     * @param  bool $unserialize
-     * @throws \RedisException
-     * @return array
-     */
-    public function getJob(mixed $jobId, bool $unserialize = true): array
-    {
-        $job = $this->redis->get($this->prefix . $jobId);
-        if (!empty($job)) {
-            $job        = unserialize($job);
-            $jobPayload = $this->redis->get($this->prefix . $jobId . '-payload');
-            if ($jobPayload !== false) {
-                $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
-            }
-        } else {
-            $job = [];
-        }
-
-        return $job;
-    }
-
-    /**
-     * Save job in worker
-     *
-     * @param  string $workerName
-     * @param  mixed $job
-     * @param  array $jobData
-     * @return string
-     */
-    public function saveJob(string $workerName, mixed $job, array $jobData) : string
-    {
-        $jobId               = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
-        $workerJobs          = $this->redis->get($this->prefix . $workerName);
-        $workerJobsCompleted = $this->redis->get($this->prefix . $workerName . '-completed');
-        $workerJobsFailed    = $this->redis->get($this->prefix . $workerName . '-failed');
-
-        $workerJobs          = ($workerJobs !== false) ? unserialize($workerJobs) : [];
-        $workerJobsCompleted = ($workerJobsCompleted !== false) ? unserialize($workerJobsCompleted) : [];
-        $workerJobsFailed    = ($workerJobsFailed !== false) ? unserialize($workerJobsFailed) : [];
-
-        if (!in_array($jobId, $workerJobs)) {
-            $workerJobs[] = $jobId;
-        }
-        $this->redis->set($this->prefix . $workerName, serialize($workerJobs));
-        $this->redis->set($this->prefix . $workerName . '-completed', serialize($workerJobsCompleted));
-        $this->redis->set($this->prefix . $workerName . '-failed', serialize($workerJobsFailed));
-        $this->redis->set($this->prefix . $jobId, serialize($jobData));
-        $this->redis->set($this->prefix . $jobId . '-payload', serialize(clone $job));
-
-        return $jobId;
-    }
-
-    /**
-     * Update job from worker by job ID
+     * Push job on to queue
      *
      * @param  AbstractJob $job
-     * @return void
+     * @return Redis
      */
-    public function updateJob(AbstractJob $job): void
+    public function push(AbstractJob $job): Redis
     {
-        $jobId     = $job->getJobId();
-        $jobData   = $this->getJob($jobId);
-        $completed = $job->getCompleted();
-
-        if (!empty($jobData)) {
-            if (isset($jobData['attempts'])) {
-                $jobData['attempts'] = $job->getAttempts();
-            }
-
-            if (isset($jobData['payload'])) {
-                $jobData['payload'] = $job;
-            }
-            if (!empty($completed)) {
-                $jobData['completed']  = date('Y-m-d H:i:s', $completed);
-                $workerJobs            = $this->redis->get($this->prefix . $jobData['worker']);
-                $workerJobs            = ($workerJobs !== false) ? unserialize($workerJobs) : [];
-                $workerCompletedJobs   = $this->redis->get($this->prefix . $jobData['worker'] . '-completed');
-                $workerCompletedJobs   = ($workerCompletedJobs !== false) ? unserialize($workerCompletedJobs) : [];
-
-                if ((!$job->isValid()) && in_array($jobId, $workerJobs)) {
-                    unset($workerJobs[array_search($jobId, $workerJobs)]);
-                    $workerJobs = array_values($workerJobs);
-                }
-                if (!in_array($jobId, $workerCompletedJobs)) {
-                    $workerCompletedJobs[] = $jobId;
-                }
-
-                $this->redis->set($this->prefix . $jobData['worker'], serialize($workerJobs));
-                $this->redis->set($this->prefix . $jobData['worker'] . '-completed', serialize($workerCompletedJobs));
-                $this->redis->set($this->prefix . $jobId . '-payload', serialize(clone $job));
-            }
-
-            $this->redis->set($this->prefix . $jobId, serialize($jobData));
+        if (($this->redis->lPush($this->prefix, serialize(clone $job))) !== false) {
+            $this->redis->lPush($this->prefix . ':status', 1);
         }
+        return $this;
     }
 
     /**
-     * Check if worker has jobs
+     * Pop job off of queue
      *
-     * @param  mixed $worker
-     * @return bool
+     * @return ?AbstractJob
      */
-    public function hasJobs(mixed $worker): bool
+    public function pop(): ?AbstractJob
     {
-        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerJobs = $this->redis->get($this->prefix . $workerName);
+        $job    = false;
+        $length = $this->getLength();
 
-        if ($workerJobs !== false) {
-            $workerJobs = unserialize($workerJobs);
-            if (!empty($workerJobs)) {
-                foreach ($workerJobs as $jobId) {
-                    if ($this->hasJob($jobId)) {
-                        return true;
-                    }
-                }
+        if ($this->isFilo()) {
+            $status = $this->getStatus(0);
+            if ($status == 1) {
+                $this->redis->lSet($this->prefix . ':status', 0, 0);
+                $job = $this->redis->lPop($this->prefix);
+                $this->redis->lPop($this->prefix . ':status');
             }
-            return false;
         } else {
-            return false;
+            $status = $this->getStatus($length - 1);
+            if ($status == 1) {
+                $this->redis->lSet($this->prefix . ':status', $length - 1, 0);
+                $job = $this->redis->rPop($this->prefix);
+                $this->redis->rPop($this->prefix . ':status');
+            }
         }
+
+        return ($job !== false) ? unserialize($job) : null;
     }
 
     /**
-     * Get worker jobs
+     * Push job on to queue
      *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
+     * @param  Task $task
+     * @return Redis
+     */
+    public function schedule(Task $task): Redis
+    {
+        $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+        return $this;
+    }
+
+    /**
+     * Get scheduled tasks
+     *
      * @return array
      */
-    public function getJobs(mixed $worker, bool $unserialize = true): array
+    public function getTasks(): array
     {
-        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerJobs = $this->redis->get($this->prefix . $workerName);
-        $jobs       = [];
-
-        if ($workerJobs !== false) {
-            $workerJobs = unserialize($workerJobs);
-            foreach ($workerJobs as $jobId) {
-                $jobs[$jobId] = $this->getJob($jobId, $unserialize);
-            }
-        }
-
-        return $jobs;
+        $taskIds = $this->redis->keys($this->prefix . ':task-*');
+        return array_map(function($value) {
+            return substr($value, (strpos($value, ':task-') + 6));
+        }, $taskIds);
     }
 
     /**
-     * Check if worker has completed job
+     * Get scheduled task
      *
-     * @param  mixed $jobId
+     * @param  string $taskId
+     * @return ?Task
+     */
+    public function getTask(string $taskId): ?Task
+    {
+        $task = $this->redis->get($this->prefix . ':task-' . $taskId);
+        return ($task !== false) ? unserialize($task) : null;
+    }
+
+    /**
+     * Get scheduled tasks count
+     *
+     * @return int
+     */
+    public function getTaskCount(): int
+    {
+        $taskIds = $this->redis->keys($this->prefix . ':task-*');
+        return count(array_map(function($value) {
+            return substr($value, (strpos($value, ':task-') + 6));
+        }, $taskIds));
+    }
+
+    /**
+     * Has scheduled tasks
+     *
      * @return bool
      */
-    public function hasCompletedJob(mixed $jobId): bool
+    public function hasTasks(): bool
     {
-        $job = $this->getJob($jobId, false);
-
-        if (!empty($job)) {
-            $workerCompletedJobs = $this->redis->get($this->prefix . $job['worker'] . '-completed');
-            if ($workerCompletedJobs !== false) {
-                $workerCompletedJobs = unserialize($workerCompletedJobs);
-                return (in_array($jobId, $workerCompletedJobs) && !empty($job['completed']));
-            } else {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * Check if worker has completed jobs
-     *
-     * @param  mixed $worker
-     * @return bool
-     */
-    public function hasCompletedJobs(mixed $worker): bool
-    {
-        $workerName          = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerCompletedJobs = $this->redis->get($this->prefix . $workerName . '-completed');
-
-        if ($workerCompletedJobs !== false) {
-            $workerCompletedJobs = unserialize($workerCompletedJobs);
-            return (count($workerCompletedJobs) > 0);
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * Get worker completed job
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getCompletedJob(mixed $jobId, bool $unserialize = true): array
-    {
-        if ($this->hasCompletedJob($jobId)) {
-            return $this->getJob($jobId, $unserialize);
-        } else {
-            return [];
-        }
-    }
-
-    /**
-     * Get worker completed jobs
-     *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getCompletedJobs(mixed $worker, bool $unserialize = true): array
-    {
-        $workerName          = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerCompletedJobs = $this->redis->get($this->prefix . $workerName . '-completed');
-        $completedJobs       = [];
-
-        if ($workerCompletedJobs !== false) {
-            $workerCompletedJobs = unserialize($workerCompletedJobs);
-            foreach ($workerCompletedJobs as $jobId) {
-                $completedJobs[$jobId] = $this->getJob($jobId, $unserialize);
-            }
-        }
-
-        return $completedJobs;
-    }
-
-    /**
-     * Check if worker has failed job
-     *
-     * @param  mixed $jobId
-     * @return bool
-     */
-    public function hasFailedJob(mixed $jobId): bool
-    {
-        return ($this->redis->get($this->prefix . $jobId . '-failed') !== false);
-    }
-
-    /**
-     * Get failed job from worker by job ID
-     *
-     * @param  mixed $jobId
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getFailedJob(mixed $jobId, bool $unserialize = true): array
-    {
-        $job = $this->redis->get($this->prefix . $jobId . '-failed');
-        if (!empty($job)) {
-            $job        = unserialize($job);
-            $jobPayload = $this->redis->get($this->prefix . $jobId . '-payload');
-            if ($jobPayload !== false) {
-                $job['payload'] = ($unserialize) ? unserialize($jobPayload) : $jobPayload;
-            }
-        } else {
-            $job = [];
-        }
-
-        return $job;
-    }
-
-    /**
-     * Check if worker adapter has failed jobs
-     *
-     * @param  mixed $worker
-     * @return bool
-     */
-    public function hasFailedJobs(mixed $worker): bool
-    {
-        $workerName       = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerFailedJobs = $this->redis->get($this->prefix . $workerName . '-failed');
-
-        if ($workerFailedJobs !== false) {
-            $workerFailedJobs = unserialize($workerFailedJobs);
-            return (count($workerFailedJobs) > 0);
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * Get worker jobs
-     *
-     * @param  mixed $worker
-     * @param  bool  $unserialize
-     * @return array
-     */
-    public function getFailedJobs(mixed $worker, bool $unserialize = true): array
-    {
-        $workerName       = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerFailedJobs = $this->redis->get($this->prefix . $workerName . '-failed');
-        $failedJobs       = [];
-
-        if ($workerFailedJobs !== false) {
-            $workerFailedJobs = unserialize($workerFailedJobs);
-            foreach ($workerFailedJobs as $jobId) {
-                $failedJobs[$jobId] = $this->getFailedJob($jobId, $unserialize);
-            }
-        }
-
-        return $failedJobs;
-    }
-
-    /**
-     * Push job onto worker
-     *
-     * @param  mixed $worker
-     * @param  mixed $job
-     * @param  mixed $priority
-     * @return string
-     */
-    public function push(mixed $worker, mixed $job, mixed $priority = null): string
-    {
-        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $jobId      = ($job->hasJobId()) ? $job->getJobId() : $job->generateJobId();
-        $jobData    = [
-            'job_id'       => $jobId,
-            'worker'        => $workerName,
-            'priority'     => $priority,
-            'max_attempts' => $job->getMaxAttempts(),
-            'attempts'     => 0,
-            'completed'    => null
-        ];
-
-        return $this->saveJob($workerName, $job, $jobData);
-    }
-
-    /**
-     * Move failed job to failed worker
-     *
-     * @param  mixed           $worker
-     * @param  mixed           $failedJob
-     * @param  \Exception|null $exception
-     * @return void
-     */
-    public function failed(mixed $worker, mixed $failedJob, \Exception|null $exception = null): void
-    {
-        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
-
-        $failedJobData = [
-            'job_id'    => $failedJob,
-            'worker'    => $workerName,
-            'exception' => ($exception !== null) ? $exception->getMessage() : null,
-            'failed'    => date('Y-m-d H:i:s')
-        ];
-
-        $workerJobsFailed = $this->redis->get($this->prefix . $workerName . '-failed');
-        $workerJobsFailed = ($workerJobsFailed !== false) ? unserialize($workerJobsFailed) : [];
-
-        if (!in_array($failedJob, $workerJobsFailed)) {
-            $workerJobsFailed[] = $failedJob;
-        }
-
-        $this->redis->set($this->prefix . $failedJob . '-failed', serialize($failedJobData));
-        $this->redis->set($this->prefix . $workerName . '-failed', serialize($workerJobsFailed));
-
-        if (!empty($failedJob)) {
-            $this->pop($failedJob);
-        }
-    }
-
-    /**
-     * Pop job off of worker
-     *
-     * @param  mixed $jobId
-     * @return void
-     */
-    public function pop(mixed $jobId): void
-    {
-        $jobData = $this->getJob($jobId);
-
-        if (!empty($jobData)) {
-            $workerJobs = $this->redis->get($this->prefix . $jobData['worker']);
-            $workerJobs = ($workerJobs !== false) ? unserialize($workerJobs) : [];
-
-            if (in_array($jobId, $workerJobs)) {
-                unset($workerJobs[array_search($jobId, $workerJobs)]);
-                $workerJobs = array_values($workerJobs);
-            }
-
-            $this->redis->set($this->prefix . $jobData['worker'], serialize($workerJobs));
-        }
-
-        $this->redis->del($this->prefix . $jobId);
-    }
-
-    /**
-     * Clear jobs off of the worker
-     *
-     * @param  mixed $worker
-     * @param  bool  $all
-     * @return void
-     */
-    public function clear(mixed $worker, bool $all = false): void
-    {
-        $workerName = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerJobs = $this->redis->get($this->prefix . $workerName);
-
-        if ($workerJobs !== false) {
-            $workerJobs = unserialize($workerJobs);
-            foreach ($workerJobs as $jobId) {
-                $this->redis->del($this->prefix . $jobId);
-            }
-        }
-
-        if ($all) {
-            $this->redis->del($this->prefix . $workerName . '-completed');
-        }
-    }
-
-    /**
-     * Clear failed jobs off of the worker
-     *
-     * @param  mixed $worker
-     * @return void
-     */
-    public function clearFailed(mixed $worker): void
-    {
-        $workerName       = ($worker instanceof Worker) ? $worker->getName() : $worker;
-        $workerFailedJobs = $this->redis->get($this->prefix . $workerName . '-failed');
-
-        if ($workerFailedJobs !== false) {
-            $workerFailedJobs = unserialize($workerFailedJobs);
-            foreach ($workerFailedJobs as $failedJobId) {
-                $this->redis->del($this->prefix . $failedJobId . '-failed');
-            }
-        }
-
-        $this->redis->del($this->prefix . $workerName . '-failed');
-    }
-
-    /**
-     * Flush all jobs off of the worker
-     *
-     * @param  bool $all
-     * @return void
-     */
-    public function flush(bool $all = false): void
-    {
-        $keys = $this->redis->keys($this->prefix . '*');
-        $keys = array_filter($keys, function($value) {
-            return (!str_contains($value, 'failed'));
-        });
-        if ($all) {
-            $this->redis->del($keys);
-        }
-    }
-
-    /**
-     * Flush all failed jobs off of the worker
-     *
-     * @return void
-     */
-    public function flushFailed(): void
-    {
-        $keys = $this->redis->keys($this->prefix . '*');
-        $keys = array_filter($keys, function($value) {
-            return (str_contains($value, 'failed'));
-        });
-        $this->redis->del($keys);
-    }
-
-    /**
-     * Flush all worker items
-     *
-     * @return void
-     */
-    public function flushAll(): void
-    {
-        $this->redis->del($this->redis->keys($this->prefix . '*'));
+        $taskIds = $this->redis->keys($this->prefix . ':task-*');
+        return !empty(array_map(function($value) {
+            return substr($value, (strpos($value, ':task-') + 6));
+        }, $taskIds));
     }
 
 }
