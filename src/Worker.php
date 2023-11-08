@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use ArrayIterator;
+use Pop\Application;
 
 /**
  * Queue worker class
@@ -35,13 +36,20 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     protected array $queues = [];
 
     /**
+     * Application object
+     * @var ?Application
+     */
+    protected ?Application $application = null;
+
+    /**
      * Constructor
      *
      * Instantiate the queue worker object.
      *
-     * @param  mixed $queues
+     * @param mixed $queues
+     * @param ?Application $application
      */
-    public function __construct(mixed $queues = null)
+    public function __construct(mixed $queues = null, ?Application $application = null)
     {
         if (!empty($queues)) {
             if (is_array($queues)) {
@@ -50,17 +58,20 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
                 $this->addQueue($queues);
             }
         }
+
+        $this->application = $application;
     }
 
     /**
      * Create queue worker worker
      *
      * @param  mixed $queues
+     * @param  ?Application $application
      * @return Worker
      */
-    public static function create(mixed $queues = null): Worker
+    public static function create(mixed $queues = null, ?Application $application = null): Worker
     {
-        return new self($queues);
+        return new self($queues, $application);
     }
 
     /**
@@ -119,6 +130,42 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     public function hasQueue(string $queue): bool
     {
         return (isset($this->queues[$queue]));
+    }
+
+    /**
+     * Work next job across in all queues
+     *
+     * @return void
+     */
+    public function workAll(): void
+    {
+        foreach ($this->queues as $queue) {
+            $queue->work($this->application);
+        }
+    }
+
+    /**
+     * Run next scheduled task across in all queues
+     *
+     * @return void
+     */
+    public function runAll(): void
+    {
+        foreach ($this->queues as $queue) {
+            $queue->run($this->application);
+        }
+    }
+
+    /**
+     * Clear all queues
+     *
+     * @return void
+     */
+    public function clearAll(): void
+    {
+        foreach ($this->queues as $queue) {
+            $queue->clear();
+        }
     }
 
     /**

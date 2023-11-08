@@ -189,7 +189,7 @@ class File extends AbstractTaskAdapter
     {
         if ($task->isValid()) {
             file_put_contents(
-                $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
             );
         }
         return $this;
@@ -202,7 +202,7 @@ class File extends AbstractTaskAdapter
      */
     public function getTasks(): array
     {
-        $files = $this->getFIles($this->folder);
+        $files = $this->getFiles($this->folder);
         $tasks = [];
 
         foreach ($files as $file) {
@@ -236,7 +236,7 @@ class File extends AbstractTaskAdapter
     {
         if ($task->isValid()) {
             file_put_contents(
-                $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
             );
         } else {
             $this->removeTask($task->getJobId());
@@ -277,6 +277,35 @@ class File extends AbstractTaskAdapter
     public function hasTasks(): bool
     {
         return ($this->getTaskCount() > 0);
+    }
+
+    /**
+     * Clear queue
+     *
+     * @return File
+     */
+    public function clear(): File
+    {
+        $files   = $this->getFiles($this->folder);
+        $folders = $this->getFolders($this->folder);
+
+        foreach ($files as $file) {
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $file)) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $file);
+            }
+        }
+
+        foreach ($folders as $folder) {
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
+            }
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
+            }
+            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
+        }
+
+        return $this;
     }
 
     /**

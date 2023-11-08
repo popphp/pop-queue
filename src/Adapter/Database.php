@@ -354,6 +354,20 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
+     * Clear queue
+     *
+     * @return Database
+     */
+    public function clear(): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table);
+        $this->db->query($sql);
+
+        return $this;
+    }
+
+    /**
      * Create the database table
      *
      * @param  string $table

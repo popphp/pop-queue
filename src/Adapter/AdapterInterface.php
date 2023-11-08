@@ -109,4 +109,11 @@ interface AdapterInterface
      */
     public function pop(): ?AbstractJob;
 
+    /**
+     * Clear queue
+     *
+     * @return AdapterInterface
+     */
+    public function clear(): AdapterInterface;
+
 }

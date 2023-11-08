@@ -172,4 +172,17 @@ class Sqs extends AbstractAdapter
         return ($job !== false) ? unserialize(base64_decode($job)) : null;
     }
 
+    /**
+     * Clear queue
+     *
+     * @return Sqs
+     */
+    public function clear(): Sqs
+    {
+        $this->client->purgeQueue([
+            'QueueUrl' => $this->queueUrl
+        ]);
+        return $this;
+    }
+
 }

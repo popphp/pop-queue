@@ -294,4 +294,22 @@ class Redis extends AbstractTaskAdapter
         }, $taskIds));
     }
 
+    /**
+     * Clear queue
+     *
+     * @return Redis
+     */
+    public function clear(): Redis
+    {
+        $taskIds = $this->redis->keys($this->prefix . ':task-*');
+        foreach ($taskIds as $taskId) {
+            $this->redis->del($taskId);
+        }
+
+        $this->redis->del($this->prefix . ':status');
+        $this->redis->del($this->prefix);
+
+        return $this;
+    }
+
 }

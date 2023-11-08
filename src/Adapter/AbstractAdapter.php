@@ -151,4 +151,11 @@ abstract class AbstractAdapter implements AdapterInterface
      */
     abstract public function pop(): ?AbstractJob;
 
+    /**
+     * Clear queue
+     *
+     * @return AdapterInterface
+     */
+    abstract public function clear(): AdapterInterface;
+
 }

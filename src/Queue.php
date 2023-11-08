@@ -29,7 +29,7 @@ use Pop\Queue\Process\Task;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-class Queue
+class Queue extends AbstractQueue
 {
 
     /**
@@ -37,18 +37,6 @@ class Queue
      */
     const FIFO = 'FIFO'; // Same as LILO
     const FILO = 'FILO'; // Same as LIFO
-
-    /**
-     * Queue name
-     * @var ?string
-     */
-    protected ?string $name = null;
-
-    /**
-     * Queue adapter
-     * @var AdapterInterface|TaskAdapterInterface
-     */
-    protected AdapterInterface|TaskAdapterInterface $adapter;
 
     /**
      * Constructor
@@ -68,59 +56,6 @@ class Queue
         }
     }
 
-    /**
-     * Set name
-     *
-     * @param  string $name
-     * @return Queue
-     */
-    public function setName(string $name): Queue
-    {
-        $this->name = $name;
-        return $this;
-    }
-
-    /**
-     * Get name
-     *
-     * @return string
-     */
-    public function getName(): string
-    {
-        return $this->name;
-    }
-
-    /**
-     * Set adapter
-     *
-     * @param  AdapterInterface|TaskAdapterInterface $adapter
-     * @return Queue
-     */
-    public function setAdapter(AdapterInterface|TaskAdapterInterface $adapter): Queue
-    {
-        $this->adapter = $adapter;
-        return $this;
-    }
-
-    /**
-     * Get adapter
-     *
-     * @return AdapterInterface|TaskAdapterInterface
-     */
-    public function getAdapter(): AdapterInterface|TaskAdapterInterface
-    {
-        return $this->adapter;
-    }
-
-    /**
-     * Get adapter (alias)
-     *
-     * @return AdapterInterface|TaskAdapterInterface
-     */
-    public function adapter(): AdapterInterface|TaskAdapterInterface
-    {
-        return $this->adapter;
-    }
 
     /**
      * Set queue priority
@@ -255,6 +190,17 @@ class Queue
     }
 
     /**
+     * Clear queue
+     *
+     * @return Queue
+     */
+    public function clear(): Queue
+    {
+        $this->adapter->clear();
+        return $this;
+    }
+
+    /**
      * Work next job
      *
      * @param  ?Application $application
@@ -281,16 +227,12 @@ class Queue
      * Run schedule
      *
      * @param  ?Application $application
-     * @throws Exception|Process\Exception
+     * @throws Process\Exception
      * @return Queue
      */
     public function run(?Application $application = null): Queue
     {
-        if (!($this->adapter instanceof TaskAdapterInterface)) {
-            throw new Exception('Error: That queue adapter does not support scheduled tasks');
-        }
-
-        if ($this->adapter->hasTasks()) {
+        if (($this->adapter instanceof TaskAdapterInterface) && ($this->adapter->hasTasks())) {
             $taskIds = $this->adapter->getTasks();
             foreach ($taskIds as $taskId) {
                 $task = $this->adapter->getTask($taskId);
