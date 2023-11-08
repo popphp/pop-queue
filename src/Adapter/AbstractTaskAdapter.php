@@ -81,4 +81,11 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
      */
     abstract public function hasTasks(): bool;
 
+    /**
+     * Clear all scheduled task
+     *
+     * @return AbstractTaskAdapter
+     */
+    abstract public function clearTasks(): AbstractTaskAdapter;
+
 }

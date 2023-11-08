@@ -152,10 +152,56 @@ abstract class AbstractAdapter implements AdapterInterface
     abstract public function pop(): ?AbstractJob;
 
     /**
-     * Clear queue
+     * Check if adapter has jobs
      *
-     * @return AdapterInterface
+     * @return bool
      */
-    abstract public function clear(): AdapterInterface;
+    abstract public function hasJobs(): bool;
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    abstract public function hasFailedJob(int $index): bool;
+
+    /**
+     * Get failed job
+     *
+     * @param  int  $index
+     * @param  bool $unserialize
+     * @return mixed
+     */
+    abstract public function getFailedJob(int $index, bool $unserialize = true): mixed;
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    abstract public function hasFailedJobs(): bool;
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    abstract public function getFailedJobs(bool $unserialize = true): array;
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return AbstractAdapter
+     */
+    abstract public function clearFailed(): AbstractAdapter;
+
+    /**
+     * Clear jobs out of queue
+     *
+     * @return AbstractAdapter
+     */
+    abstract public function clear(): AbstractAdapter;
 
 }

@@ -16,7 +16,6 @@ namespace Pop\Queue\Adapter;
 use Aws\Sqs\SqsClient;
 use Pop\Queue\Queue;
 use Pop\Queue\Process\AbstractJob;
-use Pop\Queue\Process\Task;
 
 /**
  * SQS adapter class
@@ -130,8 +129,19 @@ class Sqs extends AbstractAdapter
      */
     public function push(AbstractJob $job): Sqs
     {
+        $status = ($job->hasFailed()) ? '2' : '1';
         if ($job->isValid()) {
             $params = [
+                'MessageAttributes' => [
+                    'Type' => [
+                        'DataType'    => 'String',
+                        'StringValue' => 'job'
+                    ],
+                    'Status' => [
+                        'DataType'    => 'Number',
+                        'StringValue' => $status
+                    ]
+                ],
                 'MessageBody' => base64_encode(serialize(clone $job)),
                 'QueueUrl'    => $this->queueUrl
             ];
@@ -155,8 +165,9 @@ class Sqs extends AbstractAdapter
     {
         $job    = false;
         $params = [
-            'MaxNumberOfMessages' => 1,
-            'QueueUrl'            => $this->queueUrl
+            'MessageAttributeNames' => ['Type', 'Status'],
+            'MaxNumberOfMessages'   => 1,
+            'QueueUrl'              => $this->queueUrl
         ];
 
         $result = $this->client->receiveMessage($params);
@@ -173,7 +184,132 @@ class Sqs extends AbstractAdapter
     }
 
     /**
-     * Clear queue
+     * Check if adapter has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool
+    {
+        return ($this->getEnd() > 0);
+    }
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param  mixed $index
+     * @return bool
+     */
+    public function hasFailedJob(mixed $index): bool
+    {
+        $failed = $this->getFailedJobs();
+        return isset($failed[$index]);
+    }
+
+    /**
+     * Get failed job
+     *
+     * @param  mixed $index
+     * @param  bool  $unserialize
+     * @return mixed
+     */
+    public function getFailedJob(mixed $index, bool $unserialize = true): mixed
+    {
+        $failed = $this->getFailedJobs($unserialize);
+        return $failed[$index] ?? null;
+    }
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    public function hasFailedJobs(): bool
+    {
+        $failed = false;
+        $params = [
+            'MessageAttributeNames' => ['Type', 'Status'],
+            'MaxNumberOfMessages'   => 1,
+            'QueueUrl'              => $this->queueUrl
+        ];
+
+        $result = $this->client->receiveMessage($params);
+
+        while (isset($result->get('Messages')[0])) {
+            $message = $result->get('Messages')[0];
+            if (isset($message['MessageAttributes']['Status']) &&
+                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
+                $failed = true;
+                break;
+            }
+            $result = $this->client->receiveMessage($params);
+        }
+
+        return $failed;
+    }
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getFailedJobs(bool $unserialize = true): array
+    {
+        $failed = [];
+        $params = [
+            'MessageAttributeNames' => ['Type', 'Status'],
+            'MaxNumberOfMessages'   => 1,
+            'QueueUrl'              => $this->queueUrl
+        ];
+
+        $result = $this->client->receiveMessage($params);
+
+        while (isset($result->get('Messages')[0])) {
+            $message = $result->get('Messages')[0];
+            if (isset($message['MessageAttributes']['Status']) &&
+                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
+                if ($unserialize) {
+                    $message['Body'] = unserialize(base64_decode($message['Body']));
+                }
+
+                $failed[$message['MessageId']] = $message;
+            }
+            $result = $this->client->receiveMessage($params);
+        }
+
+        return $failed;
+    }
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return Sqs
+     */
+    public function clearFailed(): Sqs
+    {
+        $params = [
+            'MessageAttributeNames' => ['Type', 'Status'],
+            'MaxNumberOfMessages'   => $this->getEnd(),
+            'QueueUrl'              => $this->queueUrl
+        ];
+
+        $result = $this->client->receiveMessage($params);
+
+        foreach ($result->get('Messages') as $message) {
+            if (isset($message['MessageAttributes']['Status']) &&
+                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
+                $this->client->deleteMessage([
+                    'QueueUrl'      => $this->queueUrl,
+                    'ReceiptHandle' => $message['ReceiptHandle']
+                ]);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Clear jobs out of queue
      *
      * @return Sqs
      */

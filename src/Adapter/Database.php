@@ -213,6 +213,108 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
+     * Check if adapter has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool
+    {
+        $sql = $this->db->createSql();
+        $sql->select(['total' => 'COUNT(1)'])->from($this->table)->where("type = 'job'");
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+
+        return (isset($rows[0]['total'])) ? (int)$rows[0]['total'] : 0;
+    }
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    public function hasFailedJob(int $index): bool
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)->where('index = ' . (int)$index);
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+
+        return (isset($rows[0]));
+    }
+
+    /**
+     * Get failed job from worker by job ID
+     *
+     * @param  int $index
+     * @param  bool $unserialize
+     * @return mixed
+     */
+    public function getFailedJob(int $index, bool $unserialize = true): mixed
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)->where('index = ' . (int)$index);
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+        $job  = null;
+        if (isset($rows[0])) {
+            $job = ($unserialize) ? unserialize($rows[0]['payload']) : $rows[0];
+        }
+
+        return $job;
+    }
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    public function hasFailedJobs(): bool
+    {
+        $sql = $this->db->createSql();
+        $sql->select(['total' => 'COUNT(1)'])->from($this->table)->where("status = 2");
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+
+        return (isset($rows[0]['total'])) ? (int)$rows[0]['total'] : 0;
+    }
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getFailedJobs(bool $unserialize = true): array
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)->where("status = 2");
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+        $jobs = [];
+
+        foreach ($rows as $row) {
+            $jobs[$row['index']] = ($unserialize) ? unserialize($row['payload']) : $row;
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return Database
+     */
+    public function clearFailed(): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table)->where("status = 2");
+        $this->db->query($sql);
+
+        return $this;
+    }
+
+    /**
      * Schedule job with queue
      *
      * @param  Task $task
@@ -340,7 +442,6 @@ class Database extends AbstractTaskAdapter
         $rows = $this->db->fetchAll();
 
         return (isset($rows[0]['total'])) ? (int)$rows[0]['total'] : 0;
-
     }
 
     /**
@@ -354,7 +455,21 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Clear queue
+     * Clear all scheduled task
+     *
+     * @return Database
+     */
+    public function clearTasks(): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table)->where("type = 'task'");
+        $this->db->query($sql);
+
+        return $this;
+    }
+
+    /**
+     * Clear jobs out of queue
      *
      * @return Database
      */

@@ -60,7 +60,7 @@ class File extends AbstractTaskAdapter
     /**
      * Create file adapter
      *
-     * @param  string $folder
+     * @param  string  $folder
      * @param  ?string $priority
      * @throws Exception
      * @return File
@@ -180,6 +180,126 @@ class File extends AbstractTaskAdapter
     }
 
     /**
+     * Check if adapter has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool
+    {
+        return !empty($this->getFolders($this->folder));
+    }
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    public function hasFailedJob(int $index): bool
+    {
+        return (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') &&
+            (file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') == 2));
+    }
+
+    /**
+     * Get failed job
+     *
+     * @param  int $index
+     * @param  bool $unserialize
+     * @return mixed
+     */
+    public function getFailedJob(int $index, bool $unserialize = true): mixed
+    {
+        if (($this->hasFailedJob($index)) &&
+            file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload')) {
+            $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+            return ($unserialize) ? unserialize($payload) : $payload;
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    public function hasFailedJobs(): bool
+    {
+        return (count($this->getFailedJobs(false)) > 0);
+    }
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getFailedJobs(bool $unserialize = true): array
+    {
+        $folders = $this->getFolders($this->folder);
+        $failed  = [];
+
+        foreach ($folders as $index) {
+            if ($this->hasFailedJob($index)) {
+                $failed[$index] = $this->getFailedJob($index);
+            }
+        }
+
+        return $failed;
+    }
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return File
+     */
+    public function clearFailed(): File
+    {
+        $failed = $this->getFailedJobs(false);
+
+        foreach ($failed as $folder) {
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
+            }
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
+            }
+            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
+        }
+        return $this;
+    }
+
+    /**
+     * Clear jobs out of queue
+     *
+     * @return File
+     */
+    public function clear(): File
+    {
+        $files   = $this->getFiles($this->folder);
+        $folders = $this->getFolders($this->folder);
+
+        foreach ($files as $file) {
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $file)) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $file);
+            }
+        }
+
+        foreach ($folders as $folder) {
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
+            }
+            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
+            }
+            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
+        }
+
+        return $this;
+    }
+
+    /**
      * Schedule job with queue
      *
      * @param  Task $task
@@ -280,29 +400,16 @@ class File extends AbstractTaskAdapter
     }
 
     /**
-     * Clear queue
+     * Clear all scheduled task
      *
      * @return File
      */
-    public function clear(): File
+    public function clearTasks(): File
     {
-        $files   = $this->getFiles($this->folder);
-        $folders = $this->getFolders($this->folder);
+        $tasks = $this->getTasks();
 
-        foreach ($files as $file) {
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $file)) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $file);
-            }
-        }
-
-        foreach ($folders as $folder) {
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
-            }
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
-            }
-            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
+        foreach ($tasks as $taskId) {
+            $this->removeTask($taskId);
         }
 
         return $this;

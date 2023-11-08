@@ -81,4 +81,11 @@ interface TaskAdapterInterface
      */
     public function hasTasks(): bool;
 
+    /**
+     * Clear all scheduled task
+     *
+     * @return TaskAdapterInterface
+     */
+    public function clearTasks(): TaskAdapterInterface;
+
 }

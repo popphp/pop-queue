@@ -110,7 +110,53 @@ interface AdapterInterface
     public function pop(): ?AbstractJob;
 
     /**
-     * Clear queue
+     * Check if adapter has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool;
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param  int $index
+     * @return bool
+     */
+    public function hasFailedJob(int $index): bool;
+
+    /**
+     * Get failed job
+     *
+     * @param  int  $index
+     * @param  bool $unserialize
+     * @return mixed
+     */
+    public function getFailedJob(int $index, bool $unserialize = true): mixed;
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    public function hasFailedJobs(): bool;
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getFailedJobs(bool $unserialize = true): array;
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return AdapterInterface
+     */
+    public function clearFailed(): AdapterInterface;
+
+    /**
+     * Clear jobs out of queue
      *
      * @return AdapterInterface
      */

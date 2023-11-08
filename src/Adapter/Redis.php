@@ -202,6 +202,112 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
+     * Check if adapter has jobs
+     *
+     * @return bool
+     */
+    public function hasJobs(): bool
+    {
+        return ($this->redis->lLen($this->prefix) > 0);
+    }
+
+    /**
+     * Check if adapter has failed job
+     *
+     * @param int $index
+     * @return bool
+     */
+    public function hasFailedJob(int $index): bool
+    {
+        return ($this->getStatus($index) == 2);
+    }
+
+    /**
+     * Get failed job
+     *
+     * @param  int  $index
+     * @param  bool $unserialize
+     * @return mixed
+     */
+    public function getFailedJob(int $index, bool $unserialize = true): mixed
+    {
+        $job = null;
+
+        if ($this->getStatus($index) == 2) {
+            $job = $this->redis->lIndex($this->prefix, $index);
+            if ($unserialize) {
+                $job = unserialize($job);
+            }
+        }
+
+        return $job;
+    }
+
+    /**
+     * Check if adapter has failed jobs
+     *
+     * @return bool
+     */
+    public function hasFailedJobs(): bool
+    {
+        $result = false;
+        $length = $this->redis->lLen($this->prefix);
+
+        if ($length > 0) {
+            for ($i = 0; $i < $length; $i++) {
+                if ($this->getStatus($i) == 2) {
+                    $result = true;
+                    break;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get adapter failed jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getFailedJobs(bool $unserialize = true): array
+    {
+        $jobs   = [];
+        $length = $this->redis->lLen($this->prefix);
+
+        if ($length > 0) {
+            for ($i = 0; $i < $length; $i++) {
+                if ($this->getStatus($i) == 2) {
+                    $jobs[$i] = $this->getFailedJob($i, $unserialize);
+                }
+            }
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Clear failed jobs out of the queue
+     *
+     * @return Redis
+     */
+    public function clearFailed(): Redis
+    {
+        $length = $this->redis->lLen($this->prefix);
+
+        if ($length > 0) {
+            for ($i = 0; $i < $length; $i++) {
+                if ($this->getStatus($i) == 2) {
+                    $this->redis->lRem($this->prefix, $this->redis->lIndex($this->prefix, $i));
+                    $this->redis->lRem($this->prefix . ':status', $this->redis->lIndex($this->prefix . ':status', $i));
+                }
+            }
+        }
+        return $this;
+    }
+
+    /**
      * Push job on to queue
      *
      * @param  Task $task
@@ -295,7 +401,23 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Clear queue
+     * Clear all scheduled task
+     *
+     * @return Redis
+     */
+    public function clearTasks(): Redis
+    {
+        $taskIds = $this->getTasks();
+
+        foreach ($taskIds as $taskId) {
+            $this->removeTask($taskId);
+        }
+        return $this;
+    }
+
+
+    /**
+     * Clear jobs out of queue
      *
      * @return Redis
      */
