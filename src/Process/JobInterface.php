@@ -80,6 +80,20 @@ interface JobInterface
     public function hasJobDescription(): bool;
 
     /**
+     * Get job results
+     *
+     * @return mixed
+     */
+    public function getResults(): mixed;
+
+    /**
+     * Has job results
+     *
+     * @return bool
+     */
+    public function hasResults(): bool;
+
+    /**
      * Set job callable
      *
      * @param  mixed $callable

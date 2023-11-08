@@ -75,13 +75,6 @@ interface QueueInterface
     public function adapter(): AdapterInterface|TaskAdapterInterface;
 
     /**
-     * Clear queue
-     *
-     * @return QueueInterface
-     */
-    public function clear(): QueueInterface;
-
-    /**
      * Work next job
      *
      * @param  ?Application $application
@@ -97,5 +90,12 @@ interface QueueInterface
      * @return QueueInterface
      */
     public function run(?Application $application = null): QueueInterface;
+
+    /**
+     * Clear queue
+     *
+     * @return QueueInterface
+     */
+    public function clear(): QueueInterface;
 
 }

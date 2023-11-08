@@ -75,6 +75,36 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
+     * Get the application
+     *
+     * @return ?Application
+     */
+    public function getApplication(): ?Application
+    {
+        return $this->application;
+    }
+
+    /**
+     * Get the application (alias)
+     *
+     * @return ?Application
+     */
+    public function application(): ?Application
+    {
+        return $this->application;
+    }
+
+    /**
+     * Has application
+     *
+     * @return bool
+     */
+    public function hasApplication(): bool
+    {
+        return ($this->application !== null);
+    }
+
+    /**
      * Add queue
      *
      * @param  Queue $queue

@@ -107,13 +107,6 @@ abstract class AbstractQueue implements QueueInterface
     }
 
     /**
-     * Clear queue
-     *
-     * @return AbstractQueue
-     */
-    abstract public function clear(): AbstractQueue;
-
-    /**
      * Work next job
      *
      * @param  ?Application $application
@@ -129,5 +122,12 @@ abstract class AbstractQueue implements QueueInterface
      * @return AbstractQueue
      */
     abstract public function run(?Application $application = null): AbstractQueue;
+
+    /**
+     * Clear queue
+     *
+     * @return AbstractQueue
+     */
+    abstract public function clear(): AbstractQueue;
 
 }

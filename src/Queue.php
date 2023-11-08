@@ -190,17 +190,6 @@ class Queue extends AbstractQueue
     }
 
     /**
-     * Clear queue
-     *
-     * @return Queue
-     */
-    public function clear(): Queue
-    {
-        $this->adapter->clear();
-        return $this;
-    }
-
-    /**
      * Work next job
      *
      * @param  ?Application $application
@@ -271,6 +260,17 @@ class Queue extends AbstractQueue
             }
         }
 
+        return $this;
+    }
+
+    /**
+     * Clear queue
+     *
+     * @return Queue
+     */
+    public function clear(): Queue
+    {
+        $this->adapter->clear();
         return $this;
     }
 

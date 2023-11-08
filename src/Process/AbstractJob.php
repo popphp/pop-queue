@@ -115,6 +115,12 @@ abstract class AbstractJob implements JobInterface
     protected ?array $serializedParameters = null;
 
     /**
+     * Job results
+     * @var mixed
+     */
+    protected mixed $results = null;
+
+    /**
      * Constructor
      *
      * Instantiate the job object
@@ -209,6 +215,26 @@ abstract class AbstractJob implements JobInterface
     public function hasJobDescription(): bool
     {
         return ($this->description !== null);
+    }
+
+    /**
+     * Get job results
+     *
+     * @return mixed
+     */
+    public function getResults(): mixed
+    {
+        return $this->results;
+    }
+
+    /**
+     * Has job results
+     *
+     * @return bool
+     */
+    public function hasResults(): bool
+    {
+        return !empty($this->results);
     }
 
     /**
@@ -624,6 +650,8 @@ abstract class AbstractJob implements JobInterface
      */
     public function run(?Application $application = null): mixed
     {
+        $this->start();
+
         if ($this->hasCallable()) {
             return $this->loadCallable($application);
         }
@@ -660,7 +688,8 @@ abstract class AbstractJob implements JobInterface
             }
         }
 
-        return $this->callable->call();
+        $this->results = $this->callable->call();
+        return $this->results;
     }
 
     /**
@@ -672,13 +701,12 @@ abstract class AbstractJob implements JobInterface
     protected function runCommand(Application $application): mixed
     {
         if (array_key_exists($this->command, $application->router()->getRouteMatch()->getRoutes())) {
-            $output = null;
-
             ob_start();
             $application->run(true, $this->command);
             $output = ob_get_clean();
 
-            return array_filter(explode(PHP_EOL, $output));
+            $this->results = array_filter(explode(PHP_EOL, $output));
+            return $this->results;
         }
 
         return false;
@@ -693,7 +721,8 @@ abstract class AbstractJob implements JobInterface
     {
         $output = [];
         exec($this->exec, $output);
-        return $output;
+        $this->results = $output;
+        return $this->results;
     }
 
     /**
