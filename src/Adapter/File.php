@@ -187,9 +187,11 @@ class File extends AbstractTaskAdapter
      */
     public function schedule(Task $task): File
     {
-        file_put_contents(
-            $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
-        );
+        if ($task->isValid()) {
+            file_put_contents(
+                $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+            );
+        }
         return $this;
     }
 
@@ -222,6 +224,39 @@ class File extends AbstractTaskAdapter
     {
         return (file_exists($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) ?
             unserialize(file_get_contents($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) : null;
+    }
+
+    /**
+     * Update scheduled task
+     *
+     * @param  Task $task
+     * @return File
+     */
+    public function updateTask(Task $task): File
+    {
+        if ($task->isValid()) {
+            file_put_contents(
+                $this->folder . DIRECTORY_SEPARATOR . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+            );
+        } else {
+            $this->removeTask($task->getJobId());
+        }
+
+        return $this;
+    }
+
+    /**
+     * Remove scheduled task
+     *
+     * @param  string $taskId
+     * @return File
+     */
+    public function removeTask(string $taskId): File
+    {
+        if (file_exists($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) {
+            unlink($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId);
+        }
+        return $this;
     }
 
     /**

@@ -32,9 +32,9 @@ interface TaskAdapterInterface
      * Schedule job with queue
      *
      * @param  Task $task
-     * @return AdapterInterface
+     * @return TaskAdapterInterface
      */
-    public function schedule(Task $task): AdapterInterface;
+    public function schedule(Task $task): TaskAdapterInterface;
 
     /**
      * Get scheduled tasks
@@ -50,6 +50,22 @@ interface TaskAdapterInterface
      * @return ?Task
      */
     public function getTask(string $taskId): ?Task;
+
+    /**
+     * Update scheduled task
+     *
+     * @param  Task $task
+     * @return TaskAdapterInterface
+     */
+    public function updateTask(Task $task): TaskAdapterInterface;
+
+    /**
+     * Remove scheduled task
+     *
+     * @param  string $taskId
+     * @return TaskAdapterInterface
+     */
+    public function removeTask(string $taskId): TaskAdapterInterface;
 
     /**
      * Get scheduled tasks count

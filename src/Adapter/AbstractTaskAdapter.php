@@ -32,9 +32,9 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
      * Schedule job with queue
      *
      * @param  Task $task
-     * @return AdapterInterface
+     * @return AbstractTaskAdapter
      */
-    abstract public function schedule(Task $task): AdapterInterface;
+    abstract public function schedule(Task $task): AbstractTaskAdapter;
 
     /**
      * Get scheduled tasks
@@ -50,6 +50,22 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
      * @return ?Task
      */
     abstract public function getTask(string $taskId): ?Task;
+
+    /**
+     * Update scheduled task
+     *
+     * @param  Task $task
+     * @return AbstractTaskAdapter
+     */
+    abstract public function updateTask(Task $task): AbstractTaskAdapter;
+
+    /**
+     * Remove scheduled task
+     *
+     * @param  string $taskId
+     * @return AbstractTaskAdapter
+     */
+    abstract public function removeTask(string $taskId): AbstractTaskAdapter;
 
     /**
      * Get scheduled tasks count

@@ -209,7 +209,9 @@ class Redis extends AbstractTaskAdapter
      */
     public function schedule(Task $task): Redis
     {
-        $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+        if ($task->isValid()) {
+            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+        }
         return $this;
     }
 
@@ -236,6 +238,34 @@ class Redis extends AbstractTaskAdapter
     {
         $task = $this->redis->get($this->prefix . ':task-' . $taskId);
         return ($task !== false) ? unserialize($task) : null;
+    }
+
+    /**
+     * Update scheduled task
+     *
+     * @param  Task $task
+     * @return Redis
+     */
+    public function updateTask(Task $task): Redis
+    {
+        if ($task->isValid()) {
+            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+        } else {
+            $this->removeTask($task->getJobId());
+        }
+        return $this;
+    }
+
+    /**
+     * Remove scheduled task
+     *
+     * @param  string $taskId
+     * @return Redis
+     */
+    public function removeTask(string $taskId): Redis
+    {
+        $this->redis->del($this->prefix . ':task-' . $taskId);
+        return $this;
     }
 
     /**

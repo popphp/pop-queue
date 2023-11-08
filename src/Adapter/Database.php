@@ -220,22 +220,25 @@ class Database extends AbstractTaskAdapter
      */
     public function schedule(Task $task): Database
     {
-        $sql = $this->db->createSql();
-        $sql->insert($this->table)->values([
-            'type'    => ':type',
-            'job_id'  => ':job_id',
-            'payload' => ':payload'
-        ]);
+        if ($task->isValid()) {
+            $sql = $this->db->createSql();
+            $sql->insert($this->table)->values([
+                'type'    => ':type',
+                'job_id'  => ':job_id',
+                'payload' => ':payload'
+            ]);
 
-        $jobData = [
-            'type'   => 'task',
-            'job_id' => $task->getJobId(),
-            'payload' => serialize(clone $task)
-        ];
+            $jobData = [
+                'type'    => 'task',
+                'job_id'  => $task->getJobId(),
+                'payload' => serialize(clone $task)
+            ];
 
-        $this->db->prepare($sql);
-        $this->db->bindParams($jobData);
-        $this->db->execute();
+            $this->db->prepare($sql);
+            $this->db->bindParams($jobData);
+            $this->db->execute();
+        }
+
         return $this;
     }
 
@@ -276,6 +279,52 @@ class Database extends AbstractTaskAdapter
         $rows = $this->db->fetchAll();
 
         return (isset($rows[0]['payload'])) ? unserialize($rows[0]['payload']) : null;
+    }
+
+    /**
+     * Update scheduled task
+     *
+     * @param  Task $task
+     * @return Database
+     */
+    public function updateTask(Task $task): Database
+    {
+        if ($task->isValid()) {
+            $sql = $this->db->createSql();
+            $sql->update($this->table)->values([
+                'payload' => ':payload'
+            ])->where('job_id = :job_id');
+
+            $jobData = [
+                'payload' => serialize(clone $task),
+                'job_id'  => $task->getJobId()
+            ];
+
+            $this->db->prepare($sql);
+            $this->db->bindParams($jobData);
+            $this->db->execute();
+        } else {
+            $this->removeTask($task->getJobId());
+        }
+
+        return $this;
+    }
+
+    /**
+     * Remove scheduled task
+     *
+     * @param  string $taskId
+     * @return Database
+     */
+    public function removeTask(string $taskId): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $taskId]);
+        $this->db->execute();
+
+        return $this;
     }
 
     /**

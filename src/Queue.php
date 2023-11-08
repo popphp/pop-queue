@@ -13,6 +13,7 @@
  */
 namespace Pop\Queue;
 
+use Pop\Application;
 use Pop\Queue\Adapter\AdapterInterface;
 use Pop\Queue\Adapter\TaskAdapterInterface;
 use Pop\Queue\Process\AbstractJob;
@@ -252,5 +253,83 @@ class Queue
         }
         return $this;
     }
-    
+
+    /**
+     * Work next job
+     *
+     * @param  ?Application $application
+     * @return Queue
+     */
+    public function work(?Application $application = null): Queue
+    {
+        $job = $this->adapter->pop();
+
+        if (($job instanceof AbstractJob) && ($job->isValid())) {
+            try {
+                $job->run($application);
+                $job->complete();
+            } catch (\Exception $e) {
+                $job->failed($e->getMessage());
+                $this->adapter->push($job);
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * Run schedule
+     *
+     * @param  ?Application $application
+     * @throws Exception|Process\Exception
+     * @return Queue
+     */
+    public function run(?Application $application = null): Queue
+    {
+        if (!($this->adapter instanceof TaskAdapterInterface)) {
+            throw new Exception('Error: That queue adapter does not support scheduled tasks');
+        }
+
+        if ($this->adapter->hasTasks()) {
+            $taskIds = $this->adapter->getTasks();
+            foreach ($taskIds as $taskId) {
+                $task = $this->adapter->getTask($taskId);
+                if ($task instanceof Task) {
+                    $isSubMinute   = ($task->cron()->hasSeconds());
+                    $scheduleCheck = $task->cron()->evaluate();
+                    if ($isSubMinute) {
+                        $timer = 0;
+                        while ($timer < 60) {
+                            if (($task->isValid()) && ($scheduleCheck)) {
+                                $task->__wakeup();
+                                try {
+                                    $task->run($application);
+                                    $task->complete();
+                                } catch (\Exception $e) {
+                                    $task->failed($e->getMessage());
+                                    $this->adapter->removeTask($taskId);
+                                    $this->adapter->schedule($task);
+                                }
+                            }
+                            sleep(1);
+                            $scheduleCheck = $task->cron()->evaluate();
+                            $timer++;
+                        }
+                    } else if (($task->isValid()) && ($scheduleCheck)) {
+                        try {
+                            $task->run($application);
+                            $task->complete();
+                            $this->adapter->updateTask($task);
+                        } catch (\Exception $e) {
+                            $task->failed($e->getMessage());
+                            $this->adapter->updateTask($task);
+                        }
+                    }
+                }
+            }
+        }
+
+        return $this;
+    }
+
 }
