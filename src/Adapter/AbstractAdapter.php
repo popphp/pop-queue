@@ -151,41 +151,4 @@ abstract class AbstractAdapter implements AdapterInterface
      */
     abstract public function pop(): ?AbstractJob;
 
-    /**
-     * Schedule job with queue
-     *
-     * @param  Task $task
-     * @return AdapterInterface
-     */
-    abstract public function schedule(Task $task): AdapterInterface;
-
-    /**
-     * Get scheduled tasks
-     *
-     * @return array
-     */
-    abstract public function getTasks(): array;
-
-    /**
-     * Get scheduled task
-     *
-     * @param  string $taskId
-     * @return ?Task
-     */
-    abstract public function getTask(string $taskId): ?Task;
-
-    /**
-     * Get scheduled tasks count
-     *
-     * @return int
-     */
-    abstract public function getTaskCount(): int;
-
-    /**
-     * Has scheduled tasks
-     *
-     * @return bool
-     */
-    abstract public function hasTasks(): bool;
-
 }

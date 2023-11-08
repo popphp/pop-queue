@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Aws\Sqs\SqsClient;
+use Pop\Queue\Queue;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
 
@@ -36,15 +37,32 @@ class Sqs extends AbstractAdapter
      */
     protected ?SqsClient $client = null;
 
+    /**
+     * Queue URL
+     * @var ?string
+     */
+    protected ?string $queueUrl = null;
+
+    /**
+     * Message group ID
+     * @var string
+     */
+    protected string $groupId = 'pop-queue';
 
     /**
      * Constructor
      *
      * @param SqsClient $client
+     * @param string    $queueUrl
+     * @param string    $groupId
      */
-    public function __construct(SqsClient $client, ?string $priority = null)
+    public function __construct(SqsClient $client, string $queueUrl, string $groupId = 'pop-queue')
     {
-        $this->client = $client;
+        $this->client   = $client;
+        $this->queueUrl = $queueUrl;
+        $this->groupId  = $groupId;
+        $priority       = str_ends_with($queueUrl, '.fifo') ? Queue::FIFO : Queue::FILO;
+
         parent::__construct($priority);
     }
 
@@ -75,7 +93,7 @@ class Sqs extends AbstractAdapter
      */
     public function getStart(): int
     {
-
+        return 0;
     }
 
     /**
@@ -85,7 +103,12 @@ class Sqs extends AbstractAdapter
      */
     public function getEnd(): int
     {
+        $result = $this->client->getQueueAttributes([
+            'AttributeNames' => ['ApproximateNumberOfMessages'],
+            'QueueUrl'       => $this->queueUrl
+        ]);
 
+        return (int)$result->get('Attributes')['ApproximateNumberOfMessages'];
     }
 
     /**
@@ -96,7 +119,7 @@ class Sqs extends AbstractAdapter
      */
     public function getStatus(int $index): int
     {
-
+        return 0;
     }
 
     /**
@@ -107,6 +130,19 @@ class Sqs extends AbstractAdapter
      */
     public function push(AbstractJob $job): Sqs
     {
+        if ($job->isValid()) {
+            $params = [
+                'MessageBody' => base64_encode(serialize(clone $job)),
+                'QueueUrl'    => $this->queueUrl
+            ];
+
+            if ($this->isFifo()) {
+                $params['MessageGroupId'] = $this->groupId;
+            }
+
+            $this->client->sendMessage($params);
+        }
+
         return $this;
     }
 
@@ -117,59 +153,23 @@ class Sqs extends AbstractAdapter
      */
     public function pop(): ?AbstractJob
     {
-        return null;
-    }
+        $job    = false;
+        $params = [
+            'MaxNumberOfMessages' => 1,
+            'QueueUrl'            => $this->queueUrl
+        ];
 
-    /**
-     * Schedule job with queue
-     *
-     * @param  Task $task
-     * @return Sqs
-     */
-    public function schedule(Task $task): Sqs
-    {
-        return $this;
-    }
+        $result = $this->client->receiveMessage($params);
 
-    /**
-     * Get scheduled tasks
-     *
-     * @return array
-     */
-    public function getTasks(): array
-    {
+        if (isset($result->get('Messages')[0]['Body'])) {
+            $job = $result->get('Messages')[0]['Body'];
+            $this->client->deleteMessage([
+                'QueueUrl'      => $this->queueUrl,
+                'ReceiptHandle' => $result->get('Messages')[0]['ReceiptHandle']
+            ]);
+        }
 
-    }
-
-    /**
-     * Get scheduled task
-     *
-     * @param  string $taskId
-     * @return ?Task
-     */
-    public function getTask(string $taskId): ?Task
-    {
-
-    }
-
-    /**
-     * Get scheduled tasks count
-     *
-     * @return int
-     */
-    public function getTaskCount(): int
-    {
-
-    }
-
-    /**
-     * Has scheduled tasks
-     *
-     * @return bool
-     */
-    public function hasTasks(): bool
-    {
-
+        return ($job !== false) ? unserialize(base64_decode($job)) : null;
     }
 
 }

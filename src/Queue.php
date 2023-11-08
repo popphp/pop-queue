@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use Pop\Queue\Adapter\AdapterInterface;
+use Pop\Queue\Adapter\TaskAdapterInterface;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
 
@@ -44,20 +45,20 @@ class Queue
 
     /**
      * Queue adapter
-     * @var ?AdapterInterface
+     * @var AdapterInterface|TaskAdapterInterface
      */
-    protected ?AdapterInterface $adapter = null;
+    protected AdapterInterface|TaskAdapterInterface $adapter;
 
     /**
      * Constructor
      *
      * Instantiate the queue object
      *
-     * @param string           $name
-     * @param AdapterInterface $adapter
-     * @param ?string          $priority
+     * @param string $name
+     * @param AdapterInterface|TaskAdapterInterface $adapter
+     * @param ?string $priority
      */
-    public function __construct(string $name, AdapterInterface $adapter, ?string $priority = null)
+    public function __construct(string $name, AdapterInterface|TaskAdapterInterface $adapter, ?string $priority = null)
     {
         $this->setName($name);
         $this->setAdapter($adapter);
@@ -91,10 +92,10 @@ class Queue
     /**
      * Set adapter
      *
-     * @param  AdapterInterface $adapter
+     * @param  AdapterInterface|TaskAdapterInterface $adapter
      * @return Queue
      */
-    public function setAdapter(AdapterInterface $adapter): Queue
+    public function setAdapter(AdapterInterface|TaskAdapterInterface $adapter): Queue
     {
         $this->adapter = $adapter;
         return $this;
@@ -103,9 +104,9 @@ class Queue
     /**
      * Get adapter
      *
-     * @return AdapterInterface
+     * @return AdapterInterface|TaskAdapterInterface
      */
-    public function getAdapter(): AdapterInterface
+    public function getAdapter(): AdapterInterface|TaskAdapterInterface
     {
         return $this->adapter;
     }
@@ -113,9 +114,9 @@ class Queue
     /**
      * Get adapter (alias)
      *
-     * @return AdapterInterface
+     * @return AdapterInterface|TaskAdapterInterface
      */
-    public function adapter(): AdapterInterface
+    public function adapter(): AdapterInterface|TaskAdapterInterface
     {
         return $this->adapter;
     }
@@ -219,11 +220,21 @@ class Queue
      *
      * @param  Task $task
      * @param  ?int $maxAttempts
+     * @throws Exception
      * @return Queue
      */
     public function addTask(Task $task, ?int $maxAttempts = null): Queue
     {
-        return $this->addJob($task, $maxAttempts);
+        if (!($this->adapter instanceof TaskAdapterInterface)) {
+            throw new Exception('Error: That queue adapter does not support scheduled tasks');
+        }
+        if ($maxAttempts !== null) {
+            $task->setMaxAttempts($maxAttempts);
+        }
+
+        $this->adapter->schedule($task);
+
+        return $this;
     }
 
     /**
@@ -231,6 +242,7 @@ class Queue
      *
      * @param  array $tasks
      * @param  ?int  $maxAttempts
+     * @throws Exception
      * @return Queue
      */
     public function addTasks(array $tasks, ?int $maxAttempts = null): Queue

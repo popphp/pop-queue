@@ -26,7 +26,7 @@ use Pop\Queue\Process\Task;
  * @license    http://www.popphp.org/license     New BSD License
  * @version    2.0.0
  */
-class File extends AbstractAdapter
+class File extends AbstractTaskAdapter
 {
 
     /**

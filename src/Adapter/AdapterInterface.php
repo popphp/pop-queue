@@ -109,41 +109,4 @@ interface AdapterInterface
      */
     public function pop(): ?AbstractJob;
 
-    /**
-     * Schedule job with queue
-     *
-     * @param  Task $task
-     * @return AdapterInterface
-     */
-    public function schedule(Task $task): AdapterInterface;
-
-    /**
-     * Get scheduled tasks
-     *
-     * @return array
-     */
-    public function getTasks(): array;
-
-    /**
-     * Get scheduled task
-     *
-     * @param  string $taskId
-     * @return ?Task
-     */
-    public function getTask(string $taskId): ?Task;
-
-    /**
-     * Get scheduled tasks count
-     *
-     * @return int
-     */
-    public function getTaskCount(): int;
-
-    /**
-     * Has scheduled tasks
-     *
-     * @return bool
-     */
-    public function hasTasks(): bool;
-
 }
