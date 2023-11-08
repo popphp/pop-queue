@@ -193,9 +193,9 @@ class Queue extends AbstractQueue
      * Work next job
      *
      * @param  ?Application $application
-     * @return Queue
+     * @return ?AbstractJob
      */
-    public function work(?Application $application = null): Queue
+    public function work(?Application $application = null): ?AbstractJob
     {
         $job = $this->adapter->pop();
 
@@ -209,7 +209,7 @@ class Queue extends AbstractQueue
             }
         }
 
-        return $this;
+        return $job;
     }
 
     /**
@@ -217,10 +217,12 @@ class Queue extends AbstractQueue
      *
      * @param  ?Application $application
      * @throws Process\Exception
-     * @return Queue
+     * @return array
      */
-    public function run(?Application $application = null): Queue
+    public function run(?Application $application = null): array
     {
+        $tasks = [];
+
         if (($this->adapter instanceof TaskAdapterInterface) && ($this->adapter->hasTasks())) {
             $taskIds = $this->adapter->getTasks();
             foreach ($taskIds as $taskId) {
@@ -236,10 +238,12 @@ class Queue extends AbstractQueue
                                 try {
                                     $task->run($application);
                                     $task->complete();
+                                    $tasks[$task->getJobId()] = $task;
                                 } catch (\Exception $e) {
                                     $task->failed($e->getMessage());
                                     $this->adapter->removeTask($taskId);
                                     $this->adapter->schedule($task);
+                                    $tasks[$task->getJobId()] = $task;
                                 }
                             }
                             sleep(1);
@@ -251,26 +255,52 @@ class Queue extends AbstractQueue
                             $task->run($application);
                             $task->complete();
                             $this->adapter->updateTask($task);
+                            $tasks[$task->getJobId()] = $task;
                         } catch (\Exception $e) {
                             $task->failed($e->getMessage());
                             $this->adapter->updateTask($task);
+                            $tasks[$task->getJobId()] = $task;
                         }
                     }
                 }
             }
         }
 
-        return $this;
+        return $tasks;
     }
 
     /**
-     * Clear queue
+     * Clear jobs from queue
      *
      * @return Queue
      */
     public function clear(): Queue
     {
         $this->adapter->clear();
+        return $this;
+    }
+
+    /**
+     * Clear failed jobs from queue
+     *
+     * @return Queue
+     */
+    public function clearFailed(): Queue
+    {
+        $this->adapter->clearFailed();
+        return $this;
+    }
+
+    /**
+     * Clear tasks from queue
+     *
+     * @return Queue
+     */
+    public function clearTasks(): Queue
+    {
+        if ($this->adapter instanceof TaskAdapterInterface) {
+            $this->adapter->clearTasks();
+        }
         return $this;
     }
 

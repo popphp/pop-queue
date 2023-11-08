@@ -16,6 +16,7 @@ namespace Pop\Queue;
 use Pop\Application;
 use Pop\Queue\Adapter\AdapterInterface;
 use Pop\Queue\Adapter\TaskAdapterInterface;
+use Pop\Queue\Process\AbstractJob;
 
 /**
  * Abstract queue class
@@ -110,18 +111,18 @@ abstract class AbstractQueue implements QueueInterface
      * Work next job
      *
      * @param  ?Application $application
-     * @return AbstractQueue
+     * @return ?AbstractJob
      */
-    abstract public function work(?Application $application = null): AbstractQueue;
+    abstract public function work(?Application $application = null): ?AbstractJob;
 
     /**
      * Run schedule
      *
      * @param  ?Application $application
      * @throws Exception|Process\Exception
-     * @return AbstractQueue
+     * @return array
      */
-    abstract public function run(?Application $application = null): AbstractQueue;
+    abstract public function run(?Application $application = null): array;
 
     /**
      * Clear queue

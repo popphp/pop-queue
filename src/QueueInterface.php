@@ -16,6 +16,7 @@ namespace Pop\Queue;
 use Pop\Application;
 use Pop\Queue\Adapter\AdapterInterface;
 use Pop\Queue\Adapter\TaskAdapterInterface;
+use Pop\Queue\Process\AbstractJob;
 
 /**
  * Queue interface
@@ -78,18 +79,18 @@ interface QueueInterface
      * Work next job
      *
      * @param  ?Application $application
-     * @return QueueInterface
+     * @return ?AbstractJob
      */
-    public function work(?Application $application = null): QueueInterface;
+    public function work(?Application $application = null): ?AbstractJob;
 
     /**
      * Run schedule
      *
      * @param  ?Application $application
      * @throws Exception|Process\Exception
-     * @return QueueInterface
+     * @return array
      */
-    public function run(?Application $application = null): QueueInterface;
+    public function run(?Application $application = null): array;
 
     /**
      * Clear queue

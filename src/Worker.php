@@ -15,6 +15,7 @@ namespace Pop\Queue;
 
 use ArrayIterator;
 use Pop\Application;
+use Pop\Queue\Process\AbstractJob;
 
 /**
  * Queue worker class
@@ -163,39 +164,144 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
+     * Work next job in queue
+     *
+     * @param  string $queueName
+     * @return ?AbstractJob
+     */
+    public function work(string $queueName): ?AbstractJob
+    {
+        $job = null;
+
+        if (isset($this->queues[$queueName])) {
+            $job = $this->queues[$queueName]->work($this->application);
+        }
+
+        return $job;
+    }
+
+    /**
      * Work next job across in all queues
      *
-     * @return void
+     * @return array
      */
-    public function workAll(): void
+    public function workAll(): array
     {
-        foreach ($this->queues as $queue) {
-            $queue->work($this->application);
+        $jobs = [];
+        foreach ($this->queues as $queueName => $queue) {
+            $jobs[$queueName] = $queue->work($this->application);
         }
+        return $jobs;
+    }
+
+    /**
+     * Run next scheduled task in queue
+     *
+     * @param  string $queueName
+     * @return array
+     */
+    public function run(string $queueName): array
+    {
+        $tasks = [];
+        if (isset($this->queues[$queueName])) {
+            $tasks[$queueName] = $this->queues[$queueName]->run($this->application);
+        }
+        return $tasks;
     }
 
     /**
      * Run next scheduled task across in all queues
      *
-     * @return void
+     * @return array
      */
-    public function runAll(): void
+    public function runAll(): array
     {
-        foreach ($this->queues as $queue) {
-            $queue->run($this->application);
+        $tasks = [];
+        foreach ($this->queues as $queueName => $queue) {
+            $tasks[$queueName] = $queue->run($this->application);
         }
+        return $tasks;
     }
 
     /**
-     * Clear all queues
+     * Clear jobs from queue
      *
-     * @return void
+     * @param  string $queueName
+     * @return Worker
      */
-    public function clearAll(): void
+    public function clear(string $queueName): Worker
+    {
+        if (isset($this->queues[$queueName])) {
+            $this->queues[$queueName]->clear();
+        }
+        return $this;
+    }
+
+    /**
+     * Clear failed jobs from queue
+     *
+     * @param  string $queueName
+     * @return Worker
+     */
+    public function clearFailed(string $queueName): Worker
+    {
+        if (isset($this->queues[$queueName])) {
+            $this->queues[$queueName]->clearFailed();
+        }
+        return $this;
+    }
+
+    /**
+     * Clear tasks from queue
+     *
+     * @param  string $queueName
+     * @return Worker
+     */
+    public function clearTasks(string $queueName): Worker
+    {
+        if (isset($this->queues[$queueName])) {
+            $this->queues[$queueName]->clearTasks();
+        }
+        return $this;
+    }
+
+    /**
+     * Clear all jobs from queues
+     *
+     * @return Worker
+     */
+    public function clearAll(): Worker
     {
         foreach ($this->queues as $queue) {
             $queue->clear();
         }
+        return $this;
+    }
+
+    /**
+     * Clear all failed jobs from queues
+     *
+     * @return Worker
+     */
+    public function clearAllFailed(): Worker
+    {
+        foreach ($this->queues as $queue) {
+            $queue->clearFailed();
+        }
+        return $this;
+    }
+
+    /**
+     * Clear all tasks from queues
+     *
+     * @return Worker
+     */
+    public function clearAllTasks(): Worker
+    {
+        foreach ($this->queues as $queue) {
+            $queue->clearTasks();
+        }
+        return $this;
     }
 
     /**
