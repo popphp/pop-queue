@@ -15,5 +15,8 @@
     <include>
       <directory suffix=".php">src</directory>
     </include>
+    <exclude>
+      <file>src/Adapter/Sqs.php</file>
+    </exclude>
   </source>
 </phpunit>

@@ -94,6 +94,16 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
+     * Get database table
+     *
+     * @return ?string
+     */
+    public function getTable(): ?string
+    {
+        return $this->table;
+    }
+
+    /**
      * Get queue length
      *
      * @return int
@@ -171,7 +181,7 @@ class Database extends AbstractTaskAdapter
                 'index'   => $index,
                 'type'    => 'job',
                 'job_id'  => $job->getJobId(),
-                'payload' => serialize(clone $job),
+                'payload' => base64_encode(serialize(clone $job)),
                 'status'  => $status
             ];
 
@@ -209,7 +219,7 @@ class Database extends AbstractTaskAdapter
             $this->db->query($sql);
         }
 
-        return ($job !== false) ? unserialize($job) : null;
+        return ($job !== false) ? unserialize(base64_decode($job)) : null;
     }
 
     /**
@@ -258,7 +268,7 @@ class Database extends AbstractTaskAdapter
         $rows = $this->db->fetchAll();
         $job  = null;
         if (isset($rows[0])) {
-            $job = ($unserialize) ? unserialize($rows[0]['payload']) : $rows[0];
+            $job = ($unserialize) ? unserialize(base64_decode($rows[0]['payload'])) : $rows[0];
         }
 
         return $job;
@@ -294,7 +304,7 @@ class Database extends AbstractTaskAdapter
         $jobs = [];
 
         foreach ($rows as $row) {
-            $jobs[$row['index']] = ($unserialize) ? unserialize($row['payload']) : $row;
+            $jobs[$row['index']] = ($unserialize) ? unserialize(base64_decode($row['payload'])) : $row;
         }
 
         return $jobs;
@@ -333,7 +343,7 @@ class Database extends AbstractTaskAdapter
             $jobData = [
                 'type'    => 'task',
                 'job_id'  => $task->getJobId(),
-                'payload' => serialize(clone $task)
+                'payload' => base64_encode(serialize(clone $task))
             ];
 
             $this->db->prepare($sql);
@@ -380,7 +390,7 @@ class Database extends AbstractTaskAdapter
         $this->db->execute();
         $rows = $this->db->fetchAll();
 
-        return (isset($rows[0]['payload'])) ? unserialize($rows[0]['payload']) : null;
+        return (isset($rows[0]['payload'])) ? unserialize(base64_decode($rows[0]['payload'])) : null;
     }
 
     /**
@@ -398,7 +408,7 @@ class Database extends AbstractTaskAdapter
             ])->where('job_id = :job_id');
 
             $jobData = [
-                'payload' => serialize(clone $task),
+                'payload' => base64_encode(serialize(clone $task)),
                 'job_id'  => $task->getJobId()
             ];
 

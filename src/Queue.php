@@ -56,6 +56,20 @@ class Queue extends AbstractQueue
         }
     }
 
+    /**
+     * Create the queue object
+     *
+     * @param  string $name
+     * @param  AdapterInterface|TaskAdapterInterface $adapter
+     * @param  ?string $priority
+     * @return Queue
+     */
+    public static function create(
+        string $name, AdapterInterface|TaskAdapterInterface $adapter, ?string $priority = null
+    ): Queue
+    {
+        return new self($name, $adapter, $priority);
+    }
 
     /**
      * Set queue priority

@@ -258,7 +258,7 @@ class File extends AbstractTaskAdapter
     {
         $failed = $this->getFailedJobs(false);
 
-        foreach ($failed as $folder) {
+        foreach ($failed as $folder => $failedJob) {
             if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
                 unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
             }

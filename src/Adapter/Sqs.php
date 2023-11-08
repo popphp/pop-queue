@@ -66,6 +66,19 @@ class Sqs extends AbstractAdapter
     }
 
     /**
+     * Create SQS adapter
+     *
+     * @param  SqsClient $client
+     * @param  string $queueUrl
+     * @param  string $groupId
+     * @return Sqs
+     */
+    public static function create(SqsClient $client, string $queueUrl, string $groupId = 'pop-queue'): Sqs
+    {
+        return new self($client, $queueUrl, $groupId);
+    }
+
+    /**
      * Get SQS client
      *
      * @return ?SqsClient
@@ -83,6 +96,26 @@ class Sqs extends AbstractAdapter
     public function client(): ?SqsClient
     {
         return $this->client;
+    }
+
+    /**
+     * Get queue URL
+     *
+     * @return string
+     */
+    public function getQueueUrl(): string
+    {
+        return $this->queueUrl;
+    }
+
+    /**
+     * Get queue group ID
+     *
+     * @return string
+     */
+    public function getGroupId(): string
+    {
+        return $this->groupId;
     }
 
     /**

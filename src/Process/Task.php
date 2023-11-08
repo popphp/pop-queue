@@ -73,6 +73,38 @@ class Task extends Job
     }
 
     /**
+     * Set task ID (alias)
+     *
+     * @param  string $id
+     * @return Task
+     */
+    public function setTaskId(string $id): Task
+    {
+        $this->setJobId($id);
+        return $this;
+    }
+
+    /**
+     * Get task id (alias)
+     *
+     * @return ?string
+     */
+    public function getTaskId(): ?string
+    {
+        return $this->getJobId();
+    }
+
+    /**
+     * Has task ID (alias)
+     *
+     * @return bool
+     */
+    public function hasTaskId(): bool
+    {
+        return $this->hasJobId();
+    }
+
+    /**
      * Set cron Task
      *
      * @param  Cron $cron
