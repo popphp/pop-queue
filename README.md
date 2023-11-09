@@ -20,9 +20,9 @@ pop-queue
     - [Run Until](#run-until)
     - [Buffer](#buffer)
 * [Adapters](#adapters)
-    - [File](#file)
-    - [Database](#database)
     - [Redis](#redis)
+    - [Database](#database)
+    - [File](#file)
     - [AWS SQS](#aws-sqs)
 * [Queues](#queues)
     - [Completed Jobs](#completed-jobs)
@@ -511,14 +511,23 @@ Adapters
 By default, there are four available adapters, but additional ones could be created as long as they
 implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
 
-### File
+### Redis
 
-The file adapter only requires the location on disk where the queue data will be stored:
+The Redis adapter requires Redis to be correctly configured and running on the server, as well as
+the `redis` extension installed with PHP:
 
 ```php
-use Pop\Queue\Adapter\File;
+use Pop\Queue\Adapter\Redis;
 
-$adapter = new File(__DIR__ . '/queues'); 
+$adapter = new Redis();
+```
+
+The Redis adapter uses `localhost` and port `6379` as defaults. It also manages the jobs with the
+Redis server by means of a key prefix. By default, that prefix is set to `pop-queue`. If you would
+like to use alternate values for any these, you can pass them into the constructor:
+
+```php
+$adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
 ```
 
 [Top](#pop-queue)
@@ -550,23 +559,14 @@ $adapter = new Database($db, 'my_queue_jobs');
 
 [Top](#pop-queue)
 
-### Redis
+### File
 
-The Redis adapter requires Redis to be correctly configured and running on the server, as well as
-the `redis` extension installed with PHP:
-
-```php
-use Pop\Queue\Adapter\Redis;
-
-$adapter = new Redis();
-```
-
-The Redis adapter uses `localhost` and port `6379` as defaults. It also manages the jobs with the
-Redis server by means of a key prefix. By default, that prefix is set to `pop-queue`. If you would
-like to use alternate values for any these, you can pass them into the constructor:
+The file adapter only requires the location on disk where the queue data will be stored:
 
 ```php
-$adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
+use Pop\Queue\Adapter\File;
+
+$adapter = new File(__DIR__ . '/queues'); 
 ```
 
 [Top](#pop-queue)
