@@ -25,9 +25,7 @@ pop-queue
     - [File](#file)
     - [AWS SQS](#aws-sqs)
 * [Queues](#queues)
-    - [Completed Jobs](#completed-jobs)
-    - [Failed Jobs](#failed-jobs)
-    - [Clear Queue](#clear-queue)
+    - [Priority](#priority)
 * [Workers](#workers)
 * [Configuration](#configuration)
 
@@ -614,6 +612,59 @@ use Pop\Queue\Queue;
 
 $queue = Queue::create('pop-queue', $adapter); 
 ```
+
+[Top](#pop-queue)
+
+Queues
+------
+
+As shown in the [quickstart](#quickstart) example above, the queue object acts as the 
+go-between for jobs and the queue store adapter. Simply add jobs or tasks to a queue
+object will push them to the storage object, where they will wait until their turn is
+called.
+
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+use Pop\Queue\Process\Job;
+use Pop\Queue\Process\Task;
+
+$job1 = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+$job2 = Job::create(function() {
+    echo 'This is job #2' . PHP_EOL;
+});
+
+$task1 = Task::create(function() {
+    echo 'This is scheduled task #1' . PHP_EOL;
+})->every30Minutes();
+
+$task2 = Task::create(function() {
+    echo 'This is scheduled task #2' . PHP_EOL;
+})->sundays();
+
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), Queue::FILO);
+$queue->addJobs([$job1, $job2])
+    ->addTasks([$task1, $task2]);
+```
+
+### Priority
+
+A queue can have one of two priorities:
+ 
+- **FIFO:** First In, First Out (default)
+- **FILO:** First In, Last Out
+
+This simply means that with FIFO, the first job pushed in will be the **first** job popped off.
+And with FILO, the first job pushed in will be the **last** job popped off, as the most recently
+pushed job will be popped off instead.
+
+*(When you use a SQS FIFO queue, the queue priority is automatically set to FIFO)*
+
+Workers
+-------
 
 [Top](#pop-queue)
 
