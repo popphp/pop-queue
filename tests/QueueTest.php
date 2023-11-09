@@ -2,9 +2,7 @@
 
 namespace Pop\Queue\Test;
 
-use Aws\Sqs\SqsClient;
 use Pop\Queue\Adapter\File;
-use Pop\Queue\Adapter\Sqs;
 use Pop\Queue\Queue;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
@@ -44,20 +42,6 @@ class QueueTest extends TestCase
         });
         $queue->addJobs([$job1, $job2], 3);
         $this->assertTrue($queue->adapter()->hasJobs());
-    }
-
-    public function testAddTaskException()
-    {
-        $this->expectException('Pop\Queue\Exception');
-        $queue = Queue::create('pop-queue', new Sqs(new SqsClient([
-            'region' => 'us-east-2',
-            'version' => 'latest'
-        ]), 'https://sqs.us-east-2.amazonaws.com/'), 'FIFO');
-
-        $task1 = Task::create(function(){
-            echo 'Task #1' . PHP_EOL;
-        })->everyMinute();
-        $queue->addTask($task1);
     }
 
     public function testAddTasks()
