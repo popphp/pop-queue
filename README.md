@@ -619,9 +619,11 @@ Queues
 ------
 
 As shown in the [quickstart](#quickstart) example above, the queue object acts as the 
-go-between for jobs and the queue store adapter. Simply add jobs or tasks to a queue
+go-between for jobs and the queue storage adapter. Simply adding jobs or tasks to a queue
 object will push them to the storage object, where they will wait until their turn is
 called.
+
+As shown in the example below, multiple jobs and multiple tasks can be added to the same queue:
 
 ```php
 use Pop\Queue\Queue;
