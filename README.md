@@ -44,7 +44,9 @@ executed. The available storage adapters for the queue component are:
 
 The difference between jobs and tasks are that jobs are "one and done" (unless they fail) and pop off
 the queue once complete. Tasks are persistent and remain in the queue to run repeatedly on their set
-schedule, or until they expire. (* - The SQS adapter does not support tasks.)
+schedule, or until they expire.
+
+*\* - The SQS adapter does not support tasks.*
 
 `pop-queue` is a component of the [Pop PHP Framework](http://www.popphp.org/).
 
