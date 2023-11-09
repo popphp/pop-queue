@@ -668,6 +668,56 @@ pushed job will be popped off instead.
 Workers
 -------
 
+The worker object allows you to configure and manage multiple queues from one worker object.
+Once you've added jobs or tasks to a queue, or queues, you can add those queue objects to 
+the worker object to manage from there. Queues are given names to assist with managing and
+calling them within the worker object:
+
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+
+// Call up the queue and pass it to a worker object
+$queue1  = new Queue('pop-queue1', new File(__DIR__ . '/queue1'));
+$queue2  = new Queue('pop-queue2', new File(__DIR__ . '/queue2'));
+$worker = Worker::create([$queue1, $queue2]);
+```
+
+From there, you can trigger the next job of a particular queue with the `work()` method:
+
+```php
+$worker->work('pop-queue1');
+```
+
+Or, you can trigger the next jobs of all the registered queues:
+
+```php
+$worker->workAll();
+```
+
+Managing the scheduled tasks is similar with the `run()` method:
+
+```php
+$worker->run('pop-queue1');
+```
+
+Or, trigger all the next scheduled tasks of all the registered queues:
+
+```php
+$worker->runAll();
+```
+
+#### Clearing the queues
+
+You can clear the queues in a few different ways:
+
+- `$worker->clear(string $queueName)`       // Clear completed jobs from queue
+- `$worker->clearFailed(string $queueName)` // Clear failed jobs from queue
+- `$worker->clearTasks(string $queueName)`  // Clear tasks from queue
+- `$worker->clearAll()`                     // Clear completed jobs from all queues
+- `$worker->clearAllFailed()`               // Clear failed jobs from all queues
+- `$worker->clearAllTasks()`                // Clear tasks from all queues
+
 [Top](#pop-queue)
 
 Configuration
