@@ -10,16 +10,6 @@ pop-queue
 * [Overview](#overview)
 * [Install](#install)
 * [Quickstart](#quickstart)
-* [Queues](#queues)
-    - [Completed Jobs](#completed-jobs)
-    - [Failed Jobs](#failed-jobs)
-    - [Clear Queue](#clear-queue)
-* [Manager](#manager)
-* [Adapters](#adapters)
-    - [File](#file)
-    - [Database](#database)
-    - [Redis](#redis)
-* [Workers](#workers)
 * [Jobs](#jobs)
     - [Callables](#callables)
     - [Application Commands](#application-commands)
@@ -29,21 +19,32 @@ pop-queue
     - [Scheduling](#scheduling)
     - [Run Until](#run-until)
     - [Buffer](#buffer)
+* [Adapters](#adapters)
+    - [File](#file)
+    - [Database](#database)
+    - [Redis](#redis)
+* [Queues](#queues)
+    - [Completed Jobs](#completed-jobs)
+    - [Failed Jobs](#failed-jobs)
+    - [Clear Queue](#clear-queue)
+* [Workers](#workers)
 * [Configuration](#configuration)
 
 Overview
 --------
-`pop-queue` is a job queue component that provides the ability to pass an executable job off to a
-queue to be processed at a later date and time. Queues can either process jobs or scheduled tasks
-via workers. The jobs are stored in an available storage adapter until they are called to be executed.
-The available storage adapters for the queue component are:
+`pop-queue` is a job queue component that provides the ability to pass executable jobs or tasks
+off to a queue to be processed at a later date and time. Queues can either process jobs or scheduled
+tasks. The jobs or tasks are stored with an available queue storage adapter until they are called to be
+executed. The available storage adapters for the queue component are:
 
-- Database
 - Redis
+- Database
 - File
+- AWS SQS*
 
-Others can be written as needed, implementing the `Pop\Queue\Adapter\AdapterInterface` and extending
-the `Pop\Queue\Adapter\AbstractAdapter`.
+The difference between jobs and tasks are that jobs are "one and done" (unless they fail) and pop off
+the queue once complete. Tasks are persistent and remain in the queue to run repeatedly on their set
+schedule, or until they expire. (* - The SQS adapter does not support tasks.)
 
 `pop-queue` is a component of the [Pop PHP Framework](http://www.popphp.org/).
 
@@ -67,34 +68,22 @@ Or, require it in your composer.json file
 Quickstart
 ----------
 
-#### Create a job and a task and push to the queue
+#### Create a job and push to the queue
+
+Simply adding a job to the queue will push it to the queue storage adapter.
 
 ```php
 use Pop\Queue\Queue;
 use Pop\Queue\Adapter\File;
-use Pop\Queue\Processor\Worker;
-use Pop\Queue\Processor\Job;
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Process\Job;
 
-// Create a job
+// Create a job and add it to a queue
 $job = Job::create(function() {
     echo 'This is job' . PHP_EOL;
 });
 
-// Create a scheduled task
-$task = Task::create(function() {
-    echo 'This is a scheduled task' . PHP_EOL;
-})->every30Minutes();
-
-// Create a worker and add the job and task to the worker
-$worker = new Worker();
-$worker->addJob($job)
-    ->addTask($task);
-
-// Create the queue object, add the worker and push to the queue
 $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
-$queue->addWorker($worker);
-$queue->pushAll();
+$queue->addJob($job);
 ```
 
 #### Call the queue to process the job
@@ -103,266 +92,57 @@ $queue->pushAll();
 use Pop\Queue\Queue;
 use Pop\Queue\Adapter\File;
 
-// Call up the queue object and process all valid jobs 
-$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
-$queue->processAll(); 
+// Call up the queue and pass it to a worker object
+$queue  = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$worker = Worker::create($queue);
+
+// Trigger the worker to work the next job across its queues
+$worker->workAll();
 ```
 
-If the job and task are valid, they will run. In this case, it will produce this output:
+If the job is valid, it will run. In this case, it will produce this output:
 
 ```text
 This is a job
-This is scheduled task
 ```
 
-[Top](#pop-queue)
+#### Create a scheduled task and push to the queue
 
-Queues
-------
+Create a task, set the schedule and add it to the queue.
 
-As shown in the [quickstart](#quickstart) example above, the queue object utilizes worker objects as
-owners of the jobs and tasks assigned to them. The jobs are stored with the selected storage
-adapter. You can assign multiple jobs or tasks to a worker. And you can assign multiple workers
-to a queue. The basic idea is that you can define your jobs or tasks and pass those to the
-worker or workers. Then register the workers with the queue and "push" them to the storage to
-be stored for execution at a later time.
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+use Pop\Queue\Process\Task;
 
-For reference, queues have a name, which is passed to the constructor, along with
-the storage adapter object and an optional application object.
+$task = Task::create(function() {
+    echo 'This is a scheduled task' . PHP_EOL;
+})->every30Minutes();
+
+// Add to a queue
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$queue->addTask($task);
+```
+
+#### Call the queue to run the scheduled task
 
 ```php
 use Pop\Queue\Queue;
 use Pop\Queue\Adapter\File;
 
-$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), $application);
+// Call up the queue and pass it to a worker object
+$queue  = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$worker = Worker::create($queue);
+
+// Trigger the worker to run the next scheduled task across its queues
+$worker->runAll();
 ```
 
-A `Pop\Application` object can be passed to the queue should any of the jobs' or tasks' callable objects
-need it. Or, an application command can be directly set as the job or task callable, so the application
-object would be needed then as well. (More on working with a [application commands](#application-commands) below.) 
+If the task is valid, it will run. In this case, it will produce this output:
 
-[Top](#pop-queue)
-
-### Completed Jobs
-
-Jobs that run successfully get marked as `completed`. There are a number of methods available
-within the queue object to get information on completed jobs:
-
-```php
-$queue->hasCompletedJobs();      // bool
-$queue->hasCompletedJob($jobId); // bool
-$queue->getCompletedJobs();      // array
-$queue->getCompletedJob($jobId); // mixed
+```text
+This is a scheduled task
 ```
-
-[Top](#pop-queue)
-
-### Failed Jobs
-
-Jobs that run unsuccessfully and fail with an exception get marked as `failed`. There are
-a number of methods available within the queue object to get information on failed jobs:
-
-```php
-$queue->hasFailedJobs();      // bool
-$queue->hasFailedJob($jobId); // bool
-$queue->getFailedJobs();      // array
-$queue->getFailedJob($jobId); // mixed
-```
-
-[Top](#pop-queue)
-
-### Clear Queue
-                     
-The queue can be cleared out in a number of ways.
-
-**Clearing the Queue**
-
-```php
-$queue->clearFailed();            // Clears only the failed jobs within the queue namespace
-$queue->clear(bool $all = false); // Clears all jobs within the queue namespace
-```
-
-**Flushing the Queue**
-
-```php
-$queue->flushFailed(); // Clears only the failed jobs across all possible queue namespaces
-$queue->flush();       // Clears jobs across all possible queue namespaces
-$queue->flushAll();    // Clears everything across all possible queue namespaces
-```
-
-[Top](#pop-queue)
-
-Manager
--------
-
-The manager object provides a way to manage multiple queues at the same time. You can add
-queues to it and call them up at a later time:
-
-##### Add queues to a manager object
-
-```php
-use Pop\Queue\Manager;
-use Pop\Queue\Queue;
-use Pop\Queue\Adapter\File;
-
-$adapter = new File(__DIR__ . '/queue');
-
-$queue1 = new Queue('pop-queue1', $adapter);
-$queue2 = new Queue('pop-queue2', $adapter);
-$queue3 = new Queue('pop-queue3', $adapter);
-
-$manager = Manager::create([$queue1, $queue2, $queue3]);
-```
-
-##### Load pre-existing queues into a manager object
-
-If it's known that a queue exists containing jobs within a particular storage object,
-you can load those pre-existing queues like this:
-
-```php
-use Pop\Queue\Manager;
-use Pop\Queue\Adapter\File;
-
-$adapter = new File(__DIR__ . '/queue');
-$manager = Manager::load($adapter);
-```
-
-Following, the above example where 3 separate queues were created with the file adapter,
-the manager would now be loaded with those three queues, if they still exist and contain
-jobs. However, if a queue is empty or no queues are registered with that adapter, then
-no queues will be loaded into the manager.
-
-[Top](#pop-queue)
-
-Adapters
---------
-
-By default, there are three available adapters, but additional ones could be created as
-long as they implement `Pop\Queue\Adapter\AdapterInterface` and extend
-`Pop\Queue\Adapter\AbstractAdapter`.
-
-### File
-
-The file adapter only requires the location on disk where the queues will be stored:
-
-```php
-use Pop\Queue\Adapter\File;
-
-$adapter = new File(__DIR__ . '/queues'); 
-```
-
-[Top](#pop-queue)
-
-### Database
-
-The database adapter requires the use of the `pop-db` component and a database adapter
-from that component:
-
-```php
-use Pop\Queue\Adapter\Database;
-use Pop\Db\Db;
-
-$db = Db::mysqlConnect([
-    'database' => 'DATABASE',
-    'username' => 'DB_USER',
-    'password' => 'DB_PASS'
-]);
-
-$adapter = new Database($db); 
-```
-
-Two tables are utilized in the database to manage the jobs. If they do not exist, they
-will be automatically created. By default, they are named `pop_queue_jobs` and
-`pop_queue_failed_jobs`. If you would like to name them something else, you can pass
-those names into the constructor:
-
-```php
-$adapter = new Database($db, 'my_jobs', 'my_failed_jobs'); 
-```
-
-[Top](#pop-queue)
-
-### Redis
-
-The Redis adapter requires Redis to be correctly configured and running on the server, as well as
-the `redis` extension installed with PHP:
-
-```php
-use Pop\Queue\Adapter\Redis;
-
-$adapter = new Redis();
-```
-
-The Redis adapter uses `localhost` and port `6379` as defaults. It also manages the jobs with the
-Redis server by means of a key prefix. By default, that prefix is set to `pop-queue-`. If you would
-like to use alternate values for any these, you can pass them into the constructor:
-
-```php
-$adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
-```
-
-Once the adapter object is created, it can be passed into the queue object:
-
-```php
-use Pop\Queue\Queue;
-
-$queue = Queue::create('pop-queue', $adapter); 
-```
-
-[Top](#pop-queue)
-
-Workers
--------
-
-Worker objects serve as the owners of the jobs and tasks that are assigned to them.
-Once jobs or tasks are registered with a worker object, the worker object can be
-added to the queue object and then their jobs can be pushed to the storage adapter.
-
-```php
-use Pop\Queue\Processor\Worker;
-use Pop\Queue\Processor\Job;
-
-// Create a job
-$job1 = Job::create(function() {
-    echo 'This is job #1' . PHP_EOL;
-});
-
-// Create a worker and add the job to the worker
-$worker = Worker::create($job1);
-```
-
-The worker object has a number of methods to assist in managing jobs and tasks:
-
-- `addJob(AbstractJob $job, ?int $maxAttempts = null)`
-- `addJobs(array $jobs, ?int $maxAttempts = null)`
-- `addTask(Task $task, ?int $maxAttempts = 0)`
-- `addTasks(array $tasks, ?int $maxAttempts = null)`
-- `getJobs()`
-- `getJob(int $index)`
-- `hasJobs()`
-- `hasJob(int $index)`
-
-If any jobs return any results, those can be accessed like this:
-
-- `getJobResults()`
-- `getJobResult(mixed $index)`
-- `hasJobResults()`
-
-You can access completed jobs within the worker object like this:
-
-- `getCompletedJobs()`
-- `getCompletedJob(mixed $index)`
-- `hasCompletedJobs()`
-
-You can access failed jobs anf their exceptions within the worker object like this:
-
-- `getFailedJobs()`
-- `getFailedJob(mixed $index)`
-- `hasFailedJobs()`
-- `getFailedExceptions()`
-- `getFailedException($index)`
-- `hasFailedExceptions()`
-
 
 [Top](#pop-queue)
 
@@ -401,7 +181,7 @@ var_dump($job->getFailed());
 Any callable object can be passed into a job object:
 
 ```php
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Process\Job;
 
 // Create a job from a closure
 $job1 = Job::create(function() {
@@ -421,39 +201,39 @@ $job3 = Job::create($closure, 1);
 ```
 
 If the callable needs access to the main application object, you can pass that to the
-queue object and it will be added to the parameters of the callable object:
+queue object, and it will be prepended to the parameters of the callable object:
 
 ```php
 use Pop\Queue\Queue;
+use Pop\Queue\Worker;
 use Pop\Queue\Adapter\File;
-use Pop\Queue\Processor\Worker;
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Process\Job;
 
 // Create a job that needs the application object
 $job = Job::create(function($application) {
     // Do something with the application
 });
 
-// Create a worker and add the job and task to the worker
-$worker = new Worker::create($job);
-
-// Create the queue object, add the worker and push to the queue
-$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), $application);
-$queue->addWorker($worker);
-$queue->pushAll();
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$queue->addJob($job);
 ```
 
-When the time comes to execute the job, the application object can be passed into
-the queue object. From there, the application object will get passed down and prepended
-to the callable object's parameters:
+Once the callable is added to the queue, the worker will need to be aware of the application
+object in order to pass it down to the job:
 
 ```php
 use Pop\Queue\Queue;
+use Pop\Queue\Worker;
 use Pop\Queue\Adapter\File;
+use Pop\Application;
 
-$adapter = new File(__DIR__ . '/queue');
-$queue   = Queue::load('pop-queue', $adapter, $application);
-$queue->processAll();
+$application = new Application();
+
+$queue  = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$worker = Worker::create($queue, $application);
+
+// When the worker works the job, it will push the application object to the job
+$worker->workAll();
 ```
 
 [Top](#pop-queue)
@@ -471,10 +251,22 @@ $ ./app hello world
 You would register the command with a job object like this:
 
 ```php
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+use Pop\Queue\Process\Job;
 
-// Create a job from an application command
-$job = Job::command('hello world');
+// Create a job from an application command and add to the queue
+$job   = Job::command('hello world');
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$queue->addJob($job);
+```
+
+Again, the worker object would need to be aware of the application object to push down to
+the job object that requires it:
+
+```php
+$queue  = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$worker = Worker::create($queue, $application);
 ```
 
 [Top](#pop-queue)
@@ -485,7 +277,7 @@ If the environment is set up to allow executable commands from within PHP, you c
 register CLI-based commands with a job object like this:
 
 ```php
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Process\Job;
 
 // Create a job from an executable CLI command
 $job = Job::exec('ls -la');
@@ -497,22 +289,20 @@ For security reasons, you should exercise caution when using this.
 
 ### Attempts
 
-By default, a job is configured to run only once. However, if you need the job to stay
-registered with the worker and run more than once, you can control that by setting the
-max attempts.
+By default, a job runs only once. However, if a job fails, it will be pushed back onto
+the queue. But you can limit how much that happens by setting the max attempts of a job.
 
 ```php
-use Pop\Queue\Processor\Job;
+use Pop\Queue\Process\Job;
 
 $job = Job::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 $job->setMaxAttempts(10);
-var_dump($job->isAttemptOnce()); // Returns false
 ```
 
-If you want the job to never unregister and execute everytime the queue processes the
-worker object, you can set the max attempts to `0`:
+If you want the job to never unregister and keep trying to execute after failure, you can
+set the max attempts to `0`:
 
 ```php
 $job->setMaxAttempts(0);
@@ -525,10 +315,10 @@ var_dump($job->hasExceededMaxAttempts());
 ```
 
 The `isValid()` method is also available and checks both the max attempts and the
-"run until" setting (which is used more with task objects - see below.) 
+"run until" setting (which is used more with task objects - see below.)
 
 **NOTE:** The [run until](#run-until) can be enforced on a non-scheduled job and the
-[max attempts](#attempts) can be enforced on a scheduled task. 
+[max attempts](#attempts) can be enforced on a scheduled task.
 
 [Top](#pop-queue)
 
@@ -536,17 +326,23 @@ Tasks
 -----
 
 A task object is an extension of a job object with scheduling capabilities. It has a `Cron`
-object and supports a cron-like scheduling format. However, unlike cron, it can also supports
+object and supports a cron-like scheduling format. However, unlike cron, it can also support
 sub-minute scheduling down to the second.
 
 Here's an example task object where the schedule is set to every 5 minutes:
 
 ```php
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+use Pop\Queue\Process\Task;
 
+// Create a scheduled task and add to the queue
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
 })->every5Minutes();
+
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$queue->addTask($task);
 ```
 
 [Top](#pop-queue)
@@ -588,11 +384,11 @@ Here is a list of available methods to assist with setting common schedules:
 - `saturdays()`
 - `between(int $start, int $end)`
 
-If there is a need for a more custom schedule value, you can schedule that directly with a 
+If there is a need for a more custom schedule value, you can schedule that directly with a
 cron-formatted string:
 
 ```php
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Process\Task;
 
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
@@ -645,7 +441,7 @@ to execute at its scheduled time. However, a "run until" value can be set with t
 object to give it an "expiration" date:
 
 ```php
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Process\Task;
 
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
@@ -682,7 +478,7 @@ the task's scheduled time evaluation should evaluate to `true` in the window of 
 evaluated timestamp.
 
 ```php
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Process\Task;
 
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
@@ -695,7 +491,7 @@ If you want to set it so that the task runs no matter what, as long as the evalu
 is at or past the scheduled time, you can set the buffer to `-1`:
 
 ```php
-use Pop\Queue\Processor\Task;
+use Pop\Queue\Process\Task;
 
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
