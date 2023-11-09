@@ -73,4 +73,61 @@ class QueueTest extends TestCase
         $queue->clear();
     }
 
+    public function testWorkJob()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $job   = Job::create(function(){
+            return 'Job #1' . PHP_EOL;
+        });
+
+        $queue->addJob($job);
+        $job = $queue->work();
+        $this->assertTrue($job->isComplete());
+        $queue->clear();
+   }
+
+    public function testWorkFailedJob()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $job   = Job::create(function(){
+            throw new \Exception('Error!');
+        });
+
+        $queue->addJob($job);
+        $job = $queue->work();
+        $this->assertTrue($job->hasFailed());
+        $queue->clear();
+    }
+
+    public function testRunTask1()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $task  = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everyMinute();
+
+        $queue->addTask($task);
+
+        $tasks = $queue->run();
+        $this->assertTrue(is_array($tasks));
+    }
+
+    public function testRunTask2()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $task1  = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->every15Seconds();
+
+        $task2  = Task::create(function(){
+            throw new \Exception('Error!');
+        })->every30Seconds();
+
+        $queue->addTasks([$task1, $task2]);
+
+        $tasks = $queue->run();
+        $this->assertTrue(is_array($tasks));
+        $queue->clear();
+    }
+
 }

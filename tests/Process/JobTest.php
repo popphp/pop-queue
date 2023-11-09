@@ -170,4 +170,28 @@ class JobTest extends TestCase
         $this->assertNull($job->run());
     }
 
+    public function testCallableWithApplication1()
+    {
+        $job = Job::create(function($application) {
+            return $application->config['foo'];
+        });
+
+        $app = new Application(['foo' => 'bar']);
+        $result = $job->run($app);
+        $this->assertEquals('bar', $result);
+    }
+
+    public function testCallableWithApplication2()
+    {
+        $job = Job::create(new CallableObject(function($application, $param) {
+            return $param . ':' . $application->config['foo'];
+        }), '123');
+
+        $app = new Application(['foo' => 'bar']);
+        $result = $job->run($app);
+        $this->assertTrue($job->hasResults());
+        $this->assertEquals('123:bar', $result);
+        $this->assertEquals('123:bar', $job->getResults());
+    }
+
 }
