@@ -162,8 +162,8 @@ var_dump($job->hasJobId());
 $id = $job->getJobId();
 ```
 
-As a job is picked up by a worker object to be executed, there are a number of methods to
-assist with the status of a job:
+As a job is picked up to be executed, there are a number of methods to assist with the
+status of a job during its lifecycle:
 
 ```php
 var_dump($job->hasStarted()); // Has a started timestamp
