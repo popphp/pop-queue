@@ -599,13 +599,15 @@ $client = new SqsClient([
 $adapter = new Sqs($client, 'YOUR_AWS_QUEUE_URL');
 ```
 
-The SQS adapter has some limitations in its behavior. It does not support schedule tasks and can only
+The SQS adapter has some limitations in its behavior. It does not support scheduled tasks and can only
 be used for jobs. Furthermore, the AWS SQS service offers two queue types - standard and FIFO. The FIFO
 queue enforces a strict FIFO order and delivers a consistent behavior when pushing and popping jobs to
 and from the queue. The standard queue is not as strict and there may be unexpected behavior regarding
 the order and availability of the jobs stacked in the queue, depending on the frequency of requests.
 
-Once the adapter object is created, it can be passed into the queue object:
+#### Injecting the adapter into the queue
+
+Once any adapter object is created, it can be passed into the queue object:
 
 ```php
 use Pop\Queue\Queue;
