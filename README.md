@@ -23,6 +23,7 @@ pop-queue
     - [File](#file)
     - [Database](#database)
     - [Redis](#redis)
+    - [AWS SQS](#aws-sqs)
 * [Queues](#queues)
     - [Completed Jobs](#completed-jobs)
     - [Failed Jobs](#failed-jobs)
@@ -500,6 +501,116 @@ $task = Task::create(function() {
 });
 $task->every30Minutes()
 $task->setBuffer(-1);
+```
+
+[Top](#pop-queue)
+
+Adapters
+--------
+
+By default, there are four available adapters, but additional ones could be created as long as they
+implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
+
+### File
+
+The file adapter only requires the location on disk where the queue data will be stored:
+
+```php
+use Pop\Queue\Adapter\File;
+
+$adapter = new File(__DIR__ . '/queues'); 
+```
+
+[Top](#pop-queue)
+
+### Database
+
+The database adapter requires the use of the `pop-db` component and a database adapter
+from that component:
+
+```php
+use Pop\Queue\Adapter\Database;
+use Pop\Db\Db;
+
+$db = Db::mysqlConnect([
+    'database' => 'DATABASE',
+    'username' => 'DB_USER',
+    'password' => 'DB_PASS'
+]);
+
+$adapter = new Database($db); 
+```
+
+The table utilized in the database to manage the jobs default to `pop_queue`. If you would like
+to name it something else, you can pass that into the constructor:
+
+```php
+$adapter = new Database($db, 'my_queue_jobs'); 
+```
+
+[Top](#pop-queue)
+
+### Redis
+
+The Redis adapter requires Redis to be correctly configured and running on the server, as well as
+the `redis` extension installed with PHP:
+
+```php
+use Pop\Queue\Adapter\Redis;
+
+$adapter = new Redis();
+```
+
+The Redis adapter uses `localhost` and port `6379` as defaults. It also manages the jobs with the
+Redis server by means of a key prefix. By default, that prefix is set to `pop-queue`. If you would
+like to use alternate values for any these, you can pass them into the constructor:
+
+```php
+$adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
+```
+
+[Top](#pop-queue)
+
+### AWS SQS
+
+The Amazon AWS SQS adapter interfaces with the AWS SQS service and requires the following credentials
+and access information to be obtained from the AWS administration console:
+
+- AWS Key
+- AWS Secret
+- AWS Region
+- AWS Version (usually `latest`)
+- The AWS Queue URL
+
+*Make sure the correct permissions are granted to the user role attempting to access the SQS service.*
+
+```php
+use Pop\Queue\Adapter\Sqs;
+use Aws\Sqs\SqsClient;
+
+$client = new SqsClient([
+        'key'    => 'AWS_KEY',
+        'secret' => 'AWS_SECRET',
+    ],
+    'region'  => 'AWS_REGION',
+    'version' => 'AWS_VERSION'
+]);
+
+$adapter = new Sqs($client, 'YOUR_AWS_QUEUE_URL');
+```
+
+The SQS adapter has some limitations in its behavior. It does not support schedule tasks and can only
+be used for jobs. Furthermore, the AWS SQS service offers two queue types - standard and FIFO. The FIFO
+queue enforces a strict FIFO order and delivers a consistent behavior when pushing and popping jobs to
+and from the queue. The standard queue is not as strict and there may be unexpected behavior regarding
+the order and availability of the jobs stacked in the queue, depending on the frequency of requests.
+
+Once the adapter object is created, it can be passed into the queue object:
+
+```php
+use Pop\Queue\Queue;
+
+$queue = Queue::create('pop-queue', $adapter); 
 ```
 
 [Top](#pop-queue)
