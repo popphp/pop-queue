@@ -15,7 +15,7 @@ namespace Pop\Queue\Process;
 
 use Pop\Application;
 use Pop\Utils\CallableObject;
-use Opis\Closure\SerializableClosure;
+use Laravel\SerializableClosure\SerializableClosure;
 
 /**
  * Abstract job class
