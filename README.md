@@ -4,7 +4,6 @@ pop-queue
 [![Build Status](https://github.com/popphp/pop-queue/workflows/phpunit/badge.svg)](https://github.com/popphp/pop-queue/actions)
 [![Coverage Status](http://cc.popphp.org/coverage.php?comp=pop-queue)](http://cc.popphp.org/pop-queue/)
 
-[![Join the chat at https://popphp.slack.com](https://media.popphp.org/img/slack.svg)](https://popphp.slack.com)
 [![Join the chat at https://discord.gg/TZjgT74U7E](https://media.popphp.org/img/discord.svg)](https://discord.gg/TZjgT74U7E)
 
 * [Overview](#overview)
@@ -47,7 +46,7 @@ schedule, or until they expire.
 
 *\* - The SQS adapter does not support tasks.*
 
-`pop-queue` is a component of the [Pop PHP Framework](http://www.popphp.org/).
+`pop-queue` is a component of the [Pop PHP Framework](https://www.popphp.org/).
 
 [Top](#pop-queue)
 
@@ -61,7 +60,7 @@ Install `pop-queue` using Composer.
 Or, require it in your composer.json file
 
     "require": {
-        "popphp/pop-queue" : "^2.0.0"
+        "popphp/pop-queue" : "^2.1.1"
     }
 
 [Top](#pop-queue)
