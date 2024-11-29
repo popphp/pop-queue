@@ -23,7 +23,7 @@ use Pop\Queue\Process\Task;
  * @author     Nick Sagona, III <dev@noladev.com>
  * @copyright  Copyright (c) 2009-2025 NOLA Interactive, LLC.
  * @license    https://www.popphp.org/license     New BSD License
- * @version    2.1.0
+ * @version    2.1.1
  */
 abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapterInterface
 {
