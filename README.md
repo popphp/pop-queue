@@ -60,7 +60,7 @@ Install `pop-queue` using Composer.
 Or, require it in your composer.json file
 
     "require": {
-        "popphp/pop-queue" : "^2.1.2"
+        "popphp/pop-queue" : "^2.1.3"
     }
 
 [Top](#pop-queue)
