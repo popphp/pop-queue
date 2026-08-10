@@ -172,12 +172,42 @@ class File extends AbstractTaskAdapter
             $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
             $leaseUntil  = $this->getLeaseUntil($reservedDir);
 
-            if (($leaseUntil !== null) && ($leaseUntil <= $now)) {
-                $pendingDir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
-                // rename() is atomic; if it fails, another worker already
-                // reclaimed this same expired lease first - safe to skip.
-                @rename($reservedDir, $pendingDir);
+            // A missing lease file means either a genuinely crashed claim (rename
+            // succeeded, lease write never happened) or a claim that's still
+            // mid-flight (rename succeeded a moment ago, lease write about to
+            // happen). Distinguish them by the directory's own age instead of
+            // treating "no lease" as immediately expired, which would race an
+            // in-flight claim.
+            $isExpired = ($leaseUntil !== null)
+                ? ($leaseUntil <= $now)
+                : ((($mtime = @filemtime($reservedDir)) !== false) && ($mtime + $this->leaseSeconds <= $now));
+
+            if (!$isExpired) {
+                continue;
             }
+
+            // Stage through a uniquely-named path so at most one worker can win
+            // the rename off this exact directory, and so we can re-verify what
+            // actually got moved (not what we read a moment ago) before deciding
+            // to reclaim it.
+            $stagingDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . '.reclaim-' . getmypid() . '-' . bin2hex(random_bytes(4));
+            if (!@rename($reservedDir, $stagingDir)) {
+                // Lost the race - someone else is reclaiming or already re-claimed this index.
+                continue;
+            }
+
+            $freshLeaseUntil = $this->getLeaseUntil($stagingDir);
+            if (($freshLeaseUntil !== null) && ($freshLeaseUntil > $now)) {
+                // Whatever we staged turned out to be a fresh claim (another
+                // worker reclaimed-and-re-reserved this same index between our
+                // stale read and our rename winning) - put it back rather than
+                // reclaim someone's active work.
+                @rename($stagingDir, $reservedDir);
+                continue;
+            }
+
+            $pendingDir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+            rename($stagingDir, $pendingDir);
         }
     }
 
@@ -214,13 +244,15 @@ class File extends AbstractTaskAdapter
         // serialize/unserialize round-trip on subsequent reserve/release/delete calls.
         $job->getJobId();
 
+        // mkdir() itself is the atomic allocator: if two pushers compute the
+        // same next index, only one mkdir() wins and the loser retries the
+        // next index instead of silently clobbering the winner's payload.
         $index = $this->getEndIndex() + 1;
-        $dir   = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
-
-        if (!file_exists($dir)) {
-            mkdir($dir);
+        while (!@mkdir($this->pendingPath() . DIRECTORY_SEPARATOR . $index)) {
+            $index++;
         }
-        file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+
+        file_put_contents($this->pendingPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
 
         return $this;
     }
@@ -251,9 +283,16 @@ class File extends AbstractTaskAdapter
                 continue;
             }
 
-            $job = unserialize(file_get_contents($payloadFile));
+            // Suppressed: a corrupt/truncated payload makes unserialize() emit a
+            // warning and return false, which the instanceof check below handles.
+            $job = @unserialize(file_get_contents($payloadFile));
 
-            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+            if (!($job instanceof AbstractJob)) {
+                // Corrupt/truncated payload - skip rather than crash or claim garbage.
+                continue;
+            }
+
+            if (!$job->isAvailable()) {
                 continue;
             }
 

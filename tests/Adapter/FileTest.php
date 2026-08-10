@@ -272,4 +272,56 @@ class FileTest extends TestCase
         $this->assertInstanceOf('Pop\Queue\Adapter\File', $adapter);
     }
 
+    public function testReclaimHandlesCrashBeforeLeaseWrite()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', null, 1); // 1-second lease
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+
+        // Simulate a worker crashing after the atomic rename() claimed the
+        // job but before it wrote the lease file.
+        $reservedDirs = $adapter->getFolders($adapter->getFolder() . '/reserved');
+        $this->assertCount(1, $reservedDirs);
+        $leaseFile = $adapter->getFolder() . '/reserved/' . $reservedDirs[0] . '/lease';
+        $this->assertFileExists($leaseFile);
+        unlink($leaseFile);
+
+        // No lease file yet is not immediately expired - reclaim falls back
+        // to the reserved directory's own age, so give it time to age past
+        // the 1-second lease window.
+        sleep(2);
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job->getJobId(), $second->getJobId());
+
+        $adapter->delete($second);
+    }
+
+    public function testReserveSkipsCorruptPayload()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        // Manually create a pending slot with a corrupt/truncated payload,
+        // bypassing push() entirely, so it sorts before a valid job pushed
+        // afterward under FIFO ordering.
+        $corruptDir = $adapter->getFolder() . '/pending/1';
+        mkdir($corruptDir);
+        file_put_contents($corruptDir . '/payload', 'not-valid-serialized-data');
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($job->getJobId(), $reserved->getJobId());
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
 }
