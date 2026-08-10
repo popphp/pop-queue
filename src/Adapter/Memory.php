@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\Task;
 
 /**
  * In-memory adapter class
@@ -227,6 +228,60 @@ class Memory extends AbstractTaskAdapter
     public function clearDead(): Memory
     {
         $this->dead = [];
+
+        return $this;
+    }
+
+    public function schedule(Task $task): Memory
+    {
+        if ($task->isValid()) {
+            $this->tasks[$task->getJobId()] = clone $task;
+        }
+
+        return $this;
+    }
+
+    public function getTasks(): array
+    {
+        return array_keys($this->tasks);
+    }
+
+    public function getTask(string $taskId): ?Task
+    {
+        return isset($this->tasks[$taskId]) ? clone $this->tasks[$taskId] : null;
+    }
+
+    public function updateTask(Task $task): Memory
+    {
+        if ($task->isValid()) {
+            $this->tasks[$task->getJobId()] = clone $task;
+        } else {
+            $this->removeTask($task->getJobId());
+        }
+
+        return $this;
+    }
+
+    public function removeTask(string $taskId): Memory
+    {
+        unset($this->tasks[$taskId]);
+
+        return $this;
+    }
+
+    public function getTaskCount(): int
+    {
+        return count($this->tasks);
+    }
+
+    public function hasTasks(): bool
+    {
+        return !empty($this->tasks);
+    }
+
+    public function clearTasks(): Memory
+    {
+        $this->tasks = [];
 
         return $this;
     }

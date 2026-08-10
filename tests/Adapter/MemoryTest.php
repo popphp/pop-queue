@@ -4,6 +4,7 @@ namespace Pop\Queue\Test\Adapter;
 
 use Pop\Queue\Adapter\Memory;
 use Pop\Queue\Process\Job;
+use Pop\Queue\Process\Task;
 use PHPUnit\Framework\TestCase;
 
 class MemoryTest extends TestCase
@@ -211,5 +212,74 @@ class MemoryTest extends TestCase
         $adapter->clear();
         $this->assertFalse($adapter->hasJobs());
         $this->assertEquals(0, $adapter->count());
+    }
+
+    public function testScheduleAndGetTasks()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->hasTasks());
+        $this->assertEquals(1, $adapter->getTaskCount());
+        $this->assertCount(1, $adapter->getTasks());
+        $this->assertEquals($task->getJobId(), $adapter->getTask($task->getJobId())->getJobId());
+    }
+
+    public function testGetTaskReturnsNullWhenMissing()
+    {
+        $adapter = new Memory();
+        $this->assertNull($adapter->getTask('does-not-exist'));
+    }
+
+    public function testUpdateTask()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ return 'Task #1'; })->everyMinute();
+        $adapter->schedule($task);
+
+        $task->complete();
+        $adapter->updateTask($task);
+
+        $this->assertTrue($adapter->hasTasks());
+        $this->assertTrue($adapter->getTask($task->getJobId())->isComplete());
+    }
+
+    public function testUpdateTaskRemovesInvalidTask()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ return 'Task #1'; })->everyMinute();
+        $task->setMaxAttempts(1);
+        $adapter->schedule($task);
+
+        $task->run();
+        $task->complete();
+        $task->run();
+        $adapter->updateTask($task);
+
+        $this->assertFalse($adapter->hasTasks());
+    }
+
+    public function testRemoveTask()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+        $adapter->schedule($task);
+        $adapter->removeTask($task->getJobId());
+
+        $this->assertFalse($adapter->hasTasks());
+    }
+
+    public function testClearTasks()
+    {
+        $adapter = new Memory();
+        $task1 = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+        $task2 = Task::create(function(){ echo 'Task #2'; })->every5Minutes();
+        $adapter->schedule($task1);
+        $adapter->schedule($task2);
+
+        $adapter->clearTasks();
+        $this->assertFalse($adapter->hasTasks());
+        $this->assertEquals(0, $adapter->getTaskCount());
     }
 }
