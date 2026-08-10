@@ -157,12 +157,17 @@ class File extends AbstractTaskAdapter
     }
 
     /**
-     * Determine whether a reserved job's lease has expired. Falls back to the
-     * directory's own mtime when no lease file exists yet, to cover the brief
-     * window between a claiming rename() and the lease file being written -
-     * reserve() freshens the directory's mtime at claim time (rename() itself
-     * doesn't update it) specifically so this fallback reflects when the job
-     * was claimed, not when it was originally pushed.
+     * Determine whether a reserved job's lease has expired. The directory's
+     * own mtime is the primary signal - reserve() freshens it at claim time
+     * (rename() itself doesn't update it), so a fresh claim's mtime alone is
+     * sufficient to prove it isn't expired, regardless of what stale lease
+     * content happens to still be sitting in the directory (a job that was
+     * previously release()d or reclaimed carries its old, already-expired
+     * lease file back into pending/ with it - nothing unlinks it, so the
+     * next claim's directory starts out holding a stale expired lease next
+     * to a brand new mtime). The lease file is only consulted to confirm
+     * expiry once the mtime already looks stale, never to override a fresh
+     * mtime.
      *
      * @param  string $dir
      * @param  int    $now
@@ -170,10 +175,14 @@ class File extends AbstractTaskAdapter
      */
     protected function isLeaseExpired(string $dir, int $now): bool
     {
+        $mtime = @filemtime($dir);
+        if ($mtime === false) {
+            return false;
+        }
+
         $leaseUntil = $this->getLeaseUntil($dir);
-        return ($leaseUntil !== null)
-            ? ($leaseUntil <= $now)
-            : ((($mtime = @filemtime($dir)) !== false) && ($mtime + $this->leaseSeconds <= $now));
+
+        return ($mtime + $this->leaseSeconds <= $now) && (($leaseUntil === null) || ($leaseUntil <= $now));
     }
 
     /**

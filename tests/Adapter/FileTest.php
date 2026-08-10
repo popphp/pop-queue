@@ -366,6 +366,48 @@ class FileTest extends TestCase
         rmdir($reservedDir);
     }
 
+    public function testReserveDoesNotReclaimAFreshlyTouchedReservedDirEvenWithAStaleExpiredLeaseFile()
+    {
+        // A job that was previously release()d or reclaimed carries its old
+        // lease file back into pending/ untouched (release() only overwrites
+        // 'payload', reclaim only moves the directory) - so the very next
+        // time it's claimed, the resulting reserved directory starts out
+        // holding a brand new mtime (from reserve()'s touch()) right next to
+        // a stale, already-expired lease file, until reserve()'s own
+        // subsequent lease write overwrites it moments later. This
+        // constructs exactly that intermediate state directly (a real
+        // sequential push()/reserve()/release()/reserve() cycle can't
+        // reproduce it in a test process, since reserve() always finishes by
+        // overwriting the lease file with a fresh value before returning,
+        // which masks the bug regardless of fix state) and proves
+        // isLeaseExpired() must treat the fresh mtime as authoritative,
+        // never letting a stale lease file override it.
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', null, 5); // 5-second lease
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $job->getJobId();
+
+        $reservedDir = $adapter->getFolder() . '/reserved/1';
+        mkdir($reservedDir);
+        file_put_contents($reservedDir . '/payload', serialize(clone $job));
+        // Stale, already-expired lease file carried over from a prior claim.
+        file_put_contents($reservedDir . '/lease', (string)(time() - 100));
+        touch($reservedDir); // pin mtime to "now" - what reserve()'s touch() call guarantees at claim time
+
+        $this->assertNull(
+            $adapter->reserve(),
+            'A freshly touched claim must not be reclaimed just because a stale expired lease file is still sitting in its directory.'
+        );
+
+        $this->assertCount(1, $adapter->getFolders($adapter->getFolder() . '/reserved'));
+        $this->assertCount(0, $adapter->getFolders($adapter->getFolder() . '/pending'));
+
+        unlink($reservedDir . '/payload');
+        unlink($reservedDir . '/lease');
+        rmdir($reservedDir);
+    }
+
     public function testPushThrowsRatherThanHangsWhenPendingDirNotWritable()
     {
         $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
