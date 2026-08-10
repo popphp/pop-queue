@@ -98,7 +98,9 @@ class File extends AbstractTaskAdapter
     protected function getStartIndex(): int
     {
         $folders = $this->getFolders($this->folder);
-        return $folders[0] ?? 0;
+
+        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
+        return (!empty($folders)) ? min(array_map('intval', $folders)) : 0;
     }
 
     /**
@@ -109,7 +111,9 @@ class File extends AbstractTaskAdapter
     protected function getEndIndex(): int
     {
         $folders = $this->getFolders($this->folder);
-        return (!empty($folders)) ? end($folders) : 0;
+
+        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
+        return (!empty($folders)) ? max(array_map('intval', $folders)) : 0;
     }
 
     /**
@@ -176,9 +180,11 @@ class File extends AbstractTaskAdapter
     public function reserve(): ?AbstractJob
     {
         $folders = $this->getFolders($this->folder);
-        if (!$this->isFifo()) {
-            $folders = array_reverse($folders);
-        }
+
+        // scandir() sorts alphabetically ('10' < '2'), so order the slots numerically
+        usort($folders, function($a, $b) {
+            return $this->isFifo() ? ((int)$a <=> (int)$b) : ((int)$b <=> (int)$a);
+        });
 
         foreach ($folders as $index) {
             if ($this->getSlotStatus((int)$index) != 1) {

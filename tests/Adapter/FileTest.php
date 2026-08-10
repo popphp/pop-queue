@@ -118,6 +118,50 @@ class FileTest extends TestCase
         $this->assertFalse($adapter->hasDeadJobs());
     }
 
+    public function testPushBeyondTenSlotsDoesNotOverwrite()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $jobIds = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $job = Job::create(function() use ($i) { return $i; });
+            $adapter->push($job);
+            $jobIds[] = $job->getJobId();
+        }
+
+        // Folder names sort alphabetically ('10' < '2'), so a lexicographic
+        // end index would reuse an existing slot and drop jobs
+        $this->assertEquals(11, $adapter->count());
+
+        $reservedIds = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $reserved = $adapter->reserve();
+            $this->assertNotNull($reserved);
+            $reservedIds[] = $reserved->getJobId();
+        }
+
+        $this->assertCount(11, array_unique($reservedIds));
+        $this->assertEquals($jobIds, $reservedIds);
+        $this->assertNull($adapter->reserve());
+
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJob()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->delay(60);
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+        $adapter->push($job);
+
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
     public function testClearDoesNotTouchTasksOrDeadJobs()
     {
         $job  = Job::create(function(){ return 123; });
