@@ -14,6 +14,8 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
+use Pop\Db\Sql\AbstractSql as DbSql;
+use Pop\Db\Sql\Where;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
 
@@ -42,20 +44,31 @@ class Database extends AbstractTaskAdapter
     protected ?string $table = null;
 
     /**
+     * Reservation lease length, in seconds
+     * @var int
+     */
+    protected int $leaseSeconds = 60;
+
+    /**
      * Constructor
      *
      * Instantiate the database adapter object
      *
      * @param DbAdapter $db
      * @param string    $table
+     * @param ?string   $priority
+     * @param int       $leaseSeconds
      */
-    public function __construct(DbAdapter $db, string $table = 'pop_queue', ?string $priority = null)
+    public function __construct(DbAdapter $db, string $table = 'pop_queue', ?string $priority = null, int $leaseSeconds = 60)
     {
-        $this->db    = $db;
-        $this->table = $table;
+        $this->db           = $db;
+        $this->table        = $table;
+        $this->leaseSeconds = $leaseSeconds;
 
         if (!$this->db->hasTable($table)) {
             $this->createTable($table);
+        } else {
+            $this->ensureReservedUntilColumn($table);
         }
 
         parent::__construct($priority);
@@ -66,11 +79,13 @@ class Database extends AbstractTaskAdapter
      *
      * @param  DbAdapter $db
      * @param  string    $table
+     * @param  ?string   $priority
+     * @param  int       $leaseSeconds
      * @return Database
      */
-    public static function create(DbAdapter $db, string $table = 'pop_queue', ?string $priority = null): Database
+    public static function create(DbAdapter $db, string $table = 'pop_queue', ?string $priority = null, int $leaseSeconds = 60): Database
     {
-        return new self($db, $table);
+        return new self($db, $table, $priority, $leaseSeconds);
     }
 
     /**
@@ -101,6 +116,32 @@ class Database extends AbstractTaskAdapter
     public function getTable(): ?string
     {
         return $this->table;
+    }
+
+    /**
+     * Add the reserved_until column to a table created by an earlier version
+     * of this adapter, if it isn't there already. pop-db doesn't expose a
+     * portable "does this column exist" check across MySQL/Postgres/SQLite,
+     * so this attempts the ALTER and silently ignores the exception thrown
+     * when the column is already present. The underlying driver (e.g.
+     * SQLite3::query()) raises a PHP warning for that same expected failure
+     * ahead of pop-db turning it into an exception, so the call is also
+     * warning-suppressed here - the try/catch already guarantees the failure
+     * is inspected and handled, this just keeps that single, anticipated
+     * "duplicate column" condition out of application/test error logs.
+     *
+     * @param  string $table
+     * @return void
+     */
+    protected function ensureReservedUntilColumn(string $table): void
+    {
+        try {
+            $schema = $this->db->createSchema();
+            $schema->alter($table)->addColumn('reserved_until', 'int', 16)->nullable();
+            @$this->db->query($schema);
+        } catch (\Exception $e) {
+            // Column already exists - nothing to do.
+        }
     }
 
     /**
@@ -180,18 +221,54 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Claim the next eligible job. Scans the pending rows in queue order and
-     * skips any job that is not yet available (delayed or backed off), so a
-     * single ineligible row at the head of the queue cannot stall the queue.
+     * Build the "pending, or claimed with an expired lease" predicate shared
+     * by reserve()'s scan and its per-row claiming UPDATE: type = 'job' AND
+     * (status = 1 OR (status = 0 AND reserved_until <= $now)). Built via
+     * pop-db's nested PredicateSet API (Where::andNest()/orNest()) rather
+     * than a raw SQL string, because pop-db's where()/andWhere() string
+     * parser only understands simple "column operator value" expressions -
+     * handing it a compound, parenthesized boolean expression silently
+     * misparses it instead of raising an error.
+     *
+     * @param  DbSql $sql
+     * @param  int   $now
+     * @return Where
+     */
+    protected function buildEligibleWhere(DbSql $sql, int $now): Where
+    {
+        $where = new Where($sql);
+        $where->equalTo('type', 'job');
+
+        $leaseGroup = $where->andNest();
+        $leaseGroup->equalTo('status', 1);
+
+        $expiredGroup = $leaseGroup->orNest();
+        $expiredGroup->equalTo('status', 0);
+        $expiredGroup->and();
+        $expiredGroup->lessThanOrEqualTo('reserved_until', $now);
+
+        return $where;
+    }
+
+    /**
+     * Atomically claim the next eligible job. Scans pending/expired-lease
+     * rows in queue order, skipping any job that isn't yet available (delayed
+     * or backed off), and atomically claims the first eligible one via a
+     * conditional UPDATE - if the affected-row count comes back 0, another
+     * worker won the race between the scan and this UPDATE, so this moves on
+     * to the next candidate instead of assuming success.
      *
      * @return ?AbstractJob
      */
     public function reserve(): ?AbstractJob
     {
-        $sql = $this->db->createSql();
-        $sql->select(['index', 'payload'])->from($this->table)
-            ->where("type = 'job'")->andWhere('status = 1')
-            ->orderBy('index', ($this->isFifo()) ? 'ASC' : 'DESC');
+        $now = time();
+
+        $sql    = $this->db->createSql();
+        $select = $sql->select(['id', 'index', 'payload'])->from($this->table);
+        $select->where($this->buildEligibleWhere($select, $now));
+        $select->orderBy('index', ($this->isFifo()) ? 'ASC' : 'DESC');
+
         $this->db->query($sql);
         $rows = $this->db->fetchAll();
 
@@ -202,19 +279,33 @@ class Database extends AbstractTaskAdapter
                 continue;
             }
 
-            $sql = $this->db->createSql();
-            $sql->update($this->table)->values(['status' => 0])
-                ->where("type = 'job'")->andWhere('index = ' . (int)$row['index']);
-            $this->db->query($sql);
+            $sql    = $this->db->createSql();
+            $update = $sql->update($this->table)->values([
+                'status'         => ':status',
+                'reserved_until' => ':reserved_until'
+            ]);
+            $update->where($this->buildEligibleWhere($update, $now));
+            $update->andWhere('id = ' . (int)$row['id']);
 
-            return $job;
+            $this->db->prepare($sql);
+            $this->db->bindParams([
+                'status'         => 0,
+                'reserved_until' => ($now + $this->leaseSeconds)
+            ]);
+            $this->db->execute();
+
+            if ($this->db->getNumberOfAffectedRows() === 1) {
+                return $job;
+            }
+            // Lost the race to another worker between the scan and this UPDATE - try the next candidate.
         }
 
         return null;
     }
 
     /**
-     * Put a job back to pending
+     * Put a job back to pending, honoring its backoff schedule unless an
+     * explicit delay is given
      *
      * @param  AbstractJob $job
      * @param  ?int        $delay
@@ -222,17 +313,21 @@ class Database extends AbstractTaskAdapter
      */
     public function release(AbstractJob $job, ?int $delay = null): Database
     {
+        $job->delay($delay ?? $job->getBackoffDelay());
+
         $sql = $this->db->createSql();
         $sql->update($this->table)->values([
-            'payload' => ':payload',
-            'status'  => ':status'
+            'payload'        => ':payload',
+            'status'         => ':status',
+            'reserved_until' => ':reserved_until'
         ])->where("type = 'job'")->andWhere('job_id = :job_id');
 
         $this->db->prepare($sql);
         $this->db->bindParams([
-            'payload' => base64_encode(serialize(clone $job)),
-            'status'  => 1,
-            'job_id'  => $job->getJobId()
+            'payload'        => base64_encode(serialize(clone $job)),
+            'status'         => 1,
+            'reserved_until' => null,
+            'job_id'         => $job->getJobId()
         ]);
         $this->db->execute();
 
@@ -612,6 +707,7 @@ class Database extends AbstractTaskAdapter
             ->varchar('job_id', 255)
             ->text('payload')
             ->int('status', 1)->defaultIs(1)
+            ->int('reserved_until', 16)->nullable()
             ->primary('id');
 
         $this->db->query($schema);

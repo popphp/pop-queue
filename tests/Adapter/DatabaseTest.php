@@ -366,6 +366,138 @@ class DatabaseTest extends TestCase
         $this->assertFalse($adapter->hasTasks());
     }
 
+    public function testLeaseReclaim()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+
+        $adapter = new Database($db, 'pop_queue', null, 1); // 1-second lease
+        $adapter->push($job);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+        $this->assertNull($adapter->reserve());
+
+        sleep(2);
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job->getJobId(), $second->getJobId());
+
+        $adapter->delete($second);
+    }
+
+    public function testReleaseHonorsBackoff()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+        $job->setBackoff(60);
+
+        $adapter = new Database($db);
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $reserved->failed();
+        $adapter->release($reserved);
+
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReleaseHonorsExplicitDelayOverridingBackoff()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+        $job->setBackoff(60);
+
+        $adapter = new Database($db);
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $adapter->release($reserved, 0);
+
+        $this->assertNotNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testConstructorWithLeaseSeconds()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db, 'pop_queue', null, 30);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Database', $adapter);
+    }
+
+    public function testCreateFactoryPassesThroughPriorityAndLease()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = Database::create($db, 'pop_queue', 'FILO', 30);
+        $this->assertEquals('FILO', $adapter->getPriority());
+    }
+
+    public function testConcurrentClaimAffectedRowCountRejectsLoser()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->push($job);
+
+        // Winner: claim the row exactly as reserve() would.
+        $winner = $adapter->reserve();
+        $this->assertNotNull($winner);
+
+        // Loser: simulate a second worker whose SELECT scan went stale - it
+        // read the row while still pending, but by the time its UPDATE runs
+        // the winner has already claimed it. Build the identical conditional
+        // UPDATE reserve() issues, via the adapter's own buildEligibleWhere()
+        // helper (not a hand-rolled reimplementation, so this exercises the
+        // real production predicate), and confirm the WHERE re-validates the
+        // row's actual current state at write time: 0 rows affected, not 1 -
+        // the loser must never blindly report success for a row it didn't
+        // actually touch.
+        $now    = time();
+        $sql    = $db->createSql();
+        $update = $sql->update('pop_queue')->values([
+            'status'         => ':status',
+            'reserved_until' => ':reserved_until'
+        ]);
+
+        $buildEligibleWhere = new \ReflectionMethod($adapter, 'buildEligibleWhere');
+        $buildEligibleWhere->setAccessible(true);
+        $update->where($buildEligibleWhere->invoke($adapter, $update, $now));
+        $update->andWhere('job_id = :job_id');
+
+        $db->prepare($sql);
+        $db->bindParams([
+            'status'         => 0,
+            'reserved_until' => ($now + 60),
+            'job_id'         => $job->getJobId()
+        ]);
+        $db->execute();
+        $this->assertEquals(0, $db->getNumberOfAffectedRows());
+
+        $adapter->clear();
+    }
+
     public function testClear()
     {
         $db = PopDb::sqliteConnect([
