@@ -126,18 +126,22 @@ class Sqs extends AbstractAdapter
     }
 
     /**
-     * Get queue end index
+     * Get the count of messages on the queue, both visible (pending) and
+     * not visible (reserved/in-flight), per the adapter contract
      *
      * @return int
      */
     public function getEnd(): int
     {
         $result = $this->client->getQueueAttributes([
-            'AttributeNames' => ['ApproximateNumberOfMessages'],
+            'AttributeNames' => ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'],
             'QueueUrl'       => $this->queueUrl
         ]);
 
-        return (int)$result->get('Attributes')['ApproximateNumberOfMessages'];
+        $attributes = $result->get('Attributes');
+
+        return (int)($attributes['ApproximateNumberOfMessages'] ?? 0) +
+            (int)($attributes['ApproximateNumberOfMessagesNotVisible'] ?? 0);
     }
 
     /**
@@ -165,6 +169,17 @@ class Sqs extends AbstractAdapter
 
         if ($this->isFifo()) {
             $params['MessageGroupId'] = $this->groupId;
+        }
+
+        // Honor the job's delay() via SQS's own initial-delivery delay. This is
+        // distinct from the VisibilityTimeout used by reserve(), which only
+        // controls redelivery of an already in-flight message. SQS caps
+        // DelaySeconds at 900 (15 minutes).
+        if ($job->getAvailableAt() !== null) {
+            $delaySeconds = min(max(0, $job->getAvailableAt() - time()), 900);
+            if ($delaySeconds > 0) {
+                $params['DelaySeconds'] = $delaySeconds;
+            }
         }
 
         $this->client->sendMessage($params);
