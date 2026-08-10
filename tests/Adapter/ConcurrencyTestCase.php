@@ -42,6 +42,8 @@ abstract class ConcurrencyTestCase extends TestCase
         }
 
         $results = [];
+        $failures = [];
+
         foreach ($processes as $i => $process) {
             $results[$i] = stream_get_contents($pipes[$i][1]);
             $stderr      = stream_get_contents($pipes[$i][2]);
@@ -49,8 +51,12 @@ abstract class ConcurrencyTestCase extends TestCase
             fclose($pipes[$i][2]);
             $exitCode = proc_close($process);
             if ($exitCode !== 0) {
-                $this->fail('Concurrency worker process ' . $i . ' exited with code ' . $exitCode . ': ' . $stderr);
+                $failures[] = 'worker ' . $i . ' exited with code ' . $exitCode . ': ' . $stderr;
             }
+        }
+
+        if (!empty($failures)) {
+            $this->fail('Concurrency worker process(es) failed: ' . implode('; ', $failures));
         }
 
         return $results;
