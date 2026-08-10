@@ -200,6 +200,61 @@ class RedisTest extends TestCase
         $adapter->push($job2);
 
         $this->assertEquals($job2->getJobId(), $adapter->reserve()->getJobId());
+        $this->assertEquals($job1->getJobId(), $adapter->reserve()->getJobId());
+
+        $adapter->clear();
+    }
+
+    public function testReserveMovesPastAlreadyReservedJobs()
+    {
+        $job1 = Job::create(function(){ return 1; });
+        $job2 = Job::create(function(){ return 2; });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job1);
+        $adapter->push($job2);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+        $this->assertEquals($job1->getJobId(), $first->getJobId());
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job2->getJobId(), $second->getJobId());
+
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJob()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->delay(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJobAndClaimsAvailableOne()
+    {
+        $delayed   = Job::create(function(){ return 1; });
+        $available = Job::create(function(){ return 2; });
+        $delayed->delay(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($delayed);
+        $adapter->push($available);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($available->getJobId(), $reserved->getJobId());
 
         $adapter->clear();
     }

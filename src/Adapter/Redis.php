@@ -149,23 +149,39 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Atomically claim the next eligible job
+     * Claim the next eligible job. Scans the pending list in queue order and
+     * skips any job that is not yet available (delayed or backed off), so a
+     * single ineligible entry at the head of the list cannot stall the queue.
      *
      * @return ?AbstractJob
      */
     public function reserve(): ?AbstractJob
     {
-        $index = $this->isFifo() ? -1 : 0;
-        $value = $this->redis->lIndex($this->prefix, $index);
+        $values = $this->redis->lRange($this->prefix, 0, -1);
 
-        if ($value === false) {
+        if (empty($values)) {
             return null;
         }
 
-        $this->redis->lRem($this->prefix, $value, 1);
-        $this->redis->rPush($this->prefix . ':reserved', $value);
+        // push() lPushes, so the oldest entry is at the tail of the list
+        if ($this->isFifo()) {
+            $values = array_reverse($values);
+        }
 
-        return unserialize($value);
+        foreach ($values as $value) {
+            $job = unserialize($value);
+
+            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+                continue;
+            }
+
+            $this->redis->lRem($this->prefix, $value, 1);
+            $this->redis->rPush($this->prefix . ':reserved', $value);
+
+            return $job;
+        }
+
+        return null;
     }
 
     /**
