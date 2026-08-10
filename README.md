@@ -331,6 +331,11 @@ $job->setBackoff(30);
 $job->setBackoff([10, 30, 60]);
 ```
 
+**NOTE:** As of this release, `setBackoff()`'s delay is only honored by the `Memory` adapter. The
+`Redis`, `Database`, `File`, and `AWS SQS` adapters currently retry a failed job immediately
+regardless of any backoff set on it — adapter-level backoff support is planned for a future
+release.
+
 A job (or task) can also be dispatched with a delay, so it isn't eligible to run until later:
 
 ```php
@@ -340,6 +345,11 @@ $job->delay(60);
 // Or at an absolute time
 $job->delay('2026-12-01 09:00:00');
 ```
+
+Unlike `setBackoff()`, an initial `delay()` set before a job is first pushed *is* honored by the
+`Memory` and `File` adapters (the job won't be returned by `reserve()` until it's available); the
+`Database` and `Redis` adapters don't yet check this on `reserve()`, so a delayed job is
+immediately eligible there too.
 
 And a job can set a soft execution timeout, enforced when the `pcntl` extension is available:
 
@@ -542,7 +552,8 @@ Adapters
 By default, there are four available adapters, but additional ones could be created as long as they
 implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
 
-A job that fails and still has attempts remaining is retried (after any backoff delay); a job
+A job that fails and still has attempts remaining is retried (immediately on `Redis`/`Database`/
+`File`/`AWS SQS`, or after any backoff delay on `Memory` — see [Attempts](#attempts) above); a job
 that exhausts its attempts is moved to a durable dead-letter store instead of being silently
 dropped — see each adapter's `getDeadJobs()`/`getDeadJob()`/`retryDeadJob()`/`deleteDeadJob()`.
 
