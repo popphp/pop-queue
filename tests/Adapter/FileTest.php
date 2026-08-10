@@ -324,4 +324,62 @@ class FileTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveDoesNotReclaimAFreshlyTouchedReservedDirWithNoLeaseFileYet()
+    {
+        // Directly construct the exact state reserve() leaves behind for the
+        // brief instant between its claiming rename() + touch() and its
+        // lease file write completing (or the state left behind if a worker
+        // crashes in that same instant): a reserved job directory with a
+        // fresh mtime and no lease file yet. isLeaseExpired()'s mtime
+        // fallback must treat this as "not expired" - reclaiming it here
+        // would tear an active (or just-completed) claim away from its
+        // worker. This is the other half of the guarantee
+        // testReclaimHandlesCrashBeforeLeaseWrite covers (which proves an
+        // *old*, stale mtime eventually IS reclaimed); together they pin
+        // down both directions of isLeaseExpired()'s mtime-fallback
+        // behavior, the exact logic reserve()'s touch() call and the shared
+        // isLeaseExpired() helper (used by both the initial reclaim scan and
+        // the staging re-verify step) depend on staying correct and in sync.
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', null, 5); // 5-second lease
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $job->getJobId();
+
+        $reservedDir = $adapter->getFolder() . '/reserved/1';
+        mkdir($reservedDir);
+        file_put_contents($reservedDir . '/payload', serialize(clone $job));
+        touch($reservedDir); // pin mtime to "now" - what reserve()'s touch() call guarantees at claim time
+        // Deliberately no lease file - the ambiguous in-flight/crash window.
+
+        $this->assertNull(
+            $adapter->reserve(),
+            'A job whose reserved directory was just touched must not be reclaimed within the lease window, even with no lease file yet.'
+        );
+
+        // Confirm it's still genuinely held in reserved/, not silently
+        // bounced back to pending/ and re-claimed as something else.
+        $this->assertCount(1, $adapter->getFolders($adapter->getFolder() . '/reserved'));
+        $this->assertCount(0, $adapter->getFolders($adapter->getFolder() . '/pending'));
+
+        unlink($reservedDir . '/payload');
+        rmdir($reservedDir);
+    }
+
+    public function testPushThrowsRatherThanHangsWhenPendingDirNotWritable()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $pendingDir = $adapter->getFolder() . '/pending';
+        chmod($pendingDir, 0555); // read + execute, no write - mkdir() must fail
+
+        try {
+            $this->expectException('Pop\Queue\Adapter\Exception');
+            $adapter->push(Job::create(function(){ return 123; }));
+        } finally {
+            chmod($pendingDir, 0755);
+        }
+    }
+
 }

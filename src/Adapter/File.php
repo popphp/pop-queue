@@ -157,6 +157,26 @@ class File extends AbstractTaskAdapter
     }
 
     /**
+     * Determine whether a reserved job's lease has expired. Falls back to the
+     * directory's own mtime when no lease file exists yet, to cover the brief
+     * window between a claiming rename() and the lease file being written -
+     * reserve() freshens the directory's mtime at claim time (rename() itself
+     * doesn't update it) specifically so this fallback reflects when the job
+     * was claimed, not when it was originally pushed.
+     *
+     * @param  string $dir
+     * @param  int    $now
+     * @return bool
+     */
+    protected function isLeaseExpired(string $dir, int $now): bool
+    {
+        $leaseUntil = $this->getLeaseUntil($dir);
+        return ($leaseUntil !== null)
+            ? ($leaseUntil <= $now)
+            : ((($mtime = @filemtime($dir)) !== false) && ($mtime + $this->leaseSeconds <= $now));
+    }
+
+    /**
      * Move any reserved job whose lease has expired back to pending, so a
      * crashed worker's claim self-heals instead of being stuck forever.
      * Reclaimed jobs are eligible on this or a later reserve() call, not
@@ -170,19 +190,8 @@ class File extends AbstractTaskAdapter
 
         foreach ($this->getFolders($this->reservedPath()) as $index) {
             $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
-            $leaseUntil  = $this->getLeaseUntil($reservedDir);
 
-            // A missing lease file means either a genuinely crashed claim (rename
-            // succeeded, lease write never happened) or a claim that's still
-            // mid-flight (rename succeeded a moment ago, lease write about to
-            // happen). Distinguish them by the directory's own age instead of
-            // treating "no lease" as immediately expired, which would race an
-            // in-flight claim.
-            $isExpired = ($leaseUntil !== null)
-                ? ($leaseUntil <= $now)
-                : ((($mtime = @filemtime($reservedDir)) !== false) && ($mtime + $this->leaseSeconds <= $now));
-
-            if (!$isExpired) {
+            if (!$this->isLeaseExpired($reservedDir, $now)) {
                 continue;
             }
 
@@ -196,8 +205,10 @@ class File extends AbstractTaskAdapter
                 continue;
             }
 
-            $freshLeaseUntil = $this->getLeaseUntil($stagingDir);
-            if (($freshLeaseUntil !== null) && ($freshLeaseUntil > $now)) {
+            // Re-check against what actually got staged (not the stale pre-read)
+            // using the exact same lease-or-mtime rule, so this can't drift out
+            // of sync with the check above and reclaim someone's fresh claim.
+            if (!$this->isLeaseExpired($stagingDir, $now)) {
                 // Whatever we staged turned out to be a fresh claim (another
                 // worker reclaimed-and-re-reserved this same index between our
                 // stale read and our rename winning) - put it back rather than
@@ -207,7 +218,13 @@ class File extends AbstractTaskAdapter
             }
 
             $pendingDir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
-            rename($stagingDir, $pendingDir);
+            if (!@rename($stagingDir, $pendingDir)) {
+                // Target collision or other failure - put it back to reserved/
+                // rather than permanently orphaning it in a staging directory
+                // nothing else will ever look at again.
+                @rename($stagingDir, $reservedDir);
+                continue;
+            }
         }
     }
 
@@ -220,6 +237,14 @@ class File extends AbstractTaskAdapter
     protected function findReservedIndexForJob(AbstractJob $job): ?int
     {
         foreach ($this->getFolders($this->reservedPath()) as $index) {
+            // Skip staging directories (e.g. "5.reclaim-1234-abcd") left behind
+            // mid-reclaim - (int) casting one of those resolves to a path that
+            // doesn't actually exist, so treat only purely-numeric folder names
+            // as real job slots.
+            if (!ctype_digit((string)$index)) {
+                continue;
+            }
+
             $payloadFile = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
             if (file_exists($payloadFile)) {
                 $stored = unserialize(file_get_contents($payloadFile));
@@ -236,6 +261,7 @@ class File extends AbstractTaskAdapter
      * Push job on to queue
      *
      * @param  AbstractJob $job
+     * @throws Exception
      * @return File
      */
     public function push(AbstractJob $job): File
@@ -246,13 +272,22 @@ class File extends AbstractTaskAdapter
 
         // mkdir() itself is the atomic allocator: if two pushers compute the
         // same next index, only one mkdir() wins and the loser retries the
-        // next index instead of silently clobbering the winner's payload.
+        // next index instead of silently clobbering the winner's payload. A
+        // failed mkdir() only means "keep trying" when the collision is with
+        // an existing directory (someone else's job) - any other failure
+        // (permissions, disk full, pending/ missing) must not spin forever.
         $index = $this->getEndIndex() + 1;
-        while (!@mkdir($this->pendingPath() . DIRECTORY_SEPARATOR . $index)) {
+        $dir   = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+
+        while (!@mkdir($dir)) {
+            if (!is_dir($dir)) {
+                throw new Exception('Error: Unable to create a new job folder in ' . $this->pendingPath() . '.');
+            }
             $index++;
+            $dir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
         }
 
-        file_put_contents($this->pendingPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
 
         return $this;
     }
@@ -302,6 +337,12 @@ class File extends AbstractTaskAdapter
                 continue;
             }
 
+            // Freshen mtime immediately: rename() doesn't update it, so without
+            // this the directory's mtime would still reflect when the job was
+            // originally pushed, breaking isLeaseExpired()'s mtime fallback for
+            // any job that sat pending longer than the lease window before
+            // being claimed.
+            touch($reservedDir);
             file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'lease', (string)(time() + $this->leaseSeconds));
 
             return $job;
