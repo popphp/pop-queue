@@ -314,6 +314,40 @@ And you can check the number of attempts vs. the max attempts like this:
 var_dump($job->hasExceededMaxAttempts());
 ```
 
+A job can also set a retry backoff, so a failed retry isn't attempted immediately:
+
+```php
+use Pop\Queue\Process\Job;
+
+$job = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+// Wait 30 seconds before every retry
+$job->setBackoff(30);
+
+// Or a per-attempt schedule: 10s after the 1st failure, 30s after the 2nd,
+// 60s after the 3rd and every failure after that
+$job->setBackoff([10, 30, 60]);
+```
+
+A job (or task) can also be dispatched with a delay, so it isn't eligible to run until later:
+
+```php
+// Available in 60 seconds
+$job->delay(60);
+
+// Or at an absolute time
+$job->delay('2026-12-01 09:00:00');
+```
+
+And a job can set a soft execution timeout, enforced when the `pcntl` extension is available:
+
+```php
+// Interrupt the job if it runs longer than 30 seconds
+$job->setTimeout(30);
+```
+
 The `isValid()` method is also available and checks both the max attempts and the
 "run until" setting (which is used more with task objects - see below.)
 
@@ -507,6 +541,10 @@ Adapters
 
 By default, there are four available adapters, but additional ones could be created as long as they
 implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
+
+A job that fails and still has attempts remaining is retried (after any backoff delay); a job
+that exhausts its attempts is moved to a durable dead-letter store instead of being silently
+dropped — see each adapter's `getDeadJobs()`/`getDeadJob()`/`retryDeadJob()`/`deleteDeadJob()`.
 
 ### Redis
 
