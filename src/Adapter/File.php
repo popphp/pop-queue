@@ -24,7 +24,7 @@ use Pop\Queue\Process\Task;
  * @author     Nick Sagona, III <dev@noladev.com>
  * @copyright  Copyright (c) 2009-2026 NOLA Interactive, LLC.
  * @license    https://www.popphp.org/license     New BSD License
- * @version    2.1.3
+ * @version    3.0.0
  */
 class File extends AbstractTaskAdapter
 {
@@ -36,15 +36,22 @@ class File extends AbstractTaskAdapter
     protected ?string $folder = null;
 
     /**
+     * Reservation lease length, in seconds
+     * @var int
+     */
+    protected int $leaseSeconds = 60;
+
+    /**
      * Constructor
      *
      * Instantiate the file object
      *
      * @param  string  $folder
      * @param  ?string $priority
+     * @param  int     $leaseSeconds
      * @throws Exception
      */
-    public function __construct(string $folder, ?string $priority = null)
+    public function __construct(string $folder, ?string $priority = null, int $leaseSeconds = 60)
     {
         if (!file_exists($folder)) {
             throw new Exception("Error: The folder '" . $folder . "' does not exist.");
@@ -53,7 +60,16 @@ class File extends AbstractTaskAdapter
             throw new Exception("Error: The folder '" . $folder . "' is not writable.");
         }
 
-        $this->folder = $folder;
+        $this->folder       = $folder;
+        $this->leaseSeconds = $leaseSeconds;
+
+        if (!file_exists($this->pendingPath())) {
+            mkdir($this->pendingPath());
+        }
+        if (!file_exists($this->reservedPath())) {
+            mkdir($this->reservedPath());
+        }
+
         parent::__construct($priority);
     }
 
@@ -62,12 +78,13 @@ class File extends AbstractTaskAdapter
      *
      * @param  string  $folder
      * @param  ?string $priority
+     * @param  int     $leaseSeconds
      * @throws Exception
      * @return File
      */
-    public static function create(string $folder, ?string $priority = null): File
+    public static function create(string $folder, ?string $priority = null, int $leaseSeconds = 60): File
     {
-        return new self($folder, $priority);
+        return new self($folder, $priority, $leaseSeconds);
     }
 
     /**
@@ -91,53 +108,89 @@ class File extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue start index
+     * Get the pending-jobs subdirectory path
      *
-     * @return int
+     * @return string
      */
-    protected function getStartIndex(): int
+    protected function pendingPath(): string
     {
-        $folders = $this->getFolders($this->folder);
-
-        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
-        return (!empty($folders)) ? min(array_map('intval', $folders)) : 0;
+        return $this->folder . DIRECTORY_SEPARATOR . 'pending';
     }
 
     /**
-     * Get queue end index
+     * Get the reserved-jobs subdirectory path
+     *
+     * @return string
+     */
+    protected function reservedPath(): string
+    {
+        return $this->folder . DIRECTORY_SEPARATOR . 'reserved';
+    }
+
+    /**
+     * Get queue end index across both pending and reserved jobs (indices must
+     * stay unique across both so a reclaimed reserved job can never collide
+     * with a newly-pushed one)
      *
      * @return int
      */
     protected function getEndIndex(): int
     {
-        $folders = $this->getFolders($this->folder);
+        $indices = array_merge(
+            array_map('intval', $this->getFolders($this->pendingPath())),
+            array_map('intval', $this->getFolders($this->reservedPath()))
+        );
 
-        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
-        return (!empty($folders)) ? max(array_map('intval', $folders)) : 0;
+        return !empty($indices) ? max($indices) : 0;
     }
 
     /**
-     * Get queue slot status
+     * Read a reserved job's lease expiry, if any
      *
-     * @param  int $index
-     * @return int
+     * @param  string $reservedDir
+     * @return ?int
      */
-    protected function getSlotStatus(int $index): int
+    protected function getLeaseUntil(string $reservedDir): ?int
     {
-        return (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status')) ?
-            (int)file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') : 0;
+        $leaseFile = $reservedDir . DIRECTORY_SEPARATOR . 'lease';
+        return file_exists($leaseFile) ? (int)file_get_contents($leaseFile) : null;
     }
 
     /**
-     * Find the storage index holding a given job, if any
+     * Move any reserved job whose lease has expired back to pending, so a
+     * crashed worker's claim self-heals instead of being stuck forever.
+     * Reclaimed jobs are eligible on this or a later reserve() call, not
+     * necessarily returned by this one.
+     *
+     * @return void
+     */
+    protected function reclaimExpiredLeases(): void
+    {
+        $now = time();
+
+        foreach ($this->getFolders($this->reservedPath()) as $index) {
+            $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
+            $leaseUntil  = $this->getLeaseUntil($reservedDir);
+
+            if (($leaseUntil !== null) && ($leaseUntil <= $now)) {
+                $pendingDir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+                // rename() is atomic; if it fails, another worker already
+                // reclaimed this same expired lease first - safe to skip.
+                @rename($reservedDir, $pendingDir);
+            }
+        }
+    }
+
+    /**
+     * Find the reserved-job directory index holding a given job, if any
      *
      * @param  AbstractJob $job
      * @return ?int
      */
-    protected function findIndexForJob(AbstractJob $job): ?int
+    protected function findReservedIndexForJob(AbstractJob $job): ?int
     {
-        foreach ($this->getFolders($this->folder) as $index) {
-            $payloadFile = $this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
+        foreach ($this->getFolders($this->reservedPath()) as $index) {
+            $payloadFile = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
             if (file_exists($payloadFile)) {
                 $stored = unserialize(file_get_contents($payloadFile));
                 if (($stored instanceof AbstractJob) && ($stored->getJobId() === $job->getJobId())) {
@@ -162,43 +215,56 @@ class File extends AbstractTaskAdapter
         $job->getJobId();
 
         $index = $this->getEndIndex() + 1;
+        $dir   = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
 
-        if (!file_exists($this->folder . DIRECTORY_SEPARATOR . $index)) {
-            mkdir($this->folder . DIRECTORY_SEPARATOR . $index);
+        if (!file_exists($dir)) {
+            mkdir($dir);
         }
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 1);
+        file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
 
         return $this;
     }
 
     /**
-     * Atomically claim the next eligible job
+     * Atomically claim the next eligible job. Reclaims any reserved job whose
+     * lease has expired first, then scans pending jobs in FIFO/FILO order,
+     * skipping any that aren't yet available, and atomically claims the first
+     * eligible one via rename() - if the rename fails, another worker won the
+     * race and this moves on to the next candidate.
      *
      * @return ?AbstractJob
      */
     public function reserve(): ?AbstractJob
     {
-        $folders = $this->getFolders($this->folder);
+        $this->reclaimExpiredLeases();
 
-        // scandir() sorts alphabetically ('10' < '2'), so order the slots numerically
-        usort($folders, function($a, $b) {
-            return $this->isFifo() ? ((int)$a <=> (int)$b) : ((int)$b <=> (int)$a);
+        $indices = array_map('intval', $this->getFolders($this->pendingPath()));
+        usort($indices, function($a, $b) {
+            return $this->isFifo() ? ($a <=> $b) : ($b <=> $a);
         });
 
-        foreach ($folders as $index) {
-            if ($this->getSlotStatus((int)$index) != 1) {
+        foreach ($indices as $index) {
+            $pendingDir  = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+            $payloadFile = $pendingDir . DIRECTORY_SEPARATOR . 'payload';
+
+            if (!file_exists($payloadFile)) {
                 continue;
             }
 
-            $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
-            $job     = unserialize($payload);
+            $job = unserialize(file_get_contents($payloadFile));
 
             if (($job instanceof AbstractJob) && !$job->isAvailable()) {
                 continue;
             }
 
-            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
+            $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
+            if (!@rename($pendingDir, $reservedDir)) {
+                // Lost the race to another worker - move on.
+                continue;
+            }
+
+            file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'lease', (string)(time() + $this->leaseSeconds));
+
             return $job;
         }
 
@@ -206,7 +272,8 @@ class File extends AbstractTaskAdapter
     }
 
     /**
-     * Put a job back to pending
+     * Put a job back to pending, honoring its backoff schedule unless an
+     * explicit delay is given
      *
      * @param  AbstractJob $job
      * @param  ?int        $delay
@@ -214,13 +281,18 @@ class File extends AbstractTaskAdapter
      */
     public function release(AbstractJob $job, ?int $delay = null): File
     {
-        $index = $this->findIndexForJob($job);
+        $index = $this->findReservedIndexForJob($job);
         if ($index === null) {
             return $this;
         }
 
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 1);
+        $job->delay($delay ?? $job->getBackoffDelay());
+
+        $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
+        $pendingDir  = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+
+        file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        rename($reservedDir, $pendingDir);
 
         return $this;
     }
@@ -233,19 +305,19 @@ class File extends AbstractTaskAdapter
      */
     public function delete(AbstractJob $job): File
     {
-        $index = $this->findIndexForJob($job);
+        $index = $this->findReservedIndexForJob($job);
         if ($index === null) {
             return $this;
         }
 
-        $folder = $this->folder . DIRECTORY_SEPARATOR . $index;
-        if (file_exists($folder . DIRECTORY_SEPARATOR . 'payload')) {
-            unlink($folder . DIRECTORY_SEPARATOR . 'payload');
+        $dir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
+        if (file_exists($dir . DIRECTORY_SEPARATOR . 'payload')) {
+            unlink($dir . DIRECTORY_SEPARATOR . 'payload');
         }
-        if (file_exists($folder . DIRECTORY_SEPARATOR . 'status')) {
-            unlink($folder . DIRECTORY_SEPARATOR . 'status');
+        if (file_exists($dir . DIRECTORY_SEPARATOR . 'lease')) {
+            unlink($dir . DIRECTORY_SEPARATOR . 'lease');
         }
-        rmdir($folder);
+        rmdir($dir);
 
         return $this;
     }
@@ -272,7 +344,7 @@ class File extends AbstractTaskAdapter
      */
     public function hasJobs(): bool
     {
-        return !empty($this->getFolders($this->folder));
+        return ($this->count() > 0);
     }
 
     /**
@@ -282,7 +354,7 @@ class File extends AbstractTaskAdapter
      */
     public function count(): int
     {
-        return count($this->getFolders($this->folder));
+        return count($this->getFolders($this->pendingPath())) + count($this->getFolders($this->reservedPath()));
     }
 
     /**
@@ -292,15 +364,17 @@ class File extends AbstractTaskAdapter
      */
     public function clear(): File
     {
-        foreach ($this->getFolders($this->folder) as $folder) {
-            $path = $this->folder . DIRECTORY_SEPARATOR . $folder;
-            if (file_exists($path . DIRECTORY_SEPARATOR . 'payload')) {
-                unlink($path . DIRECTORY_SEPARATOR . 'payload');
+        foreach ([$this->pendingPath(), $this->reservedPath()] as $path) {
+            foreach ($this->getFolders($path) as $index) {
+                $dir = $path . DIRECTORY_SEPARATOR . $index;
+                if (file_exists($dir . DIRECTORY_SEPARATOR . 'payload')) {
+                    unlink($dir . DIRECTORY_SEPARATOR . 'payload');
+                }
+                if (file_exists($dir . DIRECTORY_SEPARATOR . 'lease')) {
+                    unlink($dir . DIRECTORY_SEPARATOR . 'lease');
+                }
+                rmdir($dir);
             }
-            if (file_exists($path . DIRECTORY_SEPARATOR . 'status')) {
-                unlink($path . DIRECTORY_SEPARATOR . 'status');
-            }
-            rmdir($path);
         }
 
         return $this;
