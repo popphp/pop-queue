@@ -134,14 +134,19 @@ class Sqs extends AbstractAdapter
     public function getEnd(): int
     {
         $result = $this->client->getQueueAttributes([
-            'AttributeNames' => ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'],
+            'AttributeNames' => [
+                'ApproximateNumberOfMessages',
+                'ApproximateNumberOfMessagesNotVisible',
+                'ApproximateNumberOfMessagesDelayed'
+            ],
             'QueueUrl'       => $this->queueUrl
         ]);
 
         $attributes = $result->get('Attributes');
 
         return (int)($attributes['ApproximateNumberOfMessages'] ?? 0) +
-            (int)($attributes['ApproximateNumberOfMessagesNotVisible'] ?? 0);
+            (int)($attributes['ApproximateNumberOfMessagesNotVisible'] ?? 0) +
+            (int)($attributes['ApproximateNumberOfMessagesDelayed'] ?? 0);
     }
 
     /**
@@ -174,8 +179,11 @@ class Sqs extends AbstractAdapter
         // Honor the job's delay() via SQS's own initial-delivery delay. This is
         // distinct from the VisibilityTimeout used by reserve(), which only
         // controls redelivery of an already in-flight message. SQS caps
-        // DelaySeconds at 900 (15 minutes).
-        if ($job->getAvailableAt() !== null) {
+        // DelaySeconds at 900 (15 minutes). AWS does not allow DelaySeconds on
+        // individual messages sent to a FIFO queue (it's a queue-level setting
+        // there) — sendMessage() rejects the request if it's set, so this is
+        // skipped entirely for FIFO queues rather than silently dropped.
+        if (!$this->isFifo() && $job->getAvailableAt() !== null) {
             $delaySeconds = min(max(0, $job->getAvailableAt() - time()), 900);
             if ($delaySeconds > 0) {
                 $params['DelaySeconds'] = $delaySeconds;

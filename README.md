@@ -351,7 +351,10 @@ Unlike `setBackoff()`, an initial `delay()` set before a job is first pushed *is
 adapter. On `Memory`, `File`, `Database` and `Redis`, `reserve()` skips over a job that isn't
 available yet and hands back the next one that is. On `AWS SQS` the delay is enforced by SQS
 itself: `push()` translates it into the message's `DelaySeconds`, which AWS caps at 900 seconds
-(15 minutes) — a longer delay on that adapter is clamped to that maximum.
+(15 minutes) — a longer delay on that adapter is clamped to that maximum. **Exception:** AWS
+doesn't allow per-message `DelaySeconds` on a FIFO SQS queue (it's a queue-level setting there
+instead), so on a `.fifo` queue a job's `delay()` is not applied — the job becomes available
+immediately, same as if no delay were set.
 
 And a job can set a soft execution timeout, enforced when the `pcntl` extension is available:
 
