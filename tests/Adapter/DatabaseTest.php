@@ -156,6 +156,38 @@ class DatabaseTest extends TestCase
         $adapter->clearTasks();
     }
 
+    public function testRemoveTaskDoesNotTouchJobsOrDeadJobs()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $pending = Job::create(function(){ return 1; });
+        $dead    = Job::create(function(){ return 2; });
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->clearTasks();
+        $adapter->clearDead();
+
+        $adapter->push($dead);
+        $adapter->bury($adapter->reserve(), 'reason');
+        $adapter->push($pending);
+
+        // A job ID is not a task ID; removing it as one must be a no-op
+        $adapter->removeTask($pending->getJobId());
+        $adapter->removeTask($dead->getJobId());
+
+        $this->assertEquals(1, $adapter->count());
+        $this->assertEquals(1, $adapter->countDead());
+
+        // And a task ID must not reach a job row
+        $this->assertNull($adapter->getTask($pending->getJobId()));
+
+        $adapter->clear();
+        $adapter->clearDead();
+    }
+
     public function testGetDeadJobDoesNotReturnLiveJobsOrTasks()
     {
         $db = PopDb::sqliteConnect([

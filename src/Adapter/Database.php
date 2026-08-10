@@ -226,7 +226,7 @@ class Database extends AbstractTaskAdapter
         $sql->update($this->table)->values([
             'payload' => ':payload',
             'status'  => ':status'
-        ])->where('job_id = :job_id');
+        ])->where("type = 'job'")->andWhere('job_id = :job_id');
 
         $this->db->prepare($sql);
         $this->db->bindParams([
@@ -501,7 +501,7 @@ class Database extends AbstractTaskAdapter
     public function getTask(string $taskId): ?Task
     {
         $sql = $this->db->createSql();
-        $sql->select('payload')->from($this->table)->where('job_id = :job_id');
+        $sql->select('payload')->from($this->table)->where("type = 'task'")->andWhere('job_id = :job_id');
         $this->db->prepare($sql);
         $this->db->bindParams(['job_id' => $taskId]);
         $this->db->execute();
@@ -522,7 +522,7 @@ class Database extends AbstractTaskAdapter
             $sql = $this->db->createSql();
             $sql->update($this->table)->values([
                 'payload' => ':payload'
-            ])->where('job_id = :job_id');
+            ])->where("type = 'task'")->andWhere('job_id = :job_id');
 
             $jobData = [
                 'payload' => base64_encode(serialize(clone $task)),
@@ -548,7 +548,7 @@ class Database extends AbstractTaskAdapter
     public function removeTask(string $taskId): Database
     {
         $sql = $this->db->createSql();
-        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $sql->delete()->from($this->table)->where("type = 'task'")->andWhere('job_id = :job_id');
         $this->db->prepare($sql);
         $this->db->bindParams(['job_id' => $taskId]);
         $this->db->execute();
