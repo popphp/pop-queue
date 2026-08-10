@@ -14,7 +14,6 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Process\AbstractJob;
-use Pop\Queue\Process\Task;
 
 /**
  * Adapter interface
@@ -24,78 +23,25 @@ use Pop\Queue\Process\Task;
  * @author     Nick Sagona, III <dev@noladev.com>
  * @copyright  Copyright (c) 2009-2026 NOLA Interactive, LLC.
  * @license    https://www.popphp.org/license     New BSD License
- * @version    2.1.3
+ * @version    3.0.0
  */
 interface AdapterInterface
 {
 
-    /**
-     * Set queue priority
-     *
-     * @param  string $priority
-     * @return AdapterInterface
-     */
     public function setPriority(string $priority = 'FIFO'): AdapterInterface;
 
-    /**
-     * Get queue priority
-     *
-     * @return string
-     */
     public function getPriority(): string;
 
-    /**
-     * Is FIFO
-     *
-     * @return bool
-     */
     public function isFifo(): bool;
 
-    /**
-     * Is FILO
-     *
-     * @return bool
-     */
     public function isFilo(): bool;
 
-    /**
-     * Is LILO (alias to FIFO)
-     *
-     * @return bool
-     */
     public function isLilo(): bool;
 
-    /**
-     * Is LIFO (alias to FILO)
-     *
-     * @return bool
-     */
     public function isLifo(): bool;
 
     /**
-     * Get queue start index
-     *
-     * @return int
-     */
-    public function getStart(): int;
-
-    /**
-     * Get queue end index
-     *
-     * @return int
-     */
-    public function getEnd(): int;
-
-    /**
-     * Get queue job status
-     *
-     * @param  int $index
-     * @return int
-     */
-    public function getStatus(int $index): int;
-
-    /**
-     * Push job on to queue
+     * Push a job onto the queue
      *
      * @param  AbstractJob $job
      * @return AdapterInterface
@@ -103,63 +49,90 @@ interface AdapterInterface
     public function push(AbstractJob $job): AdapterInterface;
 
     /**
-     * Pop job off of queue
+     * Atomically claim the next eligible job and lease it. Returns null if
+     * nothing is eligible (no pending jobs due, or all reserved jobs have a
+     * live lease).
      *
      * @return ?AbstractJob
      */
-    public function pop(): ?AbstractJob;
+    public function reserve(): ?AbstractJob;
 
     /**
-     * Check if adapter has jobs
+     * Put a reserved job back to pending. $delay overrides the job's own
+     * backoff schedule when given; otherwise release() computes the delay
+     * from $job->getBackoffDelay().
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $delay
+     * @return AdapterInterface
+     */
+    public function release(AbstractJob $job, ?int $delay = null): AdapterInterface;
+
+    /**
+     * Permanently remove a job (success/ack)
+     *
+     * @param  AbstractJob $job
+     * @return AdapterInterface
+     */
+    public function delete(AbstractJob $job): AdapterInterface;
+
+    /**
+     * Move a job to the dead-letter store (terminal)
+     *
+     * @param  AbstractJob $job
+     * @param  ?string     $reason
+     * @return AdapterInterface
+     */
+    public function bury(AbstractJob $job, ?string $reason = null): AdapterInterface;
+
+    /**
+     * Whether there are pending or reserved jobs
      *
      * @return bool
      */
     public function hasJobs(): bool;
 
     /**
-     * Check if adapter has failed job
+     * Count of pending + reserved jobs
      *
-     * @param  int $index
-     * @return bool
+     * @return int
      */
-    public function hasFailedJob(int $index): bool;
+    public function count(): int;
 
     /**
-     * Get failed job
-     *
-     * @param  int  $index
-     * @param  bool $unserialize
-     * @return mixed
-     */
-    public function getFailedJob(int $index, bool $unserialize = true): mixed;
-
-    /**
-     * Check if adapter has failed jobs
-     *
-     * @return bool
-     */
-    public function hasFailedJobs(): bool;
-
-    /**
-     * Get adapter failed jobs
-     *
-     * @param  bool $unserialize
-     * @return array
-     */
-    public function getFailedJobs(bool $unserialize = true): array;
-
-    /**
-     * Clear failed jobs out of the queue
-     *
-     * @return AdapterInterface
-     */
-    public function clearFailed(): AdapterInterface;
-
-    /**
-     * Clear jobs out of queue
+     * Clear pending and reserved jobs (not dead-letter jobs)
      *
      * @return AdapterInterface
      */
     public function clear(): AdapterInterface;
+
+    public function hasDeadJobs(): bool;
+
+    public function countDead(): int;
+
+    /**
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getDeadJobs(bool $unserialize = true): array;
+
+    /**
+     * @param  string $jobId
+     * @param  bool   $unserialize
+     * @return mixed
+     */
+    public function getDeadJob(string $jobId, bool $unserialize = true): mixed;
+
+    /**
+     * Move a dead-letter job back to pending
+     *
+     * @param  string $jobId
+     * @return AdapterInterface
+     */
+    public function retryDeadJob(string $jobId): AdapterInterface;
+
+    public function deleteDeadJob(string $jobId): AdapterInterface;
+
+    public function clearDead(): AdapterInterface;
 
 }
