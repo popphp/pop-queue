@@ -578,6 +578,41 @@ class DatabaseTest extends TestCase
         unlink($file);
     }
 
+    public function testSecondAdapterConstructionDoesNotWipeLiveLeases()
+    {
+        // Regression test: the migration's backfill (reserved_until = 0 for
+        // status = 0 rows) must only ever run the first time the
+        // reserved_until column is added to a table - never on a table that
+        // already has it. If it re-ran on every construction, then every
+        // worker process starting up (each one constructs its own Database
+        // adapter against the same shared table) would zero out
+        // reserved_until - and therefore the lease - on every currently
+        // in-flight job table-wide, making them all instantly reclaimable
+        // and executed twice. This is the exact double-execution failure
+        // this whole task exists to prevent, so it must not be reachable
+        // via ordinary adapter construction.
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+
+        $first = new Database($db);
+        $first->clear();
+        $first->push($job);
+
+        // Establish a live lease.
+        $reserved = $first->reserve();
+        $this->assertNotNull($reserved);
+
+        // A second worker constructing its own adapter against the same,
+        // already-migrated table must not disturb the first adapter's lease.
+        $second = new Database($db);
+        $this->assertNull($second->reserve());
+
+        $first->delete($reserved);
+    }
+
     public function testClear()
     {
         $db = PopDb::sqliteConnect([

@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Db\Adapter\AbstractAdapter as DbAdapter;
+use Pop\Db\Gateway\Table as DbTable;
 use Pop\Db\Sql\AbstractSql as DbSql;
 use Pop\Db\Sql\Where;
 use Pop\Queue\Process\AbstractJob;
@@ -121,68 +122,77 @@ class Database extends AbstractTaskAdapter
 
     /**
      * Add the reserved_until column to a table created by an earlier version
-     * of this adapter, if it isn't there already. pop-db doesn't expose a
-     * portable "does this column exist" check across MySQL/Postgres/SQLite,
-     * so this attempts the ALTER and silently ignores the exception thrown
-     * when the column is already present. The underlying driver (e.g.
-     * SQLite3::query()) raises a PHP warning for that same expected failure
-     * ahead of pop-db turning it into an exception, so the call is also
-     * warning-suppressed here - the try/catch already guarantees the failure
-     * is inspected and handled, this just keeps that single, anticipated
-     * "duplicate column" condition out of application/test error logs.
+     * of this adapter, if it isn't there already. Gated on a real
+     * column-existence check (Pop\Db\Gateway\Table::getTableInfo(), backed
+     * by PRAGMA table_info on SQLite / information_schema.columns on
+     * Postgres+SQL Server / SHOW COLUMNS elsewhere - genuinely portable
+     * across every backend this adapter supports), NOT on catching the
+     * exception a duplicate-column ALTER is expected to throw: this repo's
+     * SQLite adapter's query() only calls throwError() when the driver
+     * reports a non-zero error code, and a duplicate-column ALTER TABLE ...
+     * ADD COLUMN against SQLite returns false with error code 0 - it fails
+     * silently (surfacing only as a PHP warning), so a try/catch around it
+     * never fires. That previously let the backfill below re-run on every
+     * single construction against an already-migrated table, zeroing out
+     * reserved_until (and the lease it represents) for every currently
+     * in-flight job, table-wide, on ordinary worker startup - exactly the
+     * double-execution failure this task exists to prevent. Gating on the
+     * real column check means the ALTER and backfill run exactly once, ever,
+     * per table, and a genuine migration failure (permissions, locked table)
+     * now throws normally instead of failing silently.
      *
-     * Immediately after a successful ALTER (i.e. only the first time this
-     * runs against a given table), backfills reserved_until = 0 for any row
-     * already sitting at status = 0 - a job reserved under the pre-lease
-     * Phase 1 contract. Without this, such a row would have reserved_until
-     * = NULL forever, and "NULL <= now" evaluates to NULL in SQL - matching
-     * neither the "status = 1" nor the "status = 0 AND reserved_until <=
-     * now" branch of reserve()'s eligibility check, making the row invisible
-     * to reserve() permanently. Backfilling it to 0 makes it immediately
-     * eligible for reclaim on the very next reserve() call, which is the
-     * correct behavior for a job whose reservation state predates leasing
-     * entirely. If the ALTER throws (column already exists), the backfill is
-     * skipped too, since it would already have run on a prior construction.
+     * The backfill sets reserved_until = 0 for any row already sitting at
+     * status = 0 - a job reserved under the pre-lease Phase 1 contract.
+     * Without it, such a row would have reserved_until = NULL forever, and
+     * "NULL <= now" evaluates to NULL in SQL - matching neither the
+     * "status = 1" nor the "status = 0 AND reserved_until <= now" branch of
+     * reserve()'s eligibility check, making the row invisible to reserve()
+     * permanently. Backfilling it to 0 makes it immediately eligible for
+     * reclaim on the very next reserve() call, which is the correct
+     * behavior for a job whose reservation state predates leasing entirely.
      *
      * @param  string $table
      * @return void
      */
     protected function ensureReservedUntilColumn(string $table): void
     {
-        try {
-            $schema = $this->db->createSchema();
-            $schema->alter($table)->addColumn('reserved_until', 'int', 16)->nullable();
-            @$this->db->query($schema);
-
-            $backfill = $this->db->createSql();
-            $backfill->update($table)->values(['reserved_until' => 0])->where('status = 0');
-            $this->db->query($backfill);
-        } catch (\Exception $e) {
-            // Column already exists - migration (and backfill) already ran previously.
+        $info = (new DbTable($table))->getTableInfo($this->db);
+        if (isset($info['columns']['reserved_until'])) {
+            return;
         }
+
+        $schema = $this->db->createSchema();
+        $schema->alter($table)->addColumn('reserved_until', 'int', 16)->nullable();
+        $this->db->query($schema);
+
+        $backfill = $this->db->createSql();
+        $backfill->update($table)->values(['reserved_until' => 0])
+            ->where("type = 'job'")->andWhere('status = 0');
+        $this->db->query($backfill);
     }
 
     /**
      * Add the reserved_by column to a table created by an earlier version of
-     * this adapter, if it isn't there already. Same ALTER-and-catch approach
-     * as ensureReservedUntilColumn() (see that method's docblock for why),
-     * including the warning suppression for the same expected-failure
-     * driver warning. reserved_by holds the random claim token reserve()
-     * writes and re-reads to prove its own UPDATE actually won a given row -
-     * see reserve()'s docblock for why that replaced an affected-row count.
+     * this adapter, if it isn't there already. Same real column-existence
+     * check as ensureReservedUntilColumn() (see that method's docblock for
+     * why exception-based detection is unsafe here). reserved_by holds the
+     * random claim token reserve() writes and re-reads to prove its own
+     * claiming UPDATE actually won a given row - see reserve()'s docblock
+     * for why that replaced an affected-row count.
      *
      * @param  string $table
      * @return void
      */
     protected function ensureReservedByColumn(string $table): void
     {
-        try {
-            $schema = $this->db->createSchema();
-            $schema->alter($table)->addColumn('reserved_by', 'varchar', 64)->nullable();
-            @$this->db->query($schema);
-        } catch (\Exception $e) {
-            // Column already exists - nothing to do.
+        $info = (new DbTable($table))->getTableInfo($this->db);
+        if (isset($info['columns']['reserved_by'])) {
+            return;
         }
+
+        $schema = $this->db->createSchema();
+        $schema->alter($table)->addColumn('reserved_by', 'varchar', 64)->nullable();
+        $this->db->query($schema);
     }
 
     /**
