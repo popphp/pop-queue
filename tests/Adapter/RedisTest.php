@@ -41,6 +41,25 @@ class RedisTest extends TestCase
         $adapter->delete($reserved);
     }
 
+    public function testHasJobsIncludesReserved()
+    {
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertEquals(1, $adapter->count());
+
+        $adapter->delete($reserved);
+        $this->assertFalse($adapter->hasJobs());
+        $adapter->clear();
+    }
+
     public function testReserveReturnsNullWhenEmpty()
     {
         $adapter = new Redis();

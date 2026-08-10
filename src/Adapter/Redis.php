@@ -211,13 +211,13 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Check if adapter has jobs
+     * Check if adapter has pending or reserved jobs
      *
      * @return bool
      */
     public function hasJobs(): bool
     {
-        return ($this->redis->lLen($this->prefix) > 0);
+        return ($this->count() > 0);
     }
 
     /**
