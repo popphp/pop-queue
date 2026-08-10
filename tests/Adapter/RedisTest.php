@@ -20,51 +20,108 @@ class RedisTest extends TestCase
         $this->assertInstanceOf('Redis', $adapter2->getRedis());
         $this->assertEquals('pop-queue', $adapter1->getPrefix());
         $this->assertEquals('pop-queue', $adapter2->getPrefix());
-        $this->assertEquals(0, $adapter1->getStart());
-        $this->assertEquals(0, $adapter1->getEnd());
-        $this->assertEquals(0, $adapter1->getStatus(1));
+        $adapter1->clear();
+        $adapter2->clear();
     }
 
-    public function testPush()
+    public function testPushAndReserve()
     {
         $job = Job::create(function(){
             return 123;
         });
 
         $adapter = new Redis();
+        $adapter->clear();
         $adapter->push($job);
         $this->assertTrue($adapter->hasJobs());
+        $this->assertEquals(1, $adapter->count());
+
+        $reserved = $adapter->reserve();
+        $this->assertEquals(123, $reserved->run());
+        $adapter->delete($reserved);
     }
 
-    public function testPushFailed()
+    public function testHasJobsIncludesReserved()
     {
         $job = Job::create(function(){
             return 123;
         });
-        $job->failed();
 
         $adapter = new Redis();
-        $adapter->setPriority('FILO');
+        $adapter->clear();
         $adapter->push($job);
-        $this->assertTrue($adapter->hasFailedJobs());
-        $this->assertTrue($adapter->hasFailedJob(1));
-        $this->assertCount(1, $adapter->getFailedJobs(false));
-        $this->assertInstanceOf('Pop\Queue\Process\Job', $adapter->getFailedJob(1));
-        $adapter->clearFailed();
+
+        $reserved = $adapter->reserve();
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertEquals(1, $adapter->count());
+
+        $adapter->delete($reserved);
+        $this->assertFalse($adapter->hasJobs());
         $adapter->clear();
     }
 
-    public function testPop()
+    public function testReserveReturnsNullWhenEmpty()
+    {
+        $adapter = new Redis();
+        $adapter->clear();
+        $this->assertNull($adapter->reserve());
+    }
+
+    public function testRelease()
     {
         $job = Job::create(function(){
             return 123;
         });
 
         $adapter = new Redis();
+        $adapter->clear();
         $adapter->push($job);
+        $reserved = $adapter->reserve();
 
-        $job = $adapter->pop();
-        $this->assertEquals(123, $job->run());
+        $adapter->release($reserved);
+        $this->assertEquals(1, $adapter->count());
+        $this->assertNotNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testBury()
+    {
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+        $reserved = $adapter->reserve();
+
+        $adapter->bury($reserved, 'Exceeded max attempts');
+        $this->assertFalse($adapter->hasJobs());
+        $this->assertTrue($adapter->hasDeadJobs());
+        $this->assertEquals(1, $adapter->countDead());
+        $this->assertCount(1, $adapter->getDeadJobs());
+        $this->assertEquals($job->getJobId(), $adapter->getDeadJob($job->getJobId())->getJobId());
+        $this->assertNull($adapter->getDeadJob('does-not-exist'));
+
+        $adapter->clearDead();
+        $this->assertFalse($adapter->hasDeadJobs());
+    }
+
+    public function testRetryDeadJob()
+    {
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+        $adapter->bury($adapter->reserve(), 'reason');
+        $adapter->retryDeadJob($job->getJobId());
+
+        $this->assertFalse($adapter->hasDeadJobs());
+        $this->assertTrue($adapter->hasJobs());
+        $adapter->clear();
     }
 
     public function testGetTask1()
@@ -84,7 +141,6 @@ class RedisTest extends TestCase
         $task->complete();
         $adapter->updateTask($task);
         $this->assertInstanceOf('Pop\Queue\Process\Task', $adapter->getTask($task->getJobId()));
-        $adapter->clear();
         $adapter->clearTasks();
     }
 
@@ -126,27 +182,81 @@ class RedisTest extends TestCase
         $adapter = new Redis();
 
         $adapter->clear();
-        $adapter->clearFailed();
+        $adapter->clearDead();
 
         $this->assertFalse($adapter->hasJobs());
-        $this->assertFalse($adapter->hasFailedJobs());
+        $this->assertFalse($adapter->hasDeadJobs());
     }
 
-    public function testPopFilo()
+    public function testReserveFilo()
     {
-        $job = Job::create(function(){
-            return 123;
-        });
+        $job1 = Job::create(function(){ return 1; });
+        $job2 = Job::create(function(){ return 2; });
 
         $adapter = new Redis();
+        $adapter->clear();
         $adapter->setPriority('FILO');
-        $adapter->push($job);
+        $adapter->push($job1);
+        $adapter->push($job2);
 
-        $job = $adapter->pop();
-        $this->assertEquals(123, $job->run());
+        $this->assertEquals($job2->getJobId(), $adapter->reserve()->getJobId());
+        $this->assertEquals($job1->getJobId(), $adapter->reserve()->getJobId());
 
         $adapter->clear();
-        $adapter->clearFailed();
+    }
+
+    public function testReserveMovesPastAlreadyReservedJobs()
+    {
+        $job1 = Job::create(function(){ return 1; });
+        $job2 = Job::create(function(){ return 2; });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job1);
+        $adapter->push($job2);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+        $this->assertEquals($job1->getJobId(), $first->getJobId());
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job2->getJobId(), $second->getJobId());
+
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJob()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->delay(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJobAndClaimsAvailableOne()
+    {
+        $delayed   = Job::create(function(){ return 1; });
+        $available = Job::create(function(){ return 2; });
+        $delayed->delay(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($delayed);
+        $adapter->push($available);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($available->getJobId(), $reserved->getJobId());
+
+        $adapter->clear();
     }
 
 }

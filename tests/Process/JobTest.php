@@ -194,4 +194,85 @@ class JobTest extends TestCase
         $this->assertEquals('123:bar', $job->getResults());
     }
 
+    public function testDelaySeconds()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $before = time();
+        $job->delay(60);
+        $this->assertTrue($job->getAvailableAt() >= $before + 60);
+        $this->assertFalse($job->isAvailable());
+    }
+
+    public function testDelayTimestamp()
+    {
+        $future = time() + 10000000;
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->delay($future);
+        $this->assertEquals($future, $job->getAvailableAt());
+        $this->assertFalse($job->isAvailable());
+    }
+
+    public function testDelayDateString()
+    {
+        $future = date('Y-m-d H:i:s', time() + 10000000);
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->delay($future);
+        $this->assertEquals(strtotime($future), $job->getAvailableAt());
+    }
+
+    public function testDelayInvalidString()
+    {
+        $this->expectException('Pop\Queue\Process\Exception');
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->delay('not a valid date');
+    }
+
+    public function testNoDelayIsImmediatelyAvailable()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $this->assertNull($job->getAvailableAt());
+        $this->assertTrue($job->isAvailable());
+    }
+
+    public function testTimeout()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $this->assertFalse($job->hasTimeout());
+        $job->setTimeout(30);
+        $this->assertTrue($job->hasTimeout());
+        $this->assertEquals(30, $job->getTimeout());
+    }
+
+    public function testBackoffFixed()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->setBackoff(15);
+        $job->failed();
+        $this->assertEquals(15, $job->getBackoffDelay());
+        $job->failed();
+        $this->assertEquals(15, $job->getBackoffDelay());
+    }
+
+    public function testBackoffSchedule()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->setBackoff([10, 30, 60]);
+        $job->failed();
+        $this->assertEquals(10, $job->getBackoffDelay());
+        $job->failed();
+        $this->assertEquals(30, $job->getBackoffDelay());
+        $job->failed();
+        $this->assertEquals(60, $job->getBackoffDelay());
+        $job->failed();
+        $this->assertEquals(60, $job->getBackoffDelay());
+    }
+
+    public function testNoBackoffIsImmediateRetry()
+    {
+        $job = new Job(function(){echo 1;}, null, 1);
+        $job->failed();
+        $this->assertFalse($job->hasBackoff());
+        $this->assertEquals(0, $job->getBackoffDelay());
+    }
+
 }

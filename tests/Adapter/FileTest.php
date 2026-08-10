@@ -16,8 +16,6 @@ class FileTest extends TestCase
         $this->assertInstanceOf('Pop\Queue\Adapter\File', $adapter);
         $this->assertEquals(__DIR__ . '/../tmp/pop-queue', $adapter->getFolder());
         $this->assertEquals(__DIR__ . '/../tmp/pop-queue', $adapter->folder());
-        $this->assertEquals(0, $adapter->getStart());
-        $this->assertEquals(0, $adapter->getStatus(0));
         $this->assertEmpty($adapter->getFolders(__DIR__ . '/../tmp/bad'));
         $this->assertEmpty($adapter->getFiles(__DIR__ . '/../tmp/bad'));
     }
@@ -28,7 +26,7 @@ class FileTest extends TestCase
         $adapter = File::create(__DIR__ . '/../tmp/bad-queue');
     }
 
-    public function testPop()
+    public function testPushAndReserve()
     {
         $job = Job::create(function(){
             return 123;
@@ -37,44 +35,150 @@ class FileTest extends TestCase
         $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
         $adapter->push($job);
 
-        $job = $adapter->pop();
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertEquals(1, $adapter->count());
+
+        $job = $adapter->reserve();
         $this->assertEquals(123, $job->run());
+        $adapter->delete($job);
+        $adapter->clear();
     }
 
-    public function testPushFailed()
+    public function testReserveReturnsNullWhenEmpty()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $this->assertNull($adapter->reserve());
+    }
+
+    public function testRelease()
     {
         $job = Job::create(function(){
             return 123;
         });
-        $job->failed();
 
         $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
         $adapter->push($job);
+        $reserved = $adapter->reserve();
 
-        $this->assertTrue($adapter->hasFailedJobs());
-        $this->assertNull($adapter->getFailedJob(0));
-        $this->assertTrue($adapter->getFailedJob(1)->hasFailed());
-        $adapter->clearFailed();
-        $this->assertFalse($adapter->hasFailedJobs());
+        $adapter->release($reserved);
+        $this->assertEquals(1, $adapter->count());
+        $this->assertNotNull($adapter->reserve());
         $adapter->clear();
     }
 
-    public function testPushFailedFilo()
+    public function testBury()
     {
         $job = Job::create(function(){
             return 123;
         });
-        $job->failed();
 
-        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->push($job);
+        $reserved = $adapter->reserve();
+
+        $adapter->bury($reserved, 'Exceeded max attempts');
+        $this->assertFalse($adapter->hasJobs());
+        $this->assertTrue($adapter->hasDeadJobs());
+        $this->assertEquals(1, $adapter->countDead());
+        $this->assertCount(1, $adapter->getDeadJobs());
+        $this->assertEquals($job->getJobId(), $adapter->getDeadJob($job->getJobId())->getJobId());
+        $this->assertNull($adapter->getDeadJob('does-not-exist'));
+
+        $adapter->clearDead();
+        $this->assertFalse($adapter->hasDeadJobs());
+    }
+
+    public function testRetryDeadJob()
+    {
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->push($job);
+        $adapter->bury($adapter->reserve(), 'reason');
+        $adapter->retryDeadJob($job->getJobId());
+
+        $this->assertFalse($adapter->hasDeadJobs());
+        $this->assertTrue($adapter->hasJobs());
+        $adapter->clear();
+    }
+
+    public function testDeleteDeadJob()
+    {
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->push($job);
+        $adapter->bury($adapter->reserve(), 'reason');
+        $adapter->deleteDeadJob($job->getJobId());
+
+        $this->assertFalse($adapter->hasDeadJobs());
+    }
+
+    public function testPushBeyondTenSlotsDoesNotOverwrite()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $jobIds = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $job = Job::create(function() use ($i) { return $i; });
+            $adapter->push($job);
+            $jobIds[] = $job->getJobId();
+        }
+
+        // Folder names sort alphabetically ('10' < '2'), so a lexicographic
+        // end index would reuse an existing slot and drop jobs
+        $this->assertEquals(11, $adapter->count());
+
+        $reservedIds = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $reserved = $adapter->reserve();
+            $this->assertNotNull($reserved);
+            $reservedIds[] = $reserved->getJobId();
+        }
+
+        $this->assertCount(11, array_unique($reservedIds));
+        $this->assertEquals($jobIds, $reservedIds);
+        $this->assertNull($adapter->reserve());
+
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJob()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->delay(60);
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
         $adapter->push($job);
 
-        $this->assertTrue($adapter->hasFailedJobs());
-        $this->assertNull($adapter->getFailedJob(0));
-        $this->assertTrue($adapter->getFailedJob(-1)->hasFailed());
-        $adapter->clearFailed();
-        $this->assertFalse($adapter->hasFailedJobs());
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertNull($adapter->reserve());
         $adapter->clear();
+    }
+
+    public function testClearDoesNotTouchTasksOrDeadJobs()
+    {
+        $job  = Job::create(function(){ return 123; });
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->push($job);
+        $adapter->schedule($task);
+        $adapter->bury($adapter->reserve(), 'reason');
+
+        $adapter->clear();
+
+        $this->assertTrue($adapter->hasTasks());
+        $this->assertTrue($adapter->hasDeadJobs());
+
+        $adapter->clearTasks();
+        $adapter->clearDead();
     }
 
     public function testGetTask1()
@@ -92,7 +196,7 @@ class FileTest extends TestCase
         $task->complete();
         $adapter->updateTask($task);
         $this->assertInstanceOf('Pop\Queue\Process\Task', $adapter->getTask($task->getJobId()));
-        $adapter->clear();
+        $adapter->clearTasks();
     }
 
     public function testGetTask2()

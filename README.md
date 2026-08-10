@@ -22,6 +22,7 @@ pop-queue
     - [Redis](#redis)
     - [Database](#database)
     - [File](#file)
+    - [Memory](#memory)
     - [AWS SQS](#aws-sqs)
 * [Queues](#queues)
     - [Priority](#priority)
@@ -314,6 +315,51 @@ And you can check the number of attempts vs. the max attempts like this:
 var_dump($job->hasExceededMaxAttempts());
 ```
 
+A job can also set a retry backoff, so a failed retry isn't attempted immediately:
+
+```php
+use Pop\Queue\Process\Job;
+
+$job = Job::create(function() {
+    echo 'This is job #1' . PHP_EOL;
+});
+
+// Wait 30 seconds before every retry
+$job->setBackoff(30);
+
+// Or a per-attempt schedule: 10s after the 1st failure, 30s after the 2nd,
+// 60s after the 3rd and every failure after that
+$job->setBackoff([10, 30, 60]);
+```
+
+**NOTE:** As of this release, `setBackoff()`'s delay is only honored by the `Memory` adapter. The
+`Redis`, `Database`, `File`, and `AWS SQS` adapters currently retry a failed job immediately
+regardless of any backoff set on it — adapter-level backoff support is planned for a future
+release.
+
+A job (or task) can also be dispatched with a delay, so it isn't eligible to run until later:
+
+```php
+// Available in 60 seconds
+$job->delay(60);
+
+// Or at an absolute time
+$job->delay('2026-12-01 09:00:00');
+```
+
+Unlike `setBackoff()`, an initial `delay()` set before a job is first pushed *is* honored by every
+adapter. On `Memory`, `File`, `Database` and `Redis`, `reserve()` skips over a job that isn't
+available yet and hands back the next one that is. On `AWS SQS` the delay is enforced by SQS
+itself: `push()` translates it into the message's `DelaySeconds`, which AWS caps at 900 seconds
+(15 minutes) — a longer delay on that adapter is clamped to that maximum.
+
+And a job can set a soft execution timeout, enforced when the `pcntl` extension is available:
+
+```php
+// Interrupt the job if it runs longer than 30 seconds
+$job->setTimeout(30);
+```
+
 The `isValid()` method is also available and checks both the max attempts and the
 "run until" setting (which is used more with task objects - see below.)
 
@@ -505,8 +551,19 @@ $task->setBuffer(-1);
 Adapters
 --------
 
-By default, there are four available adapters, but additional ones could be created as long as they
+By default, there are five available adapters, but additional ones could be created as long as they
 implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
+
+A job that fails and still has attempts remaining is retried (immediately on `Redis`/`Database`/
+`File`/`AWS SQS`, or after any backoff delay on `Memory` — see [Attempts](#attempts) above); a job
+that exhausts its attempts is buried instead of being silently dropped. On `Memory`, `Redis`,
+`Database` and `File`, a buried job is moved to that adapter's own dead-letter store, where it can
+be inspected and recovered — see each adapter's `getDeadJobs()`/`getDeadJob()`/`retryDeadJob()`/
+`deleteDeadJob()`. **`AWS SQS` is the exception:** it has no client-side dead-letter store, so
+burying a job there simply deletes the message (`getDeadJobs()` returns an empty array,
+`getDeadJob()` returns `null`, and `retryDeadJob()`/`deleteDeadJob()` throw). For real dead-letter
+handling on SQS, configure a native SQS redrive policy pointing at a separate dead-letter queue,
+which AWS applies server-side.
 
 ### Redis
 
@@ -565,6 +622,35 @@ use Pop\Queue\Adapter\File;
 
 $adapter = new File(__DIR__ . '/queues'); 
 ```
+
+[Top](#pop-queue)
+
+### Memory
+
+The memory adapter keeps everything in PHP arrays, for the lifetime of the current process only.
+Nothing is persisted, so it requires no server, no extension and no disk access:
+
+```php
+use Pop\Queue\Adapter\Memory;
+
+$adapter = new Memory();
+```
+
+It is the reference implementation of the adapter contract — the one adapter that implements the
+full job lifecycle correctly today: `delay()` eligibility, retry backoff applied by `release()`,
+and lease-based crash recovery. A reserved job is leased for 60 seconds by default; if the code
+that reserved it never calls `delete()`, `release()` or `bury()` (for example, the worker process
+dies), the lease expires and the job becomes reservable again instead of being stranded. The lease
+length, and the queue priority, can be passed into the constructor:
+
+```php
+$adapter = new Memory(30, 'FILO'); // 30-second lease, FILO priority
+```
+
+Because of all of that, it's the recommended adapter for testing — both for this component's own
+test suite and as a drop-in test double in an application that consumes it, where it lets you
+exercise queue behavior (including delay, backoff and lease expiry) without standing up Redis, a
+database or SQS.
 
 [Top](#pop-queue)
 

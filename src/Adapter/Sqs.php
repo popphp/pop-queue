@@ -49,6 +49,13 @@ class Sqs extends AbstractAdapter
     protected string $groupId = 'pop-queue';
 
     /**
+     * In-flight receipt handles, keyed by job ID, populated by reserve()
+     * and consumed by delete()/release()/bury()
+     * @var array
+     */
+    protected array $receiptHandles = [];
+
+    /**
      * Constructor
      *
      * @param SqsClient $client
@@ -119,39 +126,22 @@ class Sqs extends AbstractAdapter
     }
 
     /**
-     * Get queue start index
-     *
-     * @return int
-     */
-    public function getStart(): int
-    {
-        return 0;
-    }
-
-    /**
-     * Get queue end index
+     * Get the count of messages on the queue, both visible (pending) and
+     * not visible (reserved/in-flight), per the adapter contract
      *
      * @return int
      */
     public function getEnd(): int
     {
         $result = $this->client->getQueueAttributes([
-            'AttributeNames' => ['ApproximateNumberOfMessages'],
+            'AttributeNames' => ['ApproximateNumberOfMessages', 'ApproximateNumberOfMessagesNotVisible'],
             'QueueUrl'       => $this->queueUrl
         ]);
 
-        return (int)$result->get('Attributes')['ApproximateNumberOfMessages'];
-    }
+        $attributes = $result->get('Attributes');
 
-    /**
-     * Get queue job status
-     *
-     * @param  int $index
-     * @return int
-     */
-    public function getStatus(int $index): int
-    {
-        return 0;
+        return (int)($attributes['ApproximateNumberOfMessages'] ?? 0) +
+            (int)($attributes['ApproximateNumberOfMessagesNotVisible'] ?? 0);
     }
 
     /**
@@ -162,58 +152,117 @@ class Sqs extends AbstractAdapter
      */
     public function push(AbstractJob $job): Sqs
     {
-        $status = ($job->hasFailed()) ? '2' : '1';
-        if ($job->isValid()) {
-            $params = [
-                'MessageAttributes' => [
-                    'Type' => [
-                        'DataType'    => 'String',
-                        'StringValue' => 'job'
-                    ],
-                    'Status' => [
-                        'DataType'    => 'Number',
-                        'StringValue' => $status
-                    ]
+        $params = [
+            'MessageAttributes' => [
+                'Type' => [
+                    'DataType'    => 'String',
+                    'StringValue' => 'job'
                 ],
-                'MessageBody' => base64_encode(serialize(clone $job)),
-                'QueueUrl'    => $this->queueUrl
-            ];
+                'JobId' => [
+                    'DataType'    => 'String',
+                    'StringValue' => $job->getJobId()
+                ]
+            ],
+            'MessageBody' => base64_encode(serialize(clone $job)),
+            'QueueUrl'    => $this->queueUrl
+        ];
 
-            if ($this->isFifo()) {
-                $params['MessageGroupId'] = $this->groupId;
+        if ($this->isFifo()) {
+            $params['MessageGroupId'] = $this->groupId;
+        }
+
+        // Honor the job's delay() via SQS's own initial-delivery delay. This is
+        // distinct from the VisibilityTimeout used by reserve(), which only
+        // controls redelivery of an already in-flight message. SQS caps
+        // DelaySeconds at 900 (15 minutes).
+        if ($job->getAvailableAt() !== null) {
+            $delaySeconds = min(max(0, $job->getAvailableAt() - time()), 900);
+            if ($delaySeconds > 0) {
+                $params['DelaySeconds'] = $delaySeconds;
             }
+        }
 
-            $this->client->sendMessage($params);
+        $this->client->sendMessage($params);
+
+        return $this;
+    }
+
+    /**
+     * Atomically claim the next eligible job, via SQS's native visibility timeout
+     *
+     * @return ?AbstractJob
+     */
+    public function reserve(): ?AbstractJob
+    {
+        $result = $this->client->receiveMessage([
+            'MessageAttributeNames' => ['Type', 'JobId'],
+            'MaxNumberOfMessages'   => 1,
+            'VisibilityTimeout'     => 60,
+            'QueueUrl'              => $this->queueUrl
+        ]);
+
+        if (!isset($result->get('Messages')[0]['Body'])) {
+            return null;
+        }
+
+        $message = $result->get('Messages')[0];
+        $job     = unserialize(base64_decode($message['Body']));
+
+        if ($job instanceof AbstractJob) {
+            $this->receiptHandles[$job->getJobId()] = $message['ReceiptHandle'];
+        }
+
+        return $job;
+    }
+
+    /**
+     * Put a job back to pending (delete + re-send; SQS has no in-place requeue)
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $delay
+     * @return Sqs
+     */
+    public function release(AbstractJob $job, ?int $delay = null): Sqs
+    {
+        $this->delete($job);
+        $this->push($job);
+
+        return $this;
+    }
+
+    /**
+     * Permanently remove a job
+     *
+     * @param  AbstractJob $job
+     * @return Sqs
+     */
+    public function delete(AbstractJob $job): Sqs
+    {
+        $jobId = $job->getJobId();
+        if (isset($this->receiptHandles[$jobId])) {
+            $this->client->deleteMessage([
+                'QueueUrl'      => $this->queueUrl,
+                'ReceiptHandle' => $this->receiptHandles[$jobId]
+            ]);
+            unset($this->receiptHandles[$jobId]);
         }
 
         return $this;
     }
 
     /**
-     * Pop job off of queue
+     * Stop redelivering a job. SQS cannot durably record a dead-letter reason
+     * from this client alone — configure a native SQS redrive policy on a
+     * separate dead-letter queue for real dead-letter handling.
      *
-     * @return ?AbstractJob
+     * @param  AbstractJob $job
+     * @param  ?string     $reason
+     * @return Sqs
      */
-    public function pop(): ?AbstractJob
+    public function bury(AbstractJob $job, ?string $reason = null): Sqs
     {
-        $job    = false;
-        $params = [
-            'MessageAttributeNames' => ['Type', 'Status'],
-            'MaxNumberOfMessages'   => 1,
-            'QueueUrl'              => $this->queueUrl
-        ];
-
-        $result = $this->client->receiveMessage($params);
-
-        if (isset($result->get('Messages')[0]['Body'])) {
-            $job = $result->get('Messages')[0]['Body'];
-            $this->client->deleteMessage([
-                'QueueUrl'      => $this->queueUrl,
-                'ReceiptHandle' => $result->get('Messages')[0]['ReceiptHandle']
-            ]);
-        }
-
-        return ($job !== false) ? unserialize(base64_decode($job)) : null;
+        $this->delete($job);
+        return $this;
     }
 
     /**
@@ -227,130 +276,72 @@ class Sqs extends AbstractAdapter
     }
 
     /**
-     * Check if adapter has failed job
+     * Count of pending + reserved jobs
      *
-     * @param  mixed $index
-     * @return bool
+     * @return int
      */
-    public function hasFailedJob(mixed $index): bool
+    public function count(): int
     {
-        $failed = $this->getFailedJobs();
-        return isset($failed[$index]);
+        return $this->getEnd();
     }
 
     /**
-     * Get failed job
-     *
-     * @param  mixed $index
-     * @param  bool  $unserialize
-     * @return mixed
-     */
-    public function getFailedJob(mixed $index, bool $unserialize = true): mixed
-    {
-        $failed = $this->getFailedJobs($unserialize);
-        return $failed[$index] ?? null;
-    }
-
-    /**
-     * Check if adapter has failed jobs
-     *
-     * @return bool
-     */
-    public function hasFailedJobs(): bool
-    {
-        $failed = false;
-        $params = [
-            'MessageAttributeNames' => ['Type', 'Status'],
-            'MaxNumberOfMessages'   => 1,
-            'QueueUrl'              => $this->queueUrl
-        ];
-
-        $result = $this->client->receiveMessage($params);
-
-        while (isset($result->get('Messages')[0])) {
-            $message = $result->get('Messages')[0];
-            if (isset($message['MessageAttributes']['Status']) &&
-                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
-                $failed = true;
-                break;
-            }
-            $result = $this->client->receiveMessage($params);
-        }
-
-        return $failed;
-    }
-
-    /**
-     * Get adapter failed jobs
-     *
-     * @param  bool $unserialize
-     * @return array
-     */
-    public function getFailedJobs(bool $unserialize = true): array
-    {
-        $failed = [];
-        $params = [
-            'MessageAttributeNames' => ['Type', 'Status'],
-            'MaxNumberOfMessages'   => 1,
-            'QueueUrl'              => $this->queueUrl
-        ];
-
-        $result = $this->client->receiveMessage($params);
-
-        while (isset($result->get('Messages')[0])) {
-            $message = $result->get('Messages')[0];
-            if (isset($message['MessageAttributes']['Status']) &&
-                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
-                if ($unserialize) {
-                    $message['Body'] = unserialize(base64_decode($message['Body']));
-                }
-
-                $failed[$message['MessageId']] = $message;
-            }
-            $result = $this->client->receiveMessage($params);
-        }
-
-        return $failed;
-    }
-
-    /**
-     * Clear failed jobs out of the queue
-     *
-     * @return Sqs
-     */
-    public function clearFailed(): Sqs
-    {
-        $params = [
-            'MessageAttributeNames' => ['Type', 'Status'],
-            'MaxNumberOfMessages'   => $this->getEnd(),
-            'QueueUrl'              => $this->queueUrl
-        ];
-
-        $result = $this->client->receiveMessage($params);
-
-        foreach ($result->get('Messages') as $message) {
-            if (isset($message['MessageAttributes']['Status']) &&
-                ($message['MessageAttributes']['Status']['StringValue'] == 2)) {
-                $this->client->deleteMessage([
-                    'QueueUrl'      => $this->queueUrl,
-                    'ReceiptHandle' => $message['ReceiptHandle']
-                ]);
-            }
-        }
-
-        return $this;
-    }
-
-    /**
-     * Clear jobs out of queue
+     * Clear pending and reserved jobs
      *
      * @return Sqs
      */
     public function clear(): Sqs
     {
-        $this->client->purgeQueue([
-            'QueueUrl' => $this->queueUrl
-        ]);
+        $this->client->purgeQueue(['QueueUrl' => $this->queueUrl]);
+        $this->receiptHandles = [];
+
+        return $this;
+    }
+
+    public function hasDeadJobs(): bool
+    {
+        return false;
+    }
+
+    public function countDead(): int
+    {
+        return 0;
+    }
+
+    public function getDeadJobs(bool $unserialize = true): array
+    {
+        return [];
+    }
+
+    public function getDeadJob(string $jobId, bool $unserialize = true): mixed
+    {
+        return null;
+    }
+
+    /**
+     * @throws Exception
+     */
+    public function retryDeadJob(string $jobId): Sqs
+    {
+        throw new Exception(
+            'Error: The Sqs adapter does not support dead-letter introspection. ' .
+            'Configure a native SQS redrive policy on a separate dead-letter queue instead.'
+        );
+    }
+
+    /**
+     * @throws Exception
+     */
+    public function deleteDeadJob(string $jobId): Sqs
+    {
+        throw new Exception(
+            'Error: The Sqs adapter does not support dead-letter introspection. ' .
+            'Configure a native SQS redrive policy on a separate dead-letter queue instead.'
+        );
+    }
+
+    public function clearDead(): Sqs
+    {
         return $this;
     }
 

@@ -121,6 +121,25 @@ abstract class AbstractJob implements JobInterface
     protected mixed $results = null;
 
     /**
+     * Timestamp before which this job is not eligible for reservation
+     * @var ?int
+     */
+    protected ?int $availableAt = null;
+
+    /**
+     * Soft execution timeout, in seconds (only enforced when ext-pcntl is loaded)
+     * @var ?int
+     */
+    protected ?int $timeout = null;
+
+    /**
+     * Retry backoff: a fixed delay in seconds, or a per-attempt schedule that
+     * holds at its last value for further attempts. Null = immediate retry.
+     * @var int|array|null
+     */
+    protected int|array|null $backoff = null;
+
+    /**
      * Constructor
      *
      * Instantiate the job object
@@ -439,6 +458,131 @@ abstract class AbstractJob implements JobInterface
     public function getRunUntil(): int|string|null
     {
         return $this->runUntil;
+    }
+
+    /**
+     * Delay job availability
+     *
+     * @param  int|string $when  Seconds from now (int below 1000000000), an absolute
+     *                           timestamp (int), or a strtotime()-parseable string
+     * @throws Exception
+     * @return AbstractJob
+     */
+    public function delay(int|string $when): AbstractJob
+    {
+        if (is_int($when)) {
+            $this->availableAt = ($when < 1000000000) ? (time() + $when) : $when;
+        } else {
+            $timestamp = strtotime($when);
+            if ($timestamp === false) {
+                throw new Exception('Error: That delay value is not valid.');
+            }
+            $this->availableAt = $timestamp;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get available-at timestamp
+     *
+     * @return ?int
+     */
+    public function getAvailableAt(): ?int
+    {
+        return $this->availableAt;
+    }
+
+    /**
+     * Determine if the job is currently available (no delay, or delay has elapsed)
+     *
+     * @return bool
+     */
+    public function isAvailable(): bool
+    {
+        return ($this->availableAt === null) || (time() >= $this->availableAt);
+    }
+
+    /**
+     * Set soft execution timeout
+     *
+     * @param  int $seconds
+     * @return AbstractJob
+     */
+    public function setTimeout(int $seconds): AbstractJob
+    {
+        $this->timeout = $seconds;
+        return $this;
+    }
+
+    /**
+     * Get soft execution timeout
+     *
+     * @return ?int
+     */
+    public function getTimeout(): ?int
+    {
+        return $this->timeout;
+    }
+
+    /**
+     * Has soft execution timeout
+     *
+     * @return bool
+     */
+    public function hasTimeout(): bool
+    {
+        return ($this->timeout !== null);
+    }
+
+    /**
+     * Set retry backoff (fixed seconds, or a per-attempt schedule)
+     *
+     * @param  int|array $backoff
+     * @return AbstractJob
+     */
+    public function setBackoff(int|array $backoff): AbstractJob
+    {
+        $this->backoff = $backoff;
+        return $this;
+    }
+
+    /**
+     * Get retry backoff
+     *
+     * @return int|array|null
+     */
+    public function getBackoff(): int|array|null
+    {
+        return $this->backoff;
+    }
+
+    /**
+     * Has retry backoff
+     *
+     * @return bool
+     */
+    public function hasBackoff(): bool
+    {
+        return ($this->backoff !== null);
+    }
+
+    /**
+     * Get the backoff delay, in seconds, for the current attempt count
+     *
+     * @return int
+     */
+    public function getBackoffDelay(): int
+    {
+        if (empty($this->backoff)) {
+            return 0;
+        }
+        if (is_int($this->backoff)) {
+            return $this->backoff;
+        }
+
+        $index = max(min($this->attempts, count($this->backoff)) - 1, 0);
+        return (int)$this->backoff[$index];
     }
 
     /**

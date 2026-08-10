@@ -14,7 +14,6 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Queue;
-use Pop\Queue\Process\Task;
 use Pop\Queue\Process\AbstractJob;
 
 /**
@@ -25,21 +24,19 @@ use Pop\Queue\Process\AbstractJob;
  * @author     Nick Sagona, III <dev@noladev.com>
  * @copyright  Copyright (c) 2009-2026 NOLA Interactive, LLC.
  * @license    https://www.popphp.org/license     New BSD License
- * @version    2.1.3
+ * @version    3.0.0
  */
 abstract class AbstractAdapter implements AdapterInterface
 {
 
     /**
-     * Queue type
+     * Queue priority
      * @var string
      */
     protected string $priority = 'FIFO';
 
     /**
      * Constructor
-     *
-     * Instantiate the adapter object
      *
      * @param ?string $priority
      */
@@ -50,12 +47,6 @@ abstract class AbstractAdapter implements AdapterInterface
         }
     }
 
-    /**
-     * Set queue priority
-     *
-     * @param  string $priority
-     * @return AbstractAdapter
-     */
     public function setPriority(string $priority = 'FIFO'): AbstractAdapter
     {
         if (defined('Pop\Queue\Queue::' . $priority)) {
@@ -64,144 +55,59 @@ abstract class AbstractAdapter implements AdapterInterface
         return $this;
     }
 
-    /**
-     * Get queue priority
-     *
-     * @return string
-     */
     public function getPriority(): string
     {
         return $this->priority;
     }
 
-    /**
-     * Is FIFO
-     *
-     * @return bool
-     */
     public function isFifo(): bool
     {
         return ($this->priority == Queue::FIFO);
     }
 
-    /**
-     * Is FILO
-     *
-     * @return bool
-     */
     public function isFilo(): bool
     {
         return ($this->priority == Queue::FILO);
     }
 
-    /**
-     * Is LILO (alias to FIFO)
-     *
-     * @return bool
-     */
     public function isLilo(): bool
     {
         return ($this->priority == Queue::FIFO);
     }
 
-    /**
-     * Is LIFO (alias to FILO)
-     *
-     * @return bool
-     */
     public function isLifo(): bool
     {
         return ($this->priority == Queue::FILO);
     }
 
-    /**
-     * Get queue start index
-     *
-     * @return int
-     */
-    abstract public function getStart(): int;
-
-    /**
-     * Get queue end index
-     *
-     * @return int
-     */
-    abstract public function getEnd(): int;
-
-    /**
-     * Get queue job status
-     *
-     * @param  int $index
-     * @return int
-     */
-    abstract public function getStatus(int $index): int;
-
-    /**
-     * Push job on to queue
-     *
-     * @param  AbstractJob $job
-     * @return AdapterInterface
-     */
     abstract public function push(AbstractJob $job): AdapterInterface;
 
-    /**
-     * Pop job off of queue
-     *
-     * @return ?AbstractJob
-     */
-    abstract public function pop(): ?AbstractJob;
+    abstract public function reserve(): ?AbstractJob;
 
-    /**
-     * Check if adapter has jobs
-     *
-     * @return bool
-     */
+    abstract public function release(AbstractJob $job, ?int $delay = null): AdapterInterface;
+
+    abstract public function delete(AbstractJob $job): AdapterInterface;
+
+    abstract public function bury(AbstractJob $job, ?string $reason = null): AdapterInterface;
+
     abstract public function hasJobs(): bool;
 
-    /**
-     * Check if adapter has failed job
-     *
-     * @param  int $index
-     * @return bool
-     */
-    abstract public function hasFailedJob(int $index): bool;
+    abstract public function count(): int;
 
-    /**
-     * Get failed job
-     *
-     * @param  int  $index
-     * @param  bool $unserialize
-     * @return mixed
-     */
-    abstract public function getFailedJob(int $index, bool $unserialize = true): mixed;
+    abstract public function clear(): AdapterInterface;
 
-    /**
-     * Check if adapter has failed jobs
-     *
-     * @return bool
-     */
-    abstract public function hasFailedJobs(): bool;
+    abstract public function hasDeadJobs(): bool;
 
-    /**
-     * Get adapter failed jobs
-     *
-     * @param  bool $unserialize
-     * @return array
-     */
-    abstract public function getFailedJobs(bool $unserialize = true): array;
+    abstract public function countDead(): int;
 
-    /**
-     * Clear failed jobs out of the queue
-     *
-     * @return AbstractAdapter
-     */
-    abstract public function clearFailed(): AbstractAdapter;
+    abstract public function getDeadJobs(bool $unserialize = true): array;
 
-    /**
-     * Clear jobs out of queue
-     *
-     * @return AbstractAdapter
-     */
-    abstract public function clear(): AbstractAdapter;
+    abstract public function getDeadJob(string $jobId, bool $unserialize = true): mixed;
+
+    abstract public function retryDeadJob(string $jobId): AdapterInterface;
+
+    abstract public function deleteDeadJob(string $jobId): AdapterInterface;
+
+    abstract public function clearDead(): AdapterInterface;
 
 }

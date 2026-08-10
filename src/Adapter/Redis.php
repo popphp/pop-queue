@@ -118,34 +118,21 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue start index
+     * Remove the first job matching a job ID from a given list
      *
-     * @return int
+     * @param  string $key
+     * @param  string $jobId
+     * @return void
      */
-    public function getStart(): int
+    protected function removeFromList(string $key, string $jobId): void
     {
-        return 0;
-    }
-
-    /**
-     * Get queue length
-     *
-     * @return int
-     */
-    public function getEnd(): int
-    {
-        return $this->redis->lLen($this->prefix);
-    }
-
-    /**
-     * Get queue job status
-     *
-     * @param  int $index
-     * @return int
-     */
-    public function getStatus(int $index): int
-    {
-        return (int)$this->redis->lIndex($this->prefix . ':status', $index);
+        foreach ($this->redis->lRange($key, 0, -1) as $value) {
+            $stored = unserialize($value);
+            if (($stored instanceof AbstractJob) && ($stored->getJobId() === $jobId)) {
+                $this->redis->lRem($key, $value, 1);
+                break;
+            }
+        }
     }
 
     /**
@@ -156,154 +143,216 @@ class Redis extends AbstractTaskAdapter
      */
     public function push(AbstractJob $job): Redis
     {
-        $status = ($job->hasFailed()) ? 2 : 1;
-        if ($job->isValid()) {
-            if (($job->hasFailed()) && ($this->isFilo())) {
-                if (($this->redis->rPush($this->prefix, serialize(clone $job))) !== false) {
-                    $this->redis->rPush($this->prefix . ':status', $status);
-                }
-            } else {
-                if (($this->redis->lPush($this->prefix, serialize(clone $job))) !== false) {
-                    $this->redis->lPush($this->prefix . ':status', $status);
-                }
-            }
+        $job->getJobId();
+        $this->redis->lPush($this->prefix, serialize(clone $job));
+        return $this;
+    }
+
+    /**
+     * Claim the next eligible job. Scans the pending list in queue order and
+     * skips any job that is not yet available (delayed or backed off), so a
+     * single ineligible entry at the head of the list cannot stall the queue.
+     *
+     * @return ?AbstractJob
+     */
+    public function reserve(): ?AbstractJob
+    {
+        $values = $this->redis->lRange($this->prefix, 0, -1);
+
+        if (empty($values)) {
+            return null;
         }
+
+        // push() lPushes, so the oldest entry is at the tail of the list
+        if ($this->isFifo()) {
+            $values = array_reverse($values);
+        }
+
+        foreach ($values as $value) {
+            $job = unserialize($value);
+
+            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+                continue;
+            }
+
+            $this->redis->lRem($this->prefix, $value, 1);
+            $this->redis->rPush($this->prefix . ':reserved', $value);
+
+            return $job;
+        }
+
+        return null;
+    }
+
+    /**
+     * Put a job back to pending
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $delay
+     * @return Redis
+     */
+    public function release(AbstractJob $job, ?int $delay = null): Redis
+    {
+        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        $this->redis->lPush($this->prefix, serialize(clone $job));
 
         return $this;
     }
 
     /**
-     * Pop job off of queue
+     * Permanently remove a job
      *
-     * @return ?AbstractJob
+     * @param  AbstractJob $job
+     * @return Redis
      */
-    public function pop(): ?AbstractJob
+    public function delete(AbstractJob $job): Redis
     {
-        $job    = false;
-        $length = $this->getEnd();
-
-        if ($this->isFilo()) {
-            $status = $this->getStatus(0);
-            if ($status != 0) {
-                $this->redis->lSet($this->prefix . ':status', 0, 0);
-                $job = $this->redis->lPop($this->prefix);
-                $this->redis->lPop($this->prefix . ':status');
-            }
-        } else {
-            $status = $this->getStatus($length - 1);
-            if ($status != 0) {
-                $this->redis->lSet($this->prefix . ':status', $length - 1, 0);
-                $job = $this->redis->rPop($this->prefix);
-                $this->redis->rPop($this->prefix . ':status');
-            }
-        }
-
-        return ($job !== false) ? unserialize($job) : null;
+        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        return $this;
     }
 
     /**
-     * Check if adapter has jobs
+     * Move a job to the dead-letter store
+     *
+     * @param  AbstractJob $job
+     * @param  ?string     $reason
+     * @return Redis
+     */
+    public function bury(AbstractJob $job, ?string $reason = null): Redis
+    {
+        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        $this->redis->set($this->prefix . ':dead-' . $job->getJobId(), serialize(clone $job));
+
+        return $this;
+    }
+
+    /**
+     * Check if adapter has pending or reserved jobs
      *
      * @return bool
      */
     public function hasJobs(): bool
     {
-        return ($this->redis->lLen($this->prefix) > 0);
+        return ($this->count() > 0);
     }
 
     /**
-     * Check if adapter has failed job
+     * Count of pending + reserved jobs
      *
-     * @param int $index
-     * @return bool
+     * @return int
      */
-    public function hasFailedJob(int $index): bool
+    public function count(): int
     {
-        return ($this->getStatus($index) == 2);
+        return $this->redis->lLen($this->prefix) + $this->redis->lLen($this->prefix . ':reserved');
     }
 
     /**
-     * Get failed job
+     * Clear pending and reserved jobs (not tasks or dead-letter jobs)
      *
-     * @param  int  $index
-     * @param  bool $unserialize
-     * @return mixed
+     * @return Redis
      */
-    public function getFailedJob(int $index, bool $unserialize = true): mixed
+    public function clear(): Redis
     {
-        $job = null;
+        $this->redis->del($this->prefix);
+        $this->redis->del($this->prefix . ':reserved');
 
-        if ($this->getStatus($index) == 2) {
-            $job = $this->redis->lIndex($this->prefix, $index);
-            if ($unserialize) {
-                $job = unserialize($job);
-            }
-        }
-
-        return $job;
+        return $this;
     }
 
     /**
-     * Check if adapter has failed jobs
+     * Check if adapter has dead jobs
      *
      * @return bool
      */
-    public function hasFailedJobs(): bool
+    public function hasDeadJobs(): bool
     {
-        $result = false;
-        $length = $this->redis->lLen($this->prefix);
-
-        if ($length > 0) {
-            for ($i = 0; $i < $length; $i++) {
-                if ($this->getStatus($i) == 2) {
-                    $result = true;
-                    break;
-                }
-            }
-        }
-
-        return $result;
+        return !empty($this->redis->keys($this->prefix . ':dead-*'));
     }
 
     /**
-     * Get adapter failed jobs
+     * Count of dead jobs
+     *
+     * @return int
+     */
+    public function countDead(): int
+    {
+        return count($this->redis->keys($this->prefix . ':dead-*'));
+    }
+
+    /**
+     * Get dead jobs
      *
      * @param  bool $unserialize
      * @return array
      */
-    public function getFailedJobs(bool $unserialize = true): array
+    public function getDeadJobs(bool $unserialize = true): array
     {
-        $jobs   = [];
-        $length = $this->redis->lLen($this->prefix);
-
-        if ($length > 0) {
-            for ($i = 0; $i < $length; $i++) {
-                if ($this->getStatus($i) == 2) {
-                    $jobs[$i] = $this->getFailedJob($i, $unserialize);
-                }
-            }
+        $jobs = [];
+        foreach ($this->redis->keys($this->prefix . ':dead-*') as $key) {
+            $jobId = substr($key, strrpos($key, ':dead-') + 6);
+            $jobs[$jobId] = $this->getDeadJob($jobId, $unserialize);
         }
 
         return $jobs;
     }
 
     /**
-     * Clear failed jobs out of the queue
+     * Get a dead job
+     *
+     * @param  string $jobId
+     * @param  bool   $unserialize
+     * @return mixed
+     */
+    public function getDeadJob(string $jobId, bool $unserialize = true): mixed
+    {
+        $value = $this->redis->get($this->prefix . ':dead-' . $jobId);
+        if ($value === false) {
+            return null;
+        }
+
+        return $unserialize ? unserialize($value) : $value;
+    }
+
+    /**
+     * Retry a dead job by pushing it back on to the queue
+     *
+     * @param  string $jobId
+     * @return Redis
+     */
+    public function retryDeadJob(string $jobId): Redis
+    {
+        $job = $this->getDeadJob($jobId);
+        if ($job instanceof AbstractJob) {
+            $this->deleteDeadJob($jobId);
+            $this->push($job);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Permanently delete a dead job
+     *
+     * @param  string $jobId
+     * @return Redis
+     */
+    public function deleteDeadJob(string $jobId): Redis
+    {
+        $this->redis->del($this->prefix . ':dead-' . $jobId);
+        return $this;
+    }
+
+    /**
+     * Clear all dead jobs
      *
      * @return Redis
      */
-    public function clearFailed(): Redis
+    public function clearDead(): Redis
     {
-        $length = $this->redis->lLen($this->prefix);
-
-        if ($length > 0) {
-            for ($i = 0; $i < $length; $i++) {
-                if ($this->getStatus($i) == 2) {
-                    $this->redis->lRem($this->prefix, $this->redis->lIndex($this->prefix, $i));
-                    $this->redis->lRem($this->prefix . ':status', $this->redis->lIndex($this->prefix . ':status', $i));
-                }
-            }
+        foreach ($this->redis->keys($this->prefix . ':dead-*') as $key) {
+            $this->redis->del($key);
         }
+
         return $this;
     }
 
@@ -412,25 +461,6 @@ class Redis extends AbstractTaskAdapter
         foreach ($taskIds as $taskId) {
             $this->removeTask($taskId);
         }
-        return $this;
-    }
-
-
-    /**
-     * Clear jobs out of queue
-     *
-     * @return Redis
-     */
-    public function clear(): Redis
-    {
-        $taskIds = $this->redis->keys($this->prefix . ':task-*');
-        foreach ($taskIds as $taskId) {
-            $this->redis->del($taskId);
-        }
-
-        $this->redis->del($this->prefix . ':status');
-        $this->redis->del($this->prefix);
-
         return $this;
     }
 

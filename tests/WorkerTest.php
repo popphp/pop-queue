@@ -108,9 +108,7 @@ class WorkerTest extends TestCase
         $this->assertTrue($job->hasFailedMessages());
         $this->assertEquals('Error!', $job->getFailedMessages()[$job->getFailed()]);
         $this->assertEquals(1, $job->getAttempts());
-        $this->assertTrue($queue->adapter()->hasFailedJobs());
-        $worker->clearFailed('pop-queue');
-        $this->assertFalse($queue->adapter()->hasFailedJobs());
+        $this->assertTrue($queue->adapter()->hasJobs());
         $worker->clear('pop-queue');
     }
 
@@ -144,6 +142,8 @@ class WorkerTest extends TestCase
         $job2   = Job::create(function(){
             throw new \Exception('Error!');
         });
+        $job1->setMaxAttempts(1);
+        $job2->setMaxAttempts(1);
 
         $queue1->addJob($job1);
         $queue2->addJob($job2);
@@ -151,11 +151,11 @@ class WorkerTest extends TestCase
         $worker = Worker::create([$queue1, $queue2]);
         $jobs = $worker->workAll();
 
-        $this->assertTrue($queue1->adapter()->hasFailedJobs());
-        $this->assertTrue($queue2->adapter()->hasFailedJobs());
+        $this->assertTrue($queue1->adapter()->hasDeadJobs());
+        $this->assertTrue($queue2->adapter()->hasDeadJobs());
         $worker->clearAllFailed();
-        $this->assertFalse($queue1->adapter()->hasFailedJobs());
-        $this->assertFalse($queue2->adapter()->hasFailedJobs());
+        $this->assertFalse($queue1->adapter()->hasDeadJobs());
+        $this->assertFalse($queue2->adapter()->hasDeadJobs());
         $worker->clearAll();
     }
 

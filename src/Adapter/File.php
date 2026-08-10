@@ -95,10 +95,12 @@ class File extends AbstractTaskAdapter
      *
      * @return int
      */
-    public function getStart(): int
+    protected function getStartIndex(): int
     {
         $folders = $this->getFolders($this->folder);
-        return $folders[0] ?? 0;
+
+        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
+        return (!empty($folders)) ? min(array_map('intval', $folders)) : 0;
     }
 
     /**
@@ -106,22 +108,45 @@ class File extends AbstractTaskAdapter
      *
      * @return int
      */
-    public function getEnd(): int
+    protected function getEndIndex(): int
     {
         $folders = $this->getFolders($this->folder);
-        return (!empty($folders)) ? end($folders) : 0;
+
+        // scandir() sorts alphabetically ('10' < '2'), so compare numerically
+        return (!empty($folders)) ? max(array_map('intval', $folders)) : 0;
     }
 
     /**
-     * Get queue job status
+     * Get queue slot status
      *
      * @param  int $index
      * @return int
      */
-    public function getStatus(int $index): int
+    protected function getSlotStatus(int $index): int
     {
         return (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status')) ?
-            file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') : 0;
+            (int)file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') : 0;
+    }
+
+    /**
+     * Find the storage index holding a given job, if any
+     *
+     * @param  AbstractJob $job
+     * @return ?int
+     */
+    protected function findIndexForJob(AbstractJob $job): ?int
+    {
+        foreach ($this->getFolders($this->folder) as $index) {
+            $payloadFile = $this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
+            if (file_exists($payloadFile)) {
+                $stored = unserialize(file_get_contents($payloadFile));
+                if (($stored instanceof AbstractJob) && ($stored->getJobId() === $job->getJobId())) {
+                    return (int)$index;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -132,51 +157,112 @@ class File extends AbstractTaskAdapter
      */
     public function push(AbstractJob $job): File
     {
-        $status = 1;
-        $index  = ($this->getEnd() + 1);
+        // Force job ID generation before persisting so identity survives the
+        // serialize/unserialize round-trip on subsequent reserve/release/delete calls.
+        $job->getJobId();
 
-        if ($job->hasFailed()) {
-            $status = 2;
-            if ($this->isFilo()) {
-                $index = ($this->getStart() - 1);
-            }
-        }
+        $index = $this->getEndIndex() + 1;
 
-        if ($job->isValid()) {
-            if (!file_exists($this->folder . DIRECTORY_SEPARATOR . $index)) {
-                mkdir($this->folder . DIRECTORY_SEPARATOR . $index);
-            }
-            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
-            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', $status);
+        if (!file_exists($this->folder . DIRECTORY_SEPARATOR . $index)) {
+            mkdir($this->folder . DIRECTORY_SEPARATOR . $index);
         }
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 1);
 
         return $this;
     }
 
     /**
-     * Pop job off of queue
+     * Atomically claim the next eligible job
      *
      * @return ?AbstractJob
      */
-    public function pop(): ?AbstractJob
+    public function reserve(): ?AbstractJob
     {
-        $job    = false;
-        $index  = ($this->isFifo()) ? $this->getStart() : $this->getEnd();
-        $status = $this->getStatus($index);
+        $folders = $this->getFolders($this->folder);
 
-        if ($status != 0) {
-            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload')) {
-                $job = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
-                unlink($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
-                if (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status')) {
-                    unlink($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status');
-                }
-                rmdir($this->folder . DIRECTORY_SEPARATOR . $index);
+        // scandir() sorts alphabetically ('10' < '2'), so order the slots numerically
+        usort($folders, function($a, $b) {
+            return $this->isFifo() ? ((int)$a <=> (int)$b) : ((int)$b <=> (int)$a);
+        });
+
+        foreach ($folders as $index) {
+            if ($this->getSlotStatus((int)$index) != 1) {
+                continue;
             }
+
+            $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+            $job     = unserialize($payload);
+
+            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+                continue;
+            }
+
+            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
+            return $job;
         }
 
-        return ($job !== false) ? unserialize($job) : null;
+        return null;
+    }
+
+    /**
+     * Put a job back to pending
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $delay
+     * @return File
+     */
+    public function release(AbstractJob $job, ?int $delay = null): File
+    {
+        $index = $this->findIndexForJob($job);
+        if ($index === null) {
+            return $this;
+        }
+
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 1);
+
+        return $this;
+    }
+
+    /**
+     * Permanently remove a job
+     *
+     * @param  AbstractJob $job
+     * @return File
+     */
+    public function delete(AbstractJob $job): File
+    {
+        $index = $this->findIndexForJob($job);
+        if ($index === null) {
+            return $this;
+        }
+
+        $folder = $this->folder . DIRECTORY_SEPARATOR . $index;
+        if (file_exists($folder . DIRECTORY_SEPARATOR . 'payload')) {
+            unlink($folder . DIRECTORY_SEPARATOR . 'payload');
+        }
+        if (file_exists($folder . DIRECTORY_SEPARATOR . 'status')) {
+            unlink($folder . DIRECTORY_SEPARATOR . 'status');
+        }
+        rmdir($folder);
+
+        return $this;
+    }
+
+    /**
+     * Move a job to the dead-letter store
+     *
+     * @param  AbstractJob $job
+     * @param  ?string     $reason
+     * @return File
+     */
+    public function bury(AbstractJob $job, ?string $reason = null): File
+    {
+        $this->delete($job);
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . 'dead-' . $job->getJobId(), serialize(clone $job));
+
+        return $this;
     }
 
     /**
@@ -190,110 +276,149 @@ class File extends AbstractTaskAdapter
     }
 
     /**
-     * Check if adapter has failed job
+     * Count of pending + reserved jobs
      *
-     * @param  int $index
-     * @return bool
+     * @return int
      */
-    public function hasFailedJob(int $index): bool
+    public function count(): int
     {
-        return (file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') &&
-            (file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status') == 2));
+        return count($this->getFolders($this->folder));
     }
 
     /**
-     * Get failed job
-     *
-     * @param  int $index
-     * @param  bool $unserialize
-     * @return mixed
-     */
-    public function getFailedJob(int $index, bool $unserialize = true): mixed
-    {
-        if (($this->hasFailedJob($index)) &&
-            file_exists($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload')) {
-            $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
-            return ($unserialize) ? unserialize($payload) : $payload;
-        } else {
-            return null;
-        }
-    }
-
-    /**
-     * Check if adapter has failed jobs
-     *
-     * @return bool
-     */
-    public function hasFailedJobs(): bool
-    {
-        return (count($this->getFailedJobs(false)) > 0);
-    }
-
-    /**
-     * Get adapter failed jobs
-     *
-     * @param  bool $unserialize
-     * @return array
-     */
-    public function getFailedJobs(bool $unserialize = true): array
-    {
-        $folders = $this->getFolders($this->folder);
-        $failed  = [];
-
-        foreach ($folders as $index) {
-            if ($this->hasFailedJob($index)) {
-                $failed[$index] = $this->getFailedJob($index);
-            }
-        }
-
-        return $failed;
-    }
-
-    /**
-     * Clear failed jobs out of the queue
-     *
-     * @return File
-     */
-    public function clearFailed(): File
-    {
-        $failed = $this->getFailedJobs(false);
-
-        foreach ($failed as $folder => $failedJob) {
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
-            }
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
-            }
-            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
-        }
-        return $this;
-    }
-
-    /**
-     * Clear jobs out of queue
+     * Clear pending and reserved jobs (not tasks or dead-letter jobs)
      *
      * @return File
      */
     public function clear(): File
     {
-        $files   = $this->getFiles($this->folder);
-        $folders = $this->getFolders($this->folder);
+        foreach ($this->getFolders($this->folder) as $folder) {
+            $path = $this->folder . DIRECTORY_SEPARATOR . $folder;
+            if (file_exists($path . DIRECTORY_SEPARATOR . 'payload')) {
+                unlink($path . DIRECTORY_SEPARATOR . 'payload');
+            }
+            if (file_exists($path . DIRECTORY_SEPARATOR . 'status')) {
+                unlink($path . DIRECTORY_SEPARATOR . 'status');
+            }
+            rmdir($path);
+        }
 
-        foreach ($files as $file) {
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $file)) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $file);
+        return $this;
+    }
+
+    /**
+     * Get the dead-letter job IDs
+     *
+     * @return array
+     */
+    protected function getDeadJobIds(): array
+    {
+        $ids = [];
+        foreach ($this->getFiles($this->folder) as $file) {
+            if (str_starts_with($file, 'dead-')) {
+                $ids[] = substr($file, 5);
             }
         }
 
-        foreach ($folders as $folder) {
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'payload');
-            }
-            if (file_exists($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status')) {
-                unlink($this->folder . DIRECTORY_SEPARATOR . $folder . DIRECTORY_SEPARATOR . 'status');
-            }
-            rmdir($this->folder . DIRECTORY_SEPARATOR . $folder);
+        return $ids;
+    }
+
+    /**
+     * Check if adapter has dead-letter jobs
+     *
+     * @return bool
+     */
+    public function hasDeadJobs(): bool
+    {
+        return !empty($this->getDeadJobIds());
+    }
+
+    /**
+     * Count of dead-letter jobs
+     *
+     * @return int
+     */
+    public function countDead(): int
+    {
+        return count($this->getDeadJobIds());
+    }
+
+    /**
+     * Get dead-letter jobs
+     *
+     * @param  bool $unserialize
+     * @return array
+     */
+    public function getDeadJobs(bool $unserialize = true): array
+    {
+        $jobs = [];
+        foreach ($this->getDeadJobIds() as $jobId) {
+            $jobs[$jobId] = $this->getDeadJob($jobId, $unserialize);
+        }
+
+        return $jobs;
+    }
+
+    /**
+     * Get a dead-letter job
+     *
+     * @param  string $jobId
+     * @param  bool   $unserialize
+     * @return mixed
+     */
+    public function getDeadJob(string $jobId, bool $unserialize = true): mixed
+    {
+        $path = $this->folder . DIRECTORY_SEPARATOR . 'dead-' . $jobId;
+        if (!file_exists($path)) {
+            return null;
+        }
+
+        $payload = file_get_contents($path);
+        return $unserialize ? unserialize($payload) : $payload;
+    }
+
+    /**
+     * Move a dead-letter job back to pending
+     *
+     * @param  string $jobId
+     * @return File
+     */
+    public function retryDeadJob(string $jobId): File
+    {
+        $job = $this->getDeadJob($jobId);
+        if ($job instanceof AbstractJob) {
+            $this->push($job);
+            $this->deleteDeadJob($jobId);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Permanently remove a dead-letter job
+     *
+     * @param  string $jobId
+     * @return File
+     */
+    public function deleteDeadJob(string $jobId): File
+    {
+        $path = $this->folder . DIRECTORY_SEPARATOR . 'dead-' . $jobId;
+        if (file_exists($path)) {
+            unlink($path);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Clear all dead-letter jobs
+     *
+     * @return File
+     */
+    public function clearDead(): File
+    {
+        foreach ($this->getDeadJobIds() as $jobId) {
+            $this->deleteDeadJob($jobId);
         }
 
         return $this;
