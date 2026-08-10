@@ -18,6 +18,7 @@ use Pop\Queue\Adapter\AdapterInterface;
 use Pop\Queue\Adapter\TaskAdapterInterface;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
+use Pop\Queue\Process\TimeoutException;
 
 /**
  * Queue class
@@ -211,19 +212,59 @@ class Queue extends AbstractQueue
      */
     public function work(?Application $application = null): ?AbstractJob
     {
-        $job = $this->adapter->pop();
+        $job = $this->adapter->reserve();
+        if ($job === null) {
+            return null;
+        }
 
-        if (($job instanceof AbstractJob) && ($job->isValid())) {
-            try {
-                $job->run($application);
-                $job->complete();
-            } catch (\Exception $e) {
-                $job->failed($e->getMessage());
-                $this->adapter->push($job);
+        if (!$job->isValid()) {
+            $this->adapter->bury($job, 'Exceeded max attempts or expired before execution');
+            return $job;
+        }
+
+        try {
+            $this->runWithTimeout($job, $application);
+            $job->complete();
+            $this->adapter->delete($job);
+        } catch (\Throwable $e) {
+            $job->failed($e->getMessage());
+            if ($job->isValid()) {
+                $this->adapter->release($job);
+            } else {
+                $this->adapter->bury($job, $e->getMessage());
             }
         }
 
         return $job;
+    }
+
+    /**
+     * Run a job, enforcing its soft timeout when ext-pcntl is available
+     *
+     * @param  AbstractJob  $job
+     * @param  ?Application $application
+     * @return mixed
+     */
+    protected function runWithTimeout(AbstractJob $job, ?Application $application): mixed
+    {
+        if (!$job->hasTimeout() || !extension_loaded('pcntl')) {
+            return $job->run($application);
+        }
+
+        pcntl_async_signals(true);
+        pcntl_signal(SIGALRM, function() use ($job) {
+            throw new TimeoutException(
+                'Error: Job ' . $job->getJobId() . ' exceeded its ' . $job->getTimeout() . ' second timeout.'
+            );
+        });
+        pcntl_alarm($job->getTimeout());
+
+        try {
+            return $job->run($application);
+        } finally {
+            pcntl_alarm(0);
+            pcntl_signal(SIGALRM, SIG_DFL);
+        }
     }
 
     /**
@@ -295,13 +336,13 @@ class Queue extends AbstractQueue
     }
 
     /**
-     * Clear failed jobs from queue
+     * Clear dead-letter jobs from queue
      *
      * @return Queue
      */
     public function clearFailed(): Queue
     {
-        $this->adapter->clearFailed();
+        $this->adapter->clearDead();
         return $this;
     }
 

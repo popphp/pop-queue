@@ -175,17 +175,28 @@ class File extends AbstractTaskAdapter
      */
     public function reserve(): ?AbstractJob
     {
-        $index  = ($this->isFifo()) ? $this->getStartIndex() : $this->getEndIndex();
-        $status = $this->getSlotStatus($index);
-
-        if ($status != 1) {
-            return null;
+        $folders = $this->getFolders($this->folder);
+        if (!$this->isFifo()) {
+            $folders = array_reverse($folders);
         }
 
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
-        $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+        foreach ($folders as $index) {
+            if ($this->getSlotStatus((int)$index) != 1) {
+                continue;
+            }
 
-        return unserialize($payload);
+            $payload = file_get_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload');
+            $job     = unserialize($payload);
+
+            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+                continue;
+            }
+
+            file_put_contents($this->folder . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'status', 0);
+            return $job;
+        }
+
+        return null;
     }
 
     /**
