@@ -104,11 +104,11 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue length
+     * Get queue start index
      *
      * @return int
      */
-    public function getStart(): int
+    protected function getStartIndex(): int
     {
         $sql = $this->db->createSql();
         $sql->select('index')->from($this->table)->where('index IS NOT NULL')->orderBy('index')->limit(1);
@@ -119,14 +119,14 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue length
+     * Get queue end index
      *
      * @return int
      */
-    public function getEnd(): int
+    protected function getEndIndex(): int
     {
         $sql = $this->db->createSql();
-        $sql->select('index')->from($this->table)->orderBy('index', 'DESC')->limit(1);
+        $sql->select('index')->from($this->table)->where('index IS NOT NULL')->orderBy('index', 'DESC')->limit(1);
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
@@ -134,12 +134,12 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue job status
+     * Get queue slot status
      *
      * @param  int $index
      * @return int
      */
-    public function getStatus(int $index): int
+    protected function getSlotStatus(int $index): int
     {
         $sql = $this->db->createSql();
         $sql->select('status')->from($this->table)->where('index = ' . (int)$index);
@@ -157,69 +157,123 @@ class Database extends AbstractTaskAdapter
      */
     public function push(AbstractJob $job): Database
     {
-        $status = 1;
-        $index  = ($this->getEnd() + 1);
+        $sql = $this->db->createSql();
+        $sql->insert($this->table)->values([
+            'index'   => ':index',
+            'type'    => ':type',
+            'job_id'  => ':job_id',
+            'payload' => ':payload',
+            'status'  => ':status'
+        ]);
 
-        if ($job->hasFailed()) {
-            $status = 2;
-            if ($this->isFilo()) {
-                $index = ($this->getStart() - 1);
-            }
-        }
-
-        if ($job->isValid()) {
-            $sql = $this->db->createSql();
-            $sql->insert($this->table)->values([
-                'index'   => ':index',
-                'type'    => ':type',
-                'job_id'  => ':job_id',
-                'payload' => ':payload',
-                'status'  => ':status'
-            ]);
-
-            $jobData = [
-                'index'   => $index,
-                'type'    => 'job',
-                'job_id'  => $job->getJobId(),
-                'payload' => base64_encode(serialize(clone $job)),
-                'status'  => $status
-            ];
-
-            $this->db->prepare($sql);
-            $this->db->bindParams($jobData);
-            $this->db->execute();
-        }
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'index'   => ($this->getEndIndex() + 1),
+            'type'    => 'job',
+            'job_id'  => $job->getJobId(),
+            'payload' => base64_encode(serialize(clone $job)),
+            'status'  => 1
+        ]);
+        $this->db->execute();
 
         return $this;
     }
 
     /**
-     * Pop job off of queue
+     * Atomically claim the next eligible job
      *
      * @return ?AbstractJob
      */
-    public function pop(): ?AbstractJob
+    public function reserve(): ?AbstractJob
     {
-        $job    = false;
-        $index  = ($this->isFifo()) ? $this->getStart() : $this->getEnd();
-        $status = $this->getStatus($index);
+        $index  = ($this->isFifo()) ? $this->getStartIndex() : $this->getEndIndex();
+        $status = $this->getSlotStatus($index);
 
-        if ($status != 0) {
-            $sql = $this->db->createSql();
-            $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$index);
-            $this->db->query($sql);
-
-            $sql->select('payload')->from($this->table)->where('index = ' . (int)$index);
-            $this->db->query($sql);
-            $rows = $this->db->fetchAll();
-            if (isset($rows[0]['payload'])) {
-                $job = $rows[0]['payload'];
-            }
-            $sql->delete()->from($this->table)->where('index = ' . (int)$index);
-            $this->db->query($sql);
+        if ($status != 1) {
+            return null;
         }
 
-        return ($job !== false) ? unserialize(base64_decode($job)) : null;
+        $sql = $this->db->createSql();
+        $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$index);
+        $this->db->query($sql);
+
+        $sql->select('payload')->from($this->table)->where('index = ' . (int)$index);
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+
+        return isset($rows[0]['payload']) ? unserialize(base64_decode($rows[0]['payload'])) : null;
+    }
+
+    /**
+     * Put a job back to pending
+     *
+     * @param  AbstractJob $job
+     * @param  ?int        $delay
+     * @return Database
+     */
+    public function release(AbstractJob $job, ?int $delay = null): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->update($this->table)->values([
+            'payload' => ':payload',
+            'status'  => ':status'
+        ])->where('job_id = :job_id');
+
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'payload' => base64_encode(serialize(clone $job)),
+            'status'  => 1,
+            'job_id'  => $job->getJobId()
+        ]);
+        $this->db->execute();
+
+        return $this;
+    }
+
+    /**
+     * Permanently remove a job
+     *
+     * @param  AbstractJob $job
+     * @return Database
+     */
+    public function delete(AbstractJob $job): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $job->getJobId()]);
+        $this->db->execute();
+
+        return $this;
+    }
+
+    /**
+     * Move a job to the dead-letter store
+     *
+     * @param  AbstractJob $job
+     * @param  ?string     $reason
+     * @return Database
+     */
+    public function bury(AbstractJob $job, ?string $reason = null): Database
+    {
+        $this->delete($job);
+
+        $sql = $this->db->createSql();
+        $sql->insert($this->table)->values([
+            'type'    => ':type',
+            'job_id'  => ':job_id',
+            'payload' => ':payload'
+        ]);
+
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'type'    => 'dead',
+            'job_id'  => $job->getJobId(),
+            'payload' => base64_encode(serialize(clone $job))
+        ]);
+        $this->db->execute();
+
+        return $this;
     }
 
     /**
@@ -228,6 +282,16 @@ class Database extends AbstractTaskAdapter
      * @return bool
      */
     public function hasJobs(): bool
+    {
+        return ($this->count() > 0);
+    }
+
+    /**
+     * Count of pending + reserved jobs
+     *
+     * @return int
+     */
+    public function count(): int
     {
         $sql = $this->db->createSql();
         $sql->select(['total' => 'COUNT(1)'])->from($this->table)->where("type = 'job'");
@@ -238,51 +302,38 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Check if adapter has failed job
+     * Clear pending and reserved jobs (not tasks or dead-letter jobs)
      *
-     * @param  int $index
-     * @return bool
+     * @return Database
      */
-    public function hasFailedJob(int $index): bool
+    public function clear(): Database
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->table)->where('index = ' . (int)$index);
+        $sql->delete()->from($this->table)->where("type = 'job'");
         $this->db->query($sql);
-        $rows = $this->db->fetchAll();
 
-        return (isset($rows[0]));
+        return $this;
     }
 
     /**
-     * Get failed job from worker by job ID
-     *
-     * @param  int $index
-     * @param  bool $unserialize
-     * @return mixed
-     */
-    public function getFailedJob(int $index, bool $unserialize = true): mixed
-    {
-        $sql = $this->db->createSql();
-        $sql->select()->from($this->table)->where('index = ' . (int)$index);
-        $this->db->query($sql);
-        $rows = $this->db->fetchAll();
-        $job  = null;
-        if (isset($rows[0])) {
-            $job = ($unserialize) ? unserialize(base64_decode($rows[0]['payload'])) : $rows[0];
-        }
-
-        return $job;
-    }
-
-    /**
-     * Check if adapter has failed jobs
+     * Check if adapter has dead-letter jobs
      *
      * @return bool
      */
-    public function hasFailedJobs(): bool
+    public function hasDeadJobs(): bool
+    {
+        return ($this->countDead() > 0);
+    }
+
+    /**
+     * Count of dead-letter jobs
+     *
+     * @return int
+     */
+    public function countDead(): int
     {
         $sql = $this->db->createSql();
-        $sql->select(['total' => 'COUNT(1)'])->from($this->table)->where("status = 2");
+        $sql->select(['total' => 'COUNT(1)'])->from($this->table)->where("type = 'dead'");
         $this->db->query($sql);
         $rows = $this->db->fetchAll();
 
@@ -290,35 +341,92 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Get adapter failed jobs
+     * Get dead-letter jobs
      *
      * @param  bool $unserialize
      * @return array
      */
-    public function getFailedJobs(bool $unserialize = true): array
+    public function getDeadJobs(bool $unserialize = true): array
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->table)->where("status = 2");
+        $sql->select()->from($this->table)->where("type = 'dead'");
         $this->db->query($sql);
         $rows = $this->db->fetchAll();
         $jobs = [];
 
         foreach ($rows as $row) {
-            $jobs[$row['index']] = ($unserialize) ? unserialize(base64_decode($row['payload'])) : $row;
+            $jobs[$row['job_id']] = $unserialize ? unserialize(base64_decode($row['payload'])) : $row;
         }
 
         return $jobs;
     }
 
     /**
-     * Clear failed jobs out of the queue
+     * Get a dead-letter job
+     *
+     * @param  string $jobId
+     * @param  bool   $unserialize
+     * @return mixed
+     */
+    public function getDeadJob(string $jobId, bool $unserialize = true): mixed
+    {
+        $sql = $this->db->createSql();
+        $sql->select()->from($this->table)->where('job_id = :job_id');
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+        $rows = $this->db->fetchAll();
+
+        if (!isset($rows[0]['payload'])) {
+            return null;
+        }
+
+        return $unserialize ? unserialize(base64_decode($rows[0]['payload'])) : $rows[0];
+    }
+
+    /**
+     * Move a dead-letter job back to pending
+     *
+     * @param  string $jobId
+     * @return Database
+     */
+    public function retryDeadJob(string $jobId): Database
+    {
+        $job = $this->getDeadJob($jobId);
+        if ($job instanceof AbstractJob) {
+            $this->deleteDeadJob($jobId);
+            $this->push($job);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Permanently remove a dead-letter job
+     *
+     * @param  string $jobId
+     * @return Database
+     */
+    public function deleteDeadJob(string $jobId): Database
+    {
+        $sql = $this->db->createSql();
+        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $jobId]);
+        $this->db->execute();
+
+        return $this;
+    }
+
+    /**
+     * Clear all dead-letter jobs
      *
      * @return Database
      */
-    public function clearFailed(): Database
+    public function clearDead(): Database
     {
         $sql = $this->db->createSql();
-        $sql->delete()->from($this->table)->where("status = 2");
+        $sql->delete()->from($this->table)->where("type = 'dead'");
         $this->db->query($sql);
 
         return $this;
@@ -473,20 +581,6 @@ class Database extends AbstractTaskAdapter
     {
         $sql = $this->db->createSql();
         $sql->delete()->from($this->table)->where("type = 'task'");
-        $this->db->query($sql);
-
-        return $this;
-    }
-
-    /**
-     * Clear jobs out of queue
-     *
-     * @return Database
-     */
-    public function clear(): Database
-    {
-        $sql = $this->db->createSql();
-        $sql->delete()->from($this->table);
         $this->db->query($sql);
 
         return $this;

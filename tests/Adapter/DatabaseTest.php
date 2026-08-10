@@ -28,12 +28,9 @@ class DatabaseTest extends TestCase
         $this->assertInstanceOf('Pop\Db\Adapter\Sqlite', $adapter2->db());
         $this->assertEquals('pop_queue', $adapter1->getTable());
         $this->assertEquals('pop_queue', $adapter2->getTable());
-        $this->assertEquals(0, $adapter1->getStart());
-        $this->assertEquals(0, $adapter1->getEnd());
-        $this->assertEquals(0, $adapter1->getStatus(1));
     }
 
-    public function testPush()
+    public function testPushAndReserve()
     {
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
@@ -46,31 +43,25 @@ class DatabaseTest extends TestCase
         $adapter = new Database($db);
         $adapter->push($job);
         $this->assertTrue($adapter->hasJobs());
+        $this->assertEquals(1, $adapter->count());
+
+        $reserved = $adapter->reserve();
+        $this->assertEquals(123, $reserved->run());
+        $adapter->delete($reserved);
     }
 
-    public function testPushFailed()
+    public function testReserveReturnsNullWhenEmpty()
     {
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
         ]);
-
-        $job = Job::create(function(){
-            return 123;
-        });
-        $job->failed();
-
         $adapter = new Database($db);
-        $adapter->setPriority('FILO');
-        $adapter->push($job);
-        $this->assertTrue($adapter->hasFailedJobs());
-        $this->assertTrue($adapter->hasFailedJob(0));
-        $this->assertCount(1, $adapter->getFailedJobs(false));
-        $this->assertInstanceOf('Pop\Queue\Process\Job', $adapter->getFailedJob(0));
         $adapter->clear();
-        $adapter->clearFailed();
+
+        $this->assertNull($adapter->reserve());
     }
 
-    public function testPop()
+    public function testRelease()
     {
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
@@ -82,9 +73,81 @@ class DatabaseTest extends TestCase
 
         $adapter = new Database($db);
         $adapter->push($job);
+        $reserved = $adapter->reserve();
 
-        $job = $adapter->pop();
-        $this->assertEquals(123, $job->run());
+        $adapter->release($reserved);
+        $this->assertEquals(1, $adapter->count());
+        $this->assertNotNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testBury()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = new Database($db);
+        $adapter->push($job);
+        $reserved = $adapter->reserve();
+
+        $adapter->bury($reserved, 'Exceeded max attempts');
+        $this->assertFalse($adapter->hasJobs());
+        $this->assertTrue($adapter->hasDeadJobs());
+        $this->assertEquals(1, $adapter->countDead());
+        $this->assertCount(1, $adapter->getDeadJobs());
+        $this->assertEquals($job->getJobId(), $adapter->getDeadJob($job->getJobId())->getJobId());
+        $this->assertNull($adapter->getDeadJob('does-not-exist'));
+
+        $adapter->clearDead();
+        $this->assertFalse($adapter->hasDeadJobs());
+    }
+
+    public function testRetryDeadJob()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = new Database($db);
+        $adapter->push($job);
+        $adapter->bury($adapter->reserve(), 'reason');
+        $adapter->retryDeadJob($job->getJobId());
+
+        $this->assertFalse($adapter->hasDeadJobs());
+        $this->assertTrue($adapter->hasJobs());
+        $adapter->clear();
+    }
+
+    public function testClearDoesNotTouchTasksOrDeadJobs()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job  = Job::create(function(){ return 123; });
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+
+        $adapter = new Database($db);
+        $adapter->push($job);
+        $adapter->schedule($task);
+        $adapter->bury($adapter->reserve(), 'reason');
+
+        $adapter->clear();
+
+        $this->assertTrue($adapter->hasTasks());
+        $this->assertTrue($adapter->hasDeadJobs());
+
+        $adapter->clearTasks();
+        $adapter->clearDead();
     }
 
     public function testGetTask1()
@@ -106,7 +169,6 @@ class DatabaseTest extends TestCase
         $task->complete();
         $adapter->updateTask($task);
         $this->assertInstanceOf('Pop\Queue\Process\Task', $adapter->getTask($task->getJobId()));
-        $adapter->clear();
         $adapter->clearTasks();
     }
 
@@ -140,10 +202,10 @@ class DatabaseTest extends TestCase
         $adapter = new Database($db);
 
         $adapter->clear();
-        $adapter->clearFailed();
+        $adapter->clearDead();
 
-        $this->assertFalse($adapter->hasJobs('pop-queue'));
-        $this->assertFalse($adapter->hasFailedJobs('pop-queue'));
+        $this->assertFalse($adapter->hasJobs());
+        $this->assertFalse($adapter->hasDeadJobs());
 
         unlink(__DIR__ . '/../tmp/test.sqlite');
     }
