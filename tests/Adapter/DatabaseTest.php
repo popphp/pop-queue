@@ -449,7 +449,7 @@ class DatabaseTest extends TestCase
         $this->assertEquals('FILO', $adapter->getPriority());
     }
 
-    public function testConcurrentClaimAffectedRowCountRejectsLoser()
+    public function testConcurrentClaimTokenProofRejectsLoser()
     {
         $db = PopDb::sqliteConnect([
             'database' => __DIR__ . '/../tmp/test.sqlite'
@@ -461,24 +461,36 @@ class DatabaseTest extends TestCase
         $adapter->clear();
         $adapter->push($job);
 
-        // Winner: claim the row exactly as reserve() would.
+        // Positive control: the winner's real reserve() call actually claims
+        // the job. This makes the negative assertion below meaningful - a
+        // reserve() that was silently broken (e.g. always returning null)
+        // could not accidentally satisfy it.
         $winner = $adapter->reserve();
         $this->assertNotNull($winner);
+        $this->assertEquals($job->getJobId(), $winner->getJobId());
+
+        // Look up the row id the winner actually claimed.
+        $idSql = $db->createSql();
+        $idSql->select('id')->from('pop_queue')->where('job_id = :job_id');
+        $db->prepare($idSql);
+        $db->bindParams(['job_id' => $job->getJobId()]);
+        $db->execute();
+        $rowId = (int)$db->fetchAll()[0]['id'];
 
         // Loser: simulate a second worker whose SELECT scan went stale - it
         // read the row while still pending, but by the time its UPDATE runs
         // the winner has already claimed it. Build the identical conditional
-        // UPDATE reserve() issues, via the adapter's own buildEligibleWhere()
-        // helper (not a hand-rolled reimplementation, so this exercises the
-        // real production predicate), and confirm the WHERE re-validates the
-        // row's actual current state at write time: 0 rows affected, not 1 -
-        // the loser must never blindly report success for a row it didn't
-        // actually touch.
-        $now    = time();
+        // UPDATE reserve() issues, with its own claim token, via the
+        // adapter's own buildEligibleWhere() helper (not a hand-rolled
+        // reimplementation, so this exercises the real production predicate).
+        $now        = time();
+        $loserToken = 'loser-token';
+
         $sql    = $db->createSql();
         $update = $sql->update('pop_queue')->values([
             'status'         => ':status',
-            'reserved_until' => ':reserved_until'
+            'reserved_until' => ':reserved_until',
+            'reserved_by'    => ':reserved_by'
         ]);
 
         $buildEligibleWhere = new \ReflectionMethod($adapter, 'buildEligibleWhere');
@@ -490,12 +502,80 @@ class DatabaseTest extends TestCase
         $db->bindParams([
             'status'         => 0,
             'reserved_until' => ($now + 60),
+            'reserved_by'    => $loserToken,
             'job_id'         => $job->getJobId()
         ]);
         $db->execute();
-        $this->assertEquals(0, $db->getNumberOfAffectedRows());
+
+        // The loser's UPDATE's WHERE re-validates the row's real current
+        // state (status/reserved_until) at write time, so it must not have
+        // touched the already-claimed row: reserved_by must still be
+        // whatever the winner's reserve() wrote, never the loser's token.
+        $claimedBy = new \ReflectionMethod($adapter, 'claimedBy');
+        $claimedBy->setAccessible(true);
+        $this->assertNotEquals($loserToken, $claimedBy->invoke($adapter, $rowId));
 
         $adapter->clear();
+    }
+
+    public function testEnsureReservedUntilColumnBackfillsPhase1ReservedRows()
+    {
+        // Build a Phase-1-shaped table by hand, in an isolated sqlite file:
+        // no reserved_until/reserved_by columns, and one row already sitting
+        // at status = 0 - i.e. a job reserved under the pre-lease contract,
+        // before this migration existed.
+        $file = __DIR__ . '/../tmp/test-migration.sqlite';
+        if (file_exists($file)) {
+            unlink($file);
+        }
+        touch($file);
+        chmod($file, 0777);
+
+        $db = PopDb::sqliteConnect(['database' => $file]);
+
+        $schema = $db->createSchema();
+        $schema->create('pop_queue')
+            ->int('id', 16)->increment()
+            ->int('index', 16)->nullable()
+            ->varchar('type', 255)
+            ->varchar('job_id', 255)
+            ->text('payload')
+            ->int('status', 1)->defaultIs(1)
+            ->primary('id');
+        $db->query($schema);
+
+        $job = Job::create(function(){ return 123; });
+
+        $insertSql = $db->createSql();
+        $insertSql->insert('pop_queue')->values([
+            'index'   => ':index',
+            'type'    => ':type',
+            'job_id'  => ':job_id',
+            'payload' => ':payload',
+            'status'  => ':status'
+        ]);
+        $db->prepare($insertSql);
+        $db->bindParams([
+            'index'   => 1,
+            'type'    => 'job',
+            'job_id'  => $job->getJobId(),
+            'payload' => base64_encode(serialize($job)),
+            'status'  => 0 // reserved under the pre-lease Phase 1 contract
+        ]);
+        $db->execute();
+
+        // Constructing a Database adapter against this table runs the
+        // reserved_until/reserved_by migration. Without the backfill, this
+        // row's reserved_until would be NULL forever - "NULL <= now" matches
+        // neither branch of reserve()'s eligibility check, so the row would
+        // never be reclaimable again.
+        $adapter = new Database($db);
+
+        $reclaimed = $adapter->reserve();
+        $this->assertNotNull($reclaimed);
+        $this->assertEquals($job->getJobId(), $reclaimed->getJobId());
+
+        unlink($file);
     }
 
     public function testClear()

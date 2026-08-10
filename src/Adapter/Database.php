@@ -69,6 +69,7 @@ class Database extends AbstractTaskAdapter
             $this->createTable($table);
         } else {
             $this->ensureReservedUntilColumn($table);
+            $this->ensureReservedByColumn($table);
         }
 
         parent::__construct($priority);
@@ -130,6 +131,19 @@ class Database extends AbstractTaskAdapter
      * is inspected and handled, this just keeps that single, anticipated
      * "duplicate column" condition out of application/test error logs.
      *
+     * Immediately after a successful ALTER (i.e. only the first time this
+     * runs against a given table), backfills reserved_until = 0 for any row
+     * already sitting at status = 0 - a job reserved under the pre-lease
+     * Phase 1 contract. Without this, such a row would have reserved_until
+     * = NULL forever, and "NULL <= now" evaluates to NULL in SQL - matching
+     * neither the "status = 1" nor the "status = 0 AND reserved_until <=
+     * now" branch of reserve()'s eligibility check, making the row invisible
+     * to reserve() permanently. Backfilling it to 0 makes it immediately
+     * eligible for reclaim on the very next reserve() call, which is the
+     * correct behavior for a job whose reservation state predates leasing
+     * entirely. If the ALTER throws (column already exists), the backfill is
+     * skipped too, since it would already have run on a prior construction.
+     *
      * @param  string $table
      * @return void
      */
@@ -139,9 +153,55 @@ class Database extends AbstractTaskAdapter
             $schema = $this->db->createSchema();
             $schema->alter($table)->addColumn('reserved_until', 'int', 16)->nullable();
             @$this->db->query($schema);
+
+            $backfill = $this->db->createSql();
+            $backfill->update($table)->values(['reserved_until' => 0])->where('status = 0');
+            $this->db->query($backfill);
+        } catch (\Exception $e) {
+            // Column already exists - migration (and backfill) already ran previously.
+        }
+    }
+
+    /**
+     * Add the reserved_by column to a table created by an earlier version of
+     * this adapter, if it isn't there already. Same ALTER-and-catch approach
+     * as ensureReservedUntilColumn() (see that method's docblock for why),
+     * including the warning suppression for the same expected-failure
+     * driver warning. reserved_by holds the random claim token reserve()
+     * writes and re-reads to prove its own UPDATE actually won a given row -
+     * see reserve()'s docblock for why that replaced an affected-row count.
+     *
+     * @param  string $table
+     * @return void
+     */
+    protected function ensureReservedByColumn(string $table): void
+    {
+        try {
+            $schema = $this->db->createSchema();
+            $schema->alter($table)->addColumn('reserved_by', 'varchar', 64)->nullable();
+            @$this->db->query($schema);
         } catch (\Exception $e) {
             // Column already exists - nothing to do.
         }
+    }
+
+    /**
+     * Read back the reserved_by token currently stored for a row. Used by
+     * reserve() to prove, via the real resulting row state rather than
+     * driver-reported execute metadata, whether its own claiming UPDATE was
+     * the one that actually won the row.
+     *
+     * @param  int $id
+     * @return ?string
+     */
+    protected function claimedBy(int $id): ?string
+    {
+        $sql = $this->db->createSql();
+        $sql->select('reserved_by')->from($this->table)->where('id = ' . $id);
+        $this->db->query($sql);
+        $rows = $this->db->fetchAll();
+
+        return $rows[0]['reserved_by'] ?? null;
     }
 
     /**
@@ -254,9 +314,26 @@ class Database extends AbstractTaskAdapter
      * Atomically claim the next eligible job. Scans pending/expired-lease
      * rows in queue order, skipping any job that isn't yet available (delayed
      * or backed off), and atomically claims the first eligible one via a
-     * conditional UPDATE - if the affected-row count comes back 0, another
-     * worker won the race between the scan and this UPDATE, so this moves on
-     * to the next candidate instead of assuming success.
+     * conditional UPDATE that writes a random claim token into reserved_by
+     * alongside status/reserved_until - all in the same statement.
+     *
+     * Success is proven by re-reading reserved_by immediately after the
+     * UPDATE and comparing it to the token this call generated, not by
+     * inspecting the UPDATE's driver-reported affected-row count.
+     * getNumberOfAffectedRows() is not portable enough for this: pop-db's
+     * Pgsql adapter reads it off the *prepare* result rather than the
+     * *execute* result, so pg_affected_rows() on a PREPARE always reports 0
+     * - meaning a real, successful claim on Postgres would still read back
+     * as "0 affected rows" and reserve() would treat every genuine win as a
+     * lost race, lease every row it touches, and never return a job. Reading
+     * back the actual resulting row state instead works identically across
+     * every backend, because it isn't asking the driver to describe what it
+     * did - it's asking the database what's really there now.
+     *
+     * If reserved_by doesn't come back as this call's token (someone else's
+     * token is there, or the row's state changed/vanished), this worker lost
+     * the race between the scan and its UPDATE, so this moves on to the next
+     * candidate instead of assuming success.
      *
      * @return ?AbstractJob
      */
@@ -279,22 +356,27 @@ class Database extends AbstractTaskAdapter
                 continue;
             }
 
+            $id    = (int)$row['id'];
+            $token = bin2hex(random_bytes(16));
+
             $sql    = $this->db->createSql();
             $update = $sql->update($this->table)->values([
                 'status'         => ':status',
-                'reserved_until' => ':reserved_until'
+                'reserved_until' => ':reserved_until',
+                'reserved_by'    => ':reserved_by'
             ]);
             $update->where($this->buildEligibleWhere($update, $now));
-            $update->andWhere('id = ' . (int)$row['id']);
+            $update->andWhere('id = ' . $id);
 
             $this->db->prepare($sql);
             $this->db->bindParams([
                 'status'         => 0,
-                'reserved_until' => ($now + $this->leaseSeconds)
+                'reserved_until' => ($now + $this->leaseSeconds),
+                'reserved_by'    => $token
             ]);
             $this->db->execute();
 
-            if ($this->db->getNumberOfAffectedRows() === 1) {
+            if ($this->claimedBy($id) === $token) {
                 return $job;
             }
             // Lost the race to another worker between the scan and this UPDATE - try the next candidate.
@@ -319,7 +401,8 @@ class Database extends AbstractTaskAdapter
         $sql->update($this->table)->values([
             'payload'        => ':payload',
             'status'         => ':status',
-            'reserved_until' => ':reserved_until'
+            'reserved_until' => ':reserved_until',
+            'reserved_by'    => ':reserved_by'
         ])->where("type = 'job'")->andWhere('job_id = :job_id');
 
         $this->db->prepare($sql);
@@ -327,6 +410,7 @@ class Database extends AbstractTaskAdapter
             'payload'        => base64_encode(serialize(clone $job)),
             'status'         => 1,
             'reserved_until' => null,
+            'reserved_by'    => null,
             'job_id'         => $job->getJobId()
         ]);
         $this->db->execute();
@@ -708,6 +792,7 @@ class Database extends AbstractTaskAdapter
             ->text('payload')
             ->int('status', 1)->defaultIs(1)
             ->int('reserved_until', 16)->nullable()
+            ->varchar('reserved_by', 64)->nullable()
             ->primary('id');
 
         $this->db->query($schema);
