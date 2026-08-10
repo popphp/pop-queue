@@ -180,28 +180,37 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Atomically claim the next eligible job
+     * Claim the next eligible job. Scans the pending rows in queue order and
+     * skips any job that is not yet available (delayed or backed off), so a
+     * single ineligible row at the head of the queue cannot stall the queue.
      *
      * @return ?AbstractJob
      */
     public function reserve(): ?AbstractJob
     {
-        $index  = ($this->isFifo()) ? $this->getStartIndex() : $this->getEndIndex();
-        $status = $this->getSlotStatus($index);
-
-        if ($status != 1) {
-            return null;
-        }
-
         $sql = $this->db->createSql();
-        $sql->update($this->table)->values(['status' => 0])->where('index = ' . (int)$index);
-        $this->db->query($sql);
-
-        $sql->select('payload')->from($this->table)->where('index = ' . (int)$index);
+        $sql->select(['index', 'payload'])->from($this->table)
+            ->where("type = 'job'")->andWhere('status = 1')
+            ->orderBy('index', ($this->isFifo()) ? 'ASC' : 'DESC');
         $this->db->query($sql);
         $rows = $this->db->fetchAll();
 
-        return isset($rows[0]['payload']) ? unserialize(base64_decode($rows[0]['payload'])) : null;
+        foreach ($rows as $row) {
+            $job = unserialize(base64_decode($row['payload']));
+
+            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+                continue;
+            }
+
+            $sql = $this->db->createSql();
+            $sql->update($this->table)->values(['status' => 0])
+                ->where("type = 'job'")->andWhere('index = ' . (int)$row['index']);
+            $this->db->query($sql);
+
+            return $job;
+        }
+
+        return null;
     }
 
     /**
@@ -239,7 +248,7 @@ class Database extends AbstractTaskAdapter
     public function delete(AbstractJob $job): Database
     {
         $sql = $this->db->createSql();
-        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $sql->delete()->from($this->table)->where("type = 'job'")->andWhere('job_id = :job_id');
         $this->db->prepare($sql);
         $this->db->bindParams(['job_id' => $job->getJobId()]);
         $this->db->execute();
@@ -371,7 +380,7 @@ class Database extends AbstractTaskAdapter
     public function getDeadJob(string $jobId, bool $unserialize = true): mixed
     {
         $sql = $this->db->createSql();
-        $sql->select()->from($this->table)->where('job_id = :job_id');
+        $sql->select()->from($this->table)->where("type = 'dead'")->andWhere('job_id = :job_id');
         $this->db->prepare($sql);
         $this->db->bindParams(['job_id' => $jobId]);
         $this->db->execute();
@@ -410,7 +419,7 @@ class Database extends AbstractTaskAdapter
     public function deleteDeadJob(string $jobId): Database
     {
         $sql = $this->db->createSql();
-        $sql->delete()->from($this->table)->where('job_id = :job_id');
+        $sql->delete()->from($this->table)->where("type = 'dead'")->andWhere('job_id = :job_id');
         $this->db->prepare($sql);
         $this->db->bindParams(['job_id' => $jobId]);
         $this->db->execute();

@@ -127,6 +127,146 @@ class DatabaseTest extends TestCase
         $adapter->clear();
     }
 
+    public function testDeleteDeadJobDoesNotTouchTasks()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job  = Job::create(function(){ return 123; });
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->clearTasks();
+        $adapter->clearDead();
+
+        $adapter->push($job);
+        $adapter->schedule($task);
+
+        // A task ID is not a dead job ID; deleting it as one must be a no-op
+        $adapter->deleteDeadJob($task->getJobId());
+        $this->assertTrue($adapter->hasTasks());
+
+        // Nor may it reach a live pending job
+        $adapter->deleteDeadJob($job->getJobId());
+        $this->assertEquals(1, $adapter->count());
+
+        $adapter->clear();
+        $adapter->clearTasks();
+    }
+
+    public function testGetDeadJobDoesNotReturnLiveJobsOrTasks()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job  = Job::create(function(){ return 123; });
+        $task = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->clearTasks();
+        $adapter->clearDead();
+
+        $adapter->push($job);
+        $adapter->schedule($task);
+
+        $this->assertNull($adapter->getDeadJob($job->getJobId()));
+        $this->assertNull($adapter->getDeadJob($task->getJobId()));
+
+        $adapter->clear();
+        $adapter->clearTasks();
+    }
+
+    public function testReserveMovesPastAlreadyReservedJobs()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job1 = Job::create(function(){ return 1; });
+        $job2 = Job::create(function(){ return 2; });
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->push($job1);
+        $adapter->push($job2);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+        $this->assertEquals($job1->getJobId(), $first->getJobId());
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job2->getJobId(), $second->getJobId());
+
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJob()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job = Job::create(function(){ return 123; });
+        $job->delay(60);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->push($job);
+
+        $this->assertTrue($adapter->hasJobs());
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsDelayedJobAndClaimsAvailableOne()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $delayed   = Job::create(function(){ return 1; });
+        $available = Job::create(function(){ return 2; });
+        $delayed->delay(60);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->push($delayed);
+        $adapter->push($available);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($available->getJobId(), $reserved->getJobId());
+
+        $adapter->clear();
+    }
+
+    public function testReserveFilo()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $job1 = Job::create(function(){ return 1; });
+        $job2 = Job::create(function(){ return 2; });
+
+        $adapter = new Database($db);
+        $adapter->clear();
+        $adapter->setPriority('FILO');
+        $adapter->push($job1);
+        $adapter->push($job2);
+
+        $this->assertEquals($job2->getJobId(), $adapter->reserve()->getJobId());
+        $this->assertEquals($job1->getJobId(), $adapter->reserve()->getJobId());
+
+        $adapter->clear();
+    }
+
     public function testClearDoesNotTouchTasksOrDeadJobs()
     {
         $db = PopDb::sqliteConnect([
