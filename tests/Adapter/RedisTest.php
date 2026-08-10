@@ -259,4 +259,64 @@ class RedisTest extends TestCase
         $adapter->clear();
     }
 
+    public function testLeaseReclaim()
+    {
+        $job = Job::create(function(){ return 123; });
+
+        $adapter = new Redis('localhost', 6379, 'pop-queue', null, 1); // 1-second lease
+        $adapter->clear();
+        $adapter->push($job);
+
+        $first = $adapter->reserve();
+        $this->assertNotNull($first);
+        $this->assertNull($adapter->reserve());
+
+        sleep(2);
+
+        $second = $adapter->reserve();
+        $this->assertNotNull($second);
+        $this->assertEquals($job->getJobId(), $second->getJobId());
+
+        $adapter->delete($second);
+    }
+
+    public function testReleaseHonorsBackoff()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->setBackoff(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $reserved->failed();
+        $adapter->release($reserved);
+
+        $this->assertNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testReleaseHonorsExplicitDelayOverridingBackoff()
+    {
+        $job = Job::create(function(){ return 123; });
+        $job->setBackoff(60);
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $adapter->release($reserved, 0);
+
+        $this->assertNotNull($adapter->reserve());
+        $adapter->clear();
+    }
+
+    public function testConstructorWithLeaseSeconds()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue', null, 30);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
+    }
+
 }

@@ -35,12 +35,17 @@ class Redis extends AbstractTaskAdapter
      */
     protected \Redis|null $redis = null;
 
-
     /**
      * Queue prefix
      * @var string
      */
     protected string $prefix = 'pop-queue';
+
+    /**
+     * Reservation lease length, in seconds
+     * @var int
+     */
+    protected int $leaseSeconds = 60;
 
     /**
      * Constructor
@@ -51,20 +56,30 @@ class Redis extends AbstractTaskAdapter
      * @param  int|string $port
      * @param  string     $prefix
      * @param  ?string    $priority
+     * @param  int        $leaseSeconds
+     * @param  ?string    $password     Optional password for AUTH
+     * @param  ?array     $context      Optional stream context (e.g. ['stream' => ['ssl' => [...]]] for TLS)
      * @throws Exception|\RedisException
      */
     public function __construct(
-        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null
+        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null,
+        int $leaseSeconds = 60, ?string $password = null, ?array $context = null
     )
     {
         if (!class_exists('Redis', false)) {
             throw new Exception('Error: Redis is not available.');
         }
 
-        $this->redis  = new \Redis();
-        $this->prefix = $prefix;
-        if (!$this->redis->connect($host, (int)$port)) {
+        $this->redis        = new \Redis();
+        $this->prefix        = $prefix;
+        $this->leaseSeconds  = $leaseSeconds;
+
+        if (!$this->redis->connect($host, (int)$port, context: $context)) {
             throw new Exception('Error: Unable to connect to the redis server.');
+        }
+
+        if (($password !== null) && !$this->redis->auth($password)) {
+            throw new Exception('Error: Unable to authenticate with the redis server.');
         }
 
         parent::__construct($priority);
@@ -77,14 +92,18 @@ class Redis extends AbstractTaskAdapter
      * @param  int|string $port
      * @param  string     $prefix
      * @param  ?string    $priority
+     * @param  int        $leaseSeconds
+     * @param  ?string    $password
+     * @param  ?array     $context
      * @throws Exception|\RedisException
      * @return Redis
      */
     public static function create(
-        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null
+        string $host = 'localhost', int|string $port = 6379, string $prefix = 'pop-queue', ?string $priority = null,
+        int $leaseSeconds = 60, ?string $password = null, ?array $context = null
     ): Redis
     {
-        return new self($host, $port, $prefix, $priority);
+        return new self($host, $port, $prefix, $priority, $leaseSeconds, $password, $context);
     }
 
     /**
@@ -118,19 +137,75 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Remove the first job matching a job ID from a given list
+     * Find a job matching a job ID in the reserved sorted set and remove it
      *
-     * @param  string $key
      * @param  string $jobId
-     * @return void
+     * @return ?string  the removed member's serialized value, if found
      */
-    protected function removeFromList(string $key, string $jobId): void
+    protected function removeFromReserved(string $jobId): ?string
     {
-        foreach ($this->redis->lRange($key, 0, -1) as $value) {
+        foreach ($this->redis->zRange($this->prefix . ':reserved', 0, -1) as $value) {
             $stored = unserialize($value);
             if (($stored instanceof AbstractJob) && ($stored->getJobId() === $jobId)) {
-                $this->redis->lRem($key, $value, 1);
-                break;
+                $this->redis->zRem($this->prefix . ':reserved', $value);
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Atomically remove a reserved-set member if, and only if, its *current*
+     * score (re-checked server-side at the moment this runs, not a stale
+     * snapshot from an earlier zRangeByScore() read) is still <= $now.
+     *
+     * This closes an ABA race: a worker's earlier "this looks expired" read
+     * can go stale if another worker reclaims and freshly re-claims the
+     * same entry before the first worker acts on it. Because a reclaim
+     * never re-serializes the job, the serialized value alone can't tell
+     * "the same expired claim" apart from "a fresh claim that happens to
+     * match" - a plain zRem($key, $value) would remove the fresh claim too,
+     * since it matches by value only and ignores the current score. Redis
+     * executes Lua scripts atomically, so this re-check-and-remove can't be
+     * interleaved by another command.
+     *
+     * @param  string $value
+     * @param  int    $now
+     * @return int  1 if removed, 0 if the entry is missing or no longer expired
+     */
+    protected function atomicReclaimIfStillExpired(string $value, int $now): int
+    {
+        $script = <<<'LUA'
+local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if score and tonumber(score) <= tonumber(ARGV[2]) then
+    redis.call('ZREM', KEYS[1], ARGV[1])
+    return 1
+end
+return 0
+LUA;
+
+        return (int)$this->redis->eval($script, [$this->prefix . ':reserved', $value, $now], 1);
+    }
+
+    /**
+     * Move any reserved job whose lease has expired back to the pending list,
+     * so a crashed worker's claim self-heals instead of being stuck forever.
+     *
+     * @return void
+     */
+    protected function reclaimExpiredLeases(): void
+    {
+        $now     = time();
+        $expired = $this->redis->zRangeByScore($this->prefix . ':reserved', '-inf', (string)$now);
+
+        foreach ($expired as $value) {
+            // atomicReclaimIfStillExpired() re-verifies the *current* score
+            // at removal time; if it reports 0, another worker already
+            // reclaimed (and possibly freshly re-claimed) this same expired
+            // lease first - skip it rather than trust our stale read.
+            if ($this->atomicReclaimIfStillExpired($value, $now) === 1) {
+                $this->redis->lPush($this->prefix, $value);
             }
         }
     }
@@ -149,14 +224,19 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Claim the next eligible job. Scans the pending list in queue order and
-     * skips any job that is not yet available (delayed or backed off), so a
-     * single ineligible entry at the head of the list cannot stall the queue.
+     * Atomically claim the next eligible job. Reclaims any reserved job whose
+     * lease has expired first, then scans the pending list in queue order and
+     * skips any job that isn't yet available, atomically claiming the first
+     * eligible one via a checked lRem() - if lRem() reports it removed
+     * nothing, another worker already claimed this same entry first, so this
+     * moves on to the next candidate instead of assuming success.
      *
      * @return ?AbstractJob
      */
     public function reserve(): ?AbstractJob
     {
+        $this->reclaimExpiredLeases();
+
         $values = $this->redis->lRange($this->prefix, 0, -1);
 
         if (empty($values)) {
@@ -175,8 +255,11 @@ class Redis extends AbstractTaskAdapter
                 continue;
             }
 
-            $this->redis->lRem($this->prefix, $value, 1);
-            $this->redis->rPush($this->prefix . ':reserved', $value);
+            if ($this->redis->lRem($this->prefix, $value, 1) !== 1) {
+                continue;
+            }
+
+            $this->redis->zAdd($this->prefix . ':reserved', time() + $this->leaseSeconds, $value);
 
             return $job;
         }
@@ -185,7 +268,8 @@ class Redis extends AbstractTaskAdapter
     }
 
     /**
-     * Put a job back to pending
+     * Put a job back to pending, honoring its backoff schedule unless an
+     * explicit delay is given
      *
      * @param  AbstractJob $job
      * @param  ?int        $delay
@@ -193,7 +277,8 @@ class Redis extends AbstractTaskAdapter
      */
     public function release(AbstractJob $job, ?int $delay = null): Redis
     {
-        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        $this->removeFromReserved($job->getJobId());
+        $job->delay($delay ?? $job->getBackoffDelay());
         $this->redis->lPush($this->prefix, serialize(clone $job));
 
         return $this;
@@ -207,7 +292,7 @@ class Redis extends AbstractTaskAdapter
      */
     public function delete(AbstractJob $job): Redis
     {
-        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        $this->removeFromReserved($job->getJobId());
         return $this;
     }
 
@@ -220,7 +305,7 @@ class Redis extends AbstractTaskAdapter
      */
     public function bury(AbstractJob $job, ?string $reason = null): Redis
     {
-        $this->removeFromList($this->prefix . ':reserved', $job->getJobId());
+        $this->removeFromReserved($job->getJobId());
         $this->redis->set($this->prefix . ':dead-' . $job->getJobId(), serialize(clone $job));
 
         return $this;
@@ -243,7 +328,7 @@ class Redis extends AbstractTaskAdapter
      */
     public function count(): int
     {
-        return $this->redis->lLen($this->prefix) + $this->redis->lLen($this->prefix . ':reserved');
+        return $this->redis->lLen($this->prefix) + $this->redis->zCard($this->prefix . ':reserved');
     }
 
     /**
