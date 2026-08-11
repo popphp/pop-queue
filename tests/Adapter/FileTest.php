@@ -444,4 +444,84 @@ class FileTest extends TestCase
         }
     }
 
+    public function testReserveAbandonsClaimWhenReservedDirVanishesBeforeLeaseWrite()
+    {
+        // reserve() has a narrow window between its claiming rename() winning
+        // and the touch()/lease write that follows. A concurrent reclaim can
+        // move reserved/<index> away inside that window - and touch() on a
+        // now-vacant path would create a stray *regular file* there, which
+        // would make that index permanently unclaimable (rename() into it can
+        // never succeed again) and invisible to clear() (which only walks real
+        // job directories). reserve() must instead notice the directory is
+        // gone and treat it as an ordinary lost race.
+        //
+        // The window is only observable from inside reserve(), so this
+        // overrides the claim step to perform the real rename and then
+        // immediately simulate a concurrent reclaim putting the directory
+        // back in pending/ - exactly the state a real reclaim leaves behind.
+        $adapter = new class(__DIR__ . '/../tmp/pop-queue') extends File {
+            public function claimPendingDir(string $pendingDir, string $reservedDir): bool
+            {
+                if (!parent::claimPendingDir($pendingDir, $reservedDir)) {
+                    return false;
+                }
+                rename($reservedDir, $pendingDir);
+                return true;
+            }
+        };
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $this->assertNull(
+            $adapter->reserve(),
+            'A claim whose reserved directory vanished before the lease write must be abandoned, not completed.'
+        );
+
+        $this->assertFileDoesNotExist(
+            $adapter->getFolder() . '/reserved/1',
+            'reserve() must not leave a stray file where the reclaimed job directory used to be.'
+        );
+
+        // The job itself is untouched and still claimable by a normal adapter -
+        // a clean lost race, not a lost job.
+        $plain    = File::create(__DIR__ . '/../tmp/pop-queue');
+        $reserved = $plain->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($job->getJobId(), $reserved->getJobId());
+
+        $plain->delete($reserved);
+        $plain->clear();
+    }
+
+    public function testReserveSkipsAnIndexBlockedByANonDirectoryInReserved()
+    {
+        // The degraded state the guard above prevents from ever being created
+        // (and which an older build could leave behind): a plain file sitting
+        // at reserved/<index>. reserve() must skip over it cleanly - the
+        // claiming rename() simply fails - and keep serving the rest of the
+        // queue rather than erroring out.
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $blockedDir = $adapter->getFolder() . '/pending/1';
+        mkdir($blockedDir);
+        $job = Job::create(function(){ return 123; });
+        $job->getJobId();
+        file_put_contents($blockedDir . '/payload', serialize(clone $job));
+        file_put_contents($adapter->getFolder() . '/reserved/1', ''); // stray file where a job dir belongs
+
+        $other = Job::create(function(){ return 456; });
+        $adapter->push($other); // lands at index 2
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved, 'A blocked index must not stop the queue from serving later jobs.');
+        $this->assertEquals($other->getJobId(), $reserved->getJobId());
+
+        $adapter->delete($reserved);
+        unlink($adapter->getFolder() . '/reserved/1');
+        $adapter->clear();
+    }
+
 }

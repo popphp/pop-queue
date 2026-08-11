@@ -267,6 +267,24 @@ class File extends AbstractTaskAdapter
     }
 
     /**
+     * Atomically claim a pending job directory by moving it into reserved/.
+     * rename() is the whole claim: exactly one worker's rename off a given
+     * source directory can succeed. Isolated into its own method (rather than
+     * inlined in reserve()) purely so a test can deterministically simulate a
+     * concurrent reclaim landing in the narrow window between this rename
+     * winning and reserve()'s follow-up touch()/lease write - see the guard in
+     * reserve() for what that window can otherwise damage.
+     *
+     * @param  string $pendingDir
+     * @param  string $reservedDir
+     * @return bool
+     */
+    protected function claimPendingDir(string $pendingDir, string $reservedDir): bool
+    {
+        return @rename($pendingDir, $reservedDir);
+    }
+
+    /**
      * Push job on to queue
      *
      * @param  AbstractJob $job
@@ -341,8 +359,24 @@ class File extends AbstractTaskAdapter
             }
 
             $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
-            if (!@rename($pendingDir, $reservedDir)) {
+            if (!$this->claimPendingDir($pendingDir, $reservedDir)) {
                 // Lost the race to another worker - move on.
+                continue;
+            }
+
+            // A concurrent reclaim can move reserved/<index> away in the narrow
+            // window between the rename() above winning and the touch() below.
+            // Without this check, touch() on the now-vacant path would create a
+            // stray *regular file* where a job directory is expected, making
+            // that index permanently unclaimable (every future reserve() scan
+            // reaches it, the claiming rename() fails against a file, so it is
+            // skipped forever) and invisible to clear() (which only walks real
+            // job directories). Bailing out here degrades that into an ordinary
+            // lost race - the same safe failure mode every other race path in
+            // this class has. It does not close the underlying window; encoding
+            // the claim time into the rename itself is the real fix, deferred
+            // to a future design pass.
+            if (!is_dir($reservedDir)) {
                 continue;
             }
 
