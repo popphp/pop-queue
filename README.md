@@ -284,7 +284,25 @@ use Pop\Queue\Process\Job;
 $job = Job::exec('ls -la');
 ```
 
-For security reasons, you should exercise caution when using this.
+This runs via the shell (`Symfony\Process`'s `fromShellCommandline()`), so pipes, redirects, and
+chaining work exactly as they would on a command line. Because it goes through a shell, avoid
+building this string from anything that isn't a fully-trusted literal.
+
+For a command built from any value you don't fully trust, pass an array instead:
+
+```php
+$job = Job::exec(['ls', '-la']);
+```
+
+This runs with no shell involved at all — each array element is passed directly to the process,
+so shell metacharacters in any of them are inert. Prefer this form whenever part of the command
+isn't a hardcoded literal.
+
+A failing command (non-zero exit code) throws `Symfony\Component\Process\Exception\ProcessFailedException`,
+which flows through `Queue::work()` like any other job failure — `failed()`, then `release()` or
+`bury()` depending on remaining attempts. A job's `setTimeout()` is enforced by `Symfony\Process`
+itself for exec jobs, which (unlike a plain `exec()` call) can actually terminate the underlying
+child process on expiry, not just abandon it running in the background.
 
 [Top](#pop-queue)
 
@@ -827,6 +845,36 @@ And with FILO, the first job pushed in will be the **last** job popped off, as t
 pushed job will be popped off instead.
 
 *(When you use a SQS FIFO queue, the queue priority is automatically set to FIFO)*
+
+### Signed payloads
+
+Every storage adapter serializes job and task objects to persist them, and unserializes them back
+on read. By default, that's PHP's plain `serialize()`/`unserialize()` — anyone who can write to the
+underlying storage directly (a compromised Redis instance, SQL injection elsewhere in your app, a
+writable queue directory) could otherwise plant a crafted payload and get it executed the moment a
+worker unserializes it.
+
+`Pop\Queue\Process\PayloadSigner` closes that gap. Call `setKey()` once, at application bootstrap,
+before any queue or worker operation:
+
+```php
+use Pop\Queue\Process\PayloadSigner;
+
+PayloadSigner::setKey($_ENV['QUEUE_SIGNING_KEY']);
+```
+
+Once a key is configured, every adapter HMAC-signs a payload before writing it and verifies that
+signature before ever unserializing it back — a payload that doesn't verify (tampered, or written by
+anything other than your own application) is treated exactly like a corrupt payload today: skipped,
+never unserialized, never executed.
+
+This is opt-in - with no key configured (the default), behavior is completely unchanged from
+before. There's no fallback-to-unsigned read path once a key is set, by design: turning signing on
+mid-lifecycle means anything already queued before that point will fail verification and be
+skipped, so either drain your queues first or accept that any in-flight jobs from before the
+rollout are dropped.
+
+[Top](#pop-queue)
 
 ### Events
 
