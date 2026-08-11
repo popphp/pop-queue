@@ -542,4 +542,235 @@ class QueueTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function testWorkFiresJobPreAndPostEventsOnSuccess()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.job.pre', function($job, $queue) use (&$fired) {
+            $fired[] = ['queue.job.pre', $job->getJobId()];
+        });
+        $events->on('queue.job.post', function($job, $queue) use (&$fired) {
+            $fired[] = ['queue.job.post', $job->getJobId()];
+        });
+        $events->on('queue.job.failed', function() use (&$fired) {
+            $fired[] = ['queue.job.failed'];
+        });
+        $events->on('queue.job.buried', function() use (&$fired) {
+            $fired[] = ['queue.job.buried'];
+        });
+        $queue->setEvents($events);
+
+        $job = Job::create(function(){
+            return 'Job #1' . PHP_EOL;
+        });
+        $queue->addJob($job);
+
+        $result = $queue->work();
+
+        $this->assertEquals([
+            ['queue.job.pre', $job->getJobId()],
+            ['queue.job.post', $job->getJobId()],
+        ], $fired);
+
+        $queue->clear();
+    }
+
+    public function testWorkFiresJobFailedEventOnFailureStillValidForRetry()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.job.pre', function() use (&$fired) {
+            $fired[] = 'pre';
+        });
+        $events->on('queue.job.post', function() use (&$fired) {
+            $fired[] = 'post';
+        });
+        $events->on('queue.job.failed', function($job, $queue, $exception) use (&$fired) {
+            $fired[] = 'failed:' . $exception->getMessage();
+        });
+        $events->on('queue.job.buried', function() use (&$fired) {
+            $fired[] = 'buried';
+        });
+        $queue->setEvents($events);
+
+        $job = Job::create(function(){
+            throw new \Exception('Boom!');
+        });
+        $queue->addJob($job);
+
+        $queue->work();
+
+        $this->assertEquals(['pre', 'failed:Boom!'], $fired);
+
+        $queue->clear();
+        $queue->clearFailed();
+    }
+
+    public function testWorkFiresJobFailedAndBuriedEventsWhenNoLongerValid()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.job.failed', function($job, $queue, $exception) use (&$fired) {
+            $fired[] = 'failed';
+        });
+        $events->on('queue.job.buried', function($job, $queue, $reason) use (&$fired) {
+            $fired[] = 'buried:' . $reason;
+        });
+        $queue->setEvents($events);
+
+        $job = Job::create(function(){
+            throw new \Exception('Boom!');
+        });
+        $job->setMaxAttempts(1);
+        $queue->addJob($job);
+
+        $queue->work();
+
+        $this->assertEquals(['failed', 'buried:Boom!'], $fired);
+
+        $queue->clear();
+        $queue->clearFailed();
+    }
+
+    public function testWorkFiresOnlyBuriedEventWhenJobIsAlreadyInvalidBeforeRunning()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.job.pre', function() use (&$fired) {
+            $fired[] = 'pre';
+        });
+        $events->on('queue.job.buried', function($job, $queue, $reason) use (&$fired) {
+            $fired[] = 'buried:' . $reason;
+        });
+        $queue->setEvents($events);
+
+        $job = Job::create(function(){
+            return 'never runs';
+        });
+        // runUntil() in the past makes isExpired() (and so isValid()) false
+        // before the job is ever reserved/run - AbstractJob has no public
+        // attempts setter, so an already-past runUntil is the way to
+        // construct an already-invalid job without running it first.
+        $job->runUntil(time() - 10);
+        $queue->addJob($job);
+
+        $queue->work();
+
+        $this->assertEquals(['buried:Exceeded max attempts or expired before execution'], $fired);
+
+        $queue->clear();
+        $queue->clearFailed();
+    }
+
+    public function testWorkListenerExceptionPropagatesAndIsNotMisattributedAsJobFailure()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+
+        $events->on('queue.job.post', function() {
+            throw new \RuntimeException('Listener bug!');
+        });
+        $queue->setEvents($events);
+
+        $job = Job::create(function(){
+            return 'Job #1' . PHP_EOL;
+        });
+        $queue->addJob($job);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Listener bug!');
+
+        try {
+            $queue->work();
+        } finally {
+            // The job's own execution succeeded and was already delete()'d
+            // as completed - by the time the queue.job.post listener threw,
+            // the try/catch had already fully resolved, so it must not have
+            // been released back to pending or buried as if IT had failed.
+            // AdapterInterface has no per-job "was this buried/dead" lookup
+            // by ID other than getDeadJob(), so confirm via both: nothing
+            // active left (the completed job was deleted) and nothing dead.
+            $this->assertFalse($queue->adapter()->hasJobs());
+            $this->assertFalse($queue->adapter()->hasDeadJobs());
+        }
+    }
+
+    public function testWorkWithNoEventsSetIsUnaffected()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $job   = Job::create(function(){
+            return 'Job #1' . PHP_EOL;
+        });
+        $queue->addJob($job);
+
+        $result = $queue->work();
+        $this->assertTrue($result->isComplete());
+
+        $queue->clear();
+    }
+
+    public function testEvaluateTasksOnceFiresTaskPreAndPostEventsOnSuccess()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.task.pre', function($task) use (&$fired) {
+            $fired[] = ['queue.task.pre', $task->getJobId()];
+        });
+        $events->on('queue.task.post', function($task) use (&$fired) {
+            $fired[] = ['queue.task.post', $task->getJobId()];
+        });
+        $events->on('queue.task.failed', function() use (&$fired) {
+            $fired[] = ['queue.task.failed'];
+        });
+        $queue->setEvents($events);
+
+        $task = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everySecond();
+
+        $ran = $queue->evaluateTasksOnce([$task->getJobId() => $task], null, false);
+
+        $this->assertEquals([
+            ['queue.task.pre', $task->getJobId()],
+            ['queue.task.post', $task->getJobId()],
+        ], $fired);
+        $this->assertArrayHasKey($task->getJobId(), $ran);
+    }
+
+    public function testEvaluateTasksOnceFiresTaskFailedEvent()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('queue.task.pre', function() use (&$fired) {
+            $fired[] = 'pre';
+        });
+        $events->on('queue.task.post', function() use (&$fired) {
+            $fired[] = 'post';
+        });
+        $events->on('queue.task.failed', function($task, $queue, $exception) use (&$fired) {
+            $fired[] = 'failed:' . $exception->getMessage();
+        });
+        $queue->setEvents($events);
+
+        $task = Task::create(function(){
+            throw new \Exception('Task boom!');
+        })->everySecond();
+
+        $queue->evaluateTasksOnce([$task->getJobId() => $task], null, false);
+
+        $this->assertEquals(['pre', 'failed:Task boom!'], $fired);
+    }
+
 }

@@ -293,20 +293,36 @@ class Queue extends AbstractQueue
         }
 
         if (!$job->isValid()) {
-            $this->adapter->bury($job, 'Exceeded max attempts or expired before execution');
+            $reason = 'Exceeded max attempts or expired before execution';
+            $this->adapter->bury($job, $reason);
+            $this->triggerEvent('queue.job.buried', ['job' => $job, 'queue' => $this, 'reason' => $reason], $application);
             return $job;
         }
+
+        $this->triggerEvent('queue.job.pre', ['job' => $job, 'queue' => $this], $application);
+
+        $exception = null;
 
         try {
             $this->runWithTimeout($job, $application);
             $job->complete();
             $this->adapter->delete($job);
         } catch (\Throwable $e) {
+            $exception = $e;
             $job->failed($e->getMessage());
             if ($job->isValid()) {
                 $this->adapter->release($job);
             } else {
                 $this->adapter->bury($job, $e->getMessage());
+            }
+        }
+
+        if ($exception === null) {
+            $this->triggerEvent('queue.job.post', ['job' => $job, 'queue' => $this], $application);
+        } else {
+            $this->triggerEvent('queue.job.failed', ['job' => $job, 'queue' => $this, 'exception' => $exception], $application);
+            if (!$job->isValid()) {
+                $this->triggerEvent('queue.job.buried', ['job' => $job, 'queue' => $this, 'reason' => $exception->getMessage()], $application);
             }
         }
 
@@ -390,14 +406,18 @@ class Queue extends AbstractQueue
                 continue;
             }
 
+            $this->triggerEvent('queue.task.pre', ['task' => $task, 'queue' => $this], $application);
+
+            $exception = null;
+
             try {
                 $task->run($application);
                 $task->complete();
                 if (!$isSubMinute) {
                     $this->adapter->updateTask($task);
                 }
-                $ran[$task->getJobId()] = $task;
             } catch (\Exception $e) {
+                $exception = $e;
                 $task->failed($e->getMessage());
                 if ($isSubMinute) {
                     $this->adapter->removeTask($taskId);
@@ -406,7 +426,14 @@ class Queue extends AbstractQueue
                 } else {
                     $this->adapter->updateTask($task);
                 }
-                $ran[$task->getJobId()] = $task;
+            }
+
+            $ran[$task->getJobId()] = $task;
+
+            if ($exception === null) {
+                $this->triggerEvent('queue.task.post', ['task' => $task, 'queue' => $this], $application);
+            } else {
+                $this->triggerEvent('queue.task.failed', ['task' => $task, 'queue' => $this, 'exception' => $exception], $application);
             }
         }
 
