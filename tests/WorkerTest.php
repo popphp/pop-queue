@@ -14,6 +14,18 @@ use PHPUnit\Framework\TestCase;
 class WorkerTest extends TestCase
 {
 
+    /**
+     * Set from within a job closure in
+     * testStopCalledFromWithinAJobDoesNotInterruptThatJob() - a static
+     * property because the closure that sets it runs as a deserialized
+     * clone by the time it actually executes (see that test's comments
+     * for why), so a captured "use (&$var)" reference wouldn't survive
+     * the round-trip, but a static property (owned by the class, not any
+     * one instance) does.
+     * @var bool
+     */
+    protected static bool $ranAfterStop = false;
+
     public function testConstructor()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
@@ -496,6 +508,212 @@ class WorkerTest extends TestCase
 
         $this->assertFalse($worker->isStopped());
         $worker->stop();
+        $this->assertTrue($worker->isStopped());
+    }
+
+    public function testWorkLoopSleepsWhenIdleAndStopsViaListener()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $ticks  = 0;
+
+        $worker = Worker::create($queue);
+        $worker->setEvents($events);
+
+        $events->on('worker.work_loop.idle', function($worker) use (&$ticks) {
+            $ticks++;
+            if ($ticks >= 2) {
+                $worker->stop();
+            }
+        });
+
+        $start = microtime(true);
+        $worker->workLoop(1);
+        $elapsed = microtime(true) - $start;
+
+        // Two idle ticks means at least 2 real one-second sleeps happened
+        // before stop() was called - proving the backoff genuinely sleeps,
+        // not just that the loop eventually returns.
+        $this->assertGreaterThanOrEqual(2, $elapsed);
+        $this->assertEquals(2, $ticks);
+    }
+
+    public function testWorkLoopDrainsAvailableJobsWithoutSleepingBetweenThem()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        for ($i = 0; $i < 3; $i++) {
+            $queue->addJob(Job::create(function(){
+                return 'job';
+            }));
+        }
+
+        $worker = Worker::create($queue);
+        $drained = 0;
+
+        $events = new EventManager();
+        $events->on('worker.work_loop.tick', function($jobs, $worker) use (&$drained) {
+            foreach ($jobs as $job) {
+                if ($job !== null) {
+                    $drained++;
+                }
+            }
+            if ($drained >= 3) {
+                $worker->stop();
+            }
+        });
+        $worker->setEvents($events);
+
+        $start = microtime(true);
+        $worker->workLoop(5);
+        $elapsed = microtime(true) - $start;
+
+        // 3 jobs drained across 3 ticks with no idle sleep between them -
+        // if the loop slept 5s between ticks regardless of whether work
+        // was found, this would take >= 10s. It shouldn't take anywhere
+        // close to that.
+        $this->assertEquals(3, $drained);
+        $this->assertLessThan(5, $elapsed);
+
+        $worker->clear('pop-queue');
+    }
+
+    public function testStopCalledFromWithinAJobDoesNotInterruptThatJob()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        self::$ranAfterStop = false;
+
+        $worker = Worker::create($queue);
+
+        // Deviation from the brief's literal test code, documented here and
+        // in the task report: jobs pushed through the File adapter always
+        // round-trip through serialize()/unserialize() when reserved for
+        // execution (Job::__sleep()/__wakeup(), and see File::push()'s own
+        // "identity survives the serialize/unserialize round-trip" comment)
+        // - even within the same process. That means by the time this
+        // closure actually runs, $worker is a deserialized clone, not the
+        // same PHP instance the test holds, and a captured "use (&$var)"
+        // reference can't survive that round-trip either. Verbatim, the
+        // brief's test would silently observe a worker/flag that were never
+        // touched and hang forever (nothing would ever satisfy the real
+        // workLoop()'s stop condition). self::$ranAfterStop sidesteps the
+        // reference problem (a static property belongs to the class, not to
+        // any one instance), and the tick listener below - running
+        // in-process against the real $worker, not through job
+        // serialization - is what actually ends the loop.
+        $job = Job::create(function() use ($worker) {
+            $worker->stop();
+            // If stop() somehow tore down execution instead of just
+            // setting a flag for the loop to notice later, this line
+            // would never run.
+            self::$ranAfterStop = true;
+        });
+        $queue->addJob($job);
+
+        $events = new EventManager();
+        $events->on('worker.work_loop.tick', function() use ($worker) {
+            $worker->stop();
+        });
+        $worker->setEvents($events);
+
+        $worker->workLoop(1);
+
+        $this->assertTrue(self::$ranAfterStop);
+        $this->assertTrue($worker->isStopped());
+
+        $worker->clear('pop-queue');
+    }
+
+    public function testRunLoopSleepsWhenIdleAndStopsViaListener()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $ticks  = 0;
+
+        $worker = Worker::create($queue);
+        $worker->setEvents($events);
+
+        $events->on('worker.run_loop.idle', function($worker) use (&$ticks) {
+            $ticks++;
+            if ($ticks >= 2) {
+                $worker->stop();
+            }
+        });
+
+        $start = microtime(true);
+        $worker->runLoop(1);
+        $elapsed = microtime(true) - $start;
+
+        $this->assertGreaterThanOrEqual(2, $elapsed);
+        $this->assertEquals(2, $ticks);
+    }
+
+    public function testRunLoopFiresTickAndStopsAfterTaskRuns()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $task  = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everyMinute()->setBuffer(-1);
+        $queue->addTask($task);
+
+        $worker = Worker::create($queue);
+        $events = new EventManager();
+        $ranAny = false;
+
+        $events->on('worker.run_loop.tick', function($tasks, $worker) use (&$ranAny) {
+            foreach ($tasks as $queueTasks) {
+                if (!empty($queueTasks)) {
+                    $ranAny = true;
+                }
+            }
+            $worker->stop();
+        });
+        $worker->setEvents($events);
+
+        $worker->runLoop(1);
+
+        $this->assertTrue($ranAny);
+
+        $worker->clearTasks('pop-queue');
+    }
+
+    public function testWorkLoopAndRunLoopFireShutdownEvent()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+        $events = new EventManager();
+        $fired  = [];
+
+        $events->on('worker.work_loop.tick', function() use ($worker) {
+            $worker->stop();
+        });
+        $events->on('worker.work_loop.shutdown', function() use (&$fired) {
+            $fired[] = 'work_loop.shutdown';
+        });
+        $worker->setEvents($events);
+
+        $worker->workLoop(1);
+
+        $this->assertEquals(['work_loop.shutdown'], $fired);
+    }
+
+    public function testWorkLoopStillFunctionsWithoutPcntl()
+    {
+        // installSignalHandlers() must be a no-op when ext-pcntl isn't
+        // loaded, but the loop itself (and stop()) must still work
+        // correctly regardless - this test passes in either environment,
+        // since it never relies on pcntl being present or absent, only on
+        // stop() (a signal-independent mechanism) working.
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+
+        $events = new EventManager();
+        $events->on('worker.work_loop.tick', function() use ($worker) {
+            $worker->stop();
+        });
+        $worker->setEvents($events);
+
+        $worker->workLoop(1);
+
         $this->assertTrue($worker->isStopped());
     }
 

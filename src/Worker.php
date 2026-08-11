@@ -416,6 +416,119 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
+     * Install SIGTERM/SIGINT handlers that request a graceful stop(),
+     * rather than letting the OS terminate the process immediately. A
+     * no-op when ext-pcntl isn't loaded - workLoop()/runLoop() still run
+     * correctly without it, just without OS-signal-based shutdown
+     * available (only stop() can end them in that case).
+     *
+     * @return void
+     */
+    protected function installSignalHandlers(): void
+    {
+        if (!extension_loaded('pcntl')) {
+            return;
+        }
+
+        pcntl_async_signals(true);
+        pcntl_signal(SIGTERM, function() {
+            $this->stop();
+        });
+        pcntl_signal(SIGINT, function() {
+            $this->stop();
+        });
+    }
+
+    /**
+     * Work jobs across all registered queues, forever, until stopped.
+     * Calls workAll() every iteration; sleeps $sleepSeconds only when a
+     * full pass finds nothing anywhere (every queue returned null),
+     * looping again immediately otherwise. Stoppable via stop() directly
+     * or, when ext-pcntl is loaded, via SIGTERM/SIGINT - either way, the
+     * current iteration (including any in-flight job) always finishes
+     * before the loop exits.
+     *
+     * @param  int $sleepSeconds
+     * @return void
+     */
+    public function workLoop(int $sleepSeconds = 1): void
+    {
+        $this->stopped = false;
+        $this->installSignalHandlers();
+
+        while (!$this->stopped) {
+            $jobs = $this->workAll();
+
+            $anyWorked = false;
+            foreach ($jobs as $job) {
+                if ($job !== null) {
+                    $anyWorked = true;
+                    break;
+                }
+            }
+
+            $this->triggerEvent('worker.work_loop.tick', ['jobs' => $jobs, 'worker' => $this]);
+
+            if ($this->stopped) {
+                break;
+            }
+
+            if (!$anyWorked) {
+                $this->triggerEvent('worker.work_loop.idle', ['worker' => $this]);
+                sleep($sleepSeconds);
+            }
+        }
+
+        $this->triggerEvent('worker.work_loop.shutdown', ['worker' => $this]);
+    }
+
+    /**
+     * Run scheduled tasks across all registered queues, forever, until
+     * stopped. Calls runAll() every iteration; sleeps $sleepSeconds only
+     * when a full pass finds nothing due anywhere, looping again
+     * immediately otherwise. runAll() already blocks appropriately on its
+     * own whenever a sub-minute task exists, so this backoff sleep only
+     * ever triggers on the coarse-only-or-nothing-scheduled case, which
+     * returns near-instantly and would otherwise busy-loop. A stop signal
+     * arriving mid-runAll() (during its own internal sub-minute tick loop)
+     * isn't noticed until that call returns - see the design spec's
+     * Non-goals for why this latency is accepted rather than fixed here.
+     *
+     * @param  int $sleepSeconds
+     * @return void
+     */
+    public function runLoop(int $sleepSeconds = 1): void
+    {
+        $this->stopped = false;
+        $this->installSignalHandlers();
+
+        while (!$this->stopped) {
+            $tasks = $this->runAll();
+
+            $anyRan = false;
+            foreach ($tasks as $queueTasks) {
+                if (!empty($queueTasks)) {
+                    $anyRan = true;
+                    break;
+                }
+            }
+
+            $this->triggerEvent('worker.run_loop.tick', ['tasks' => $tasks, 'worker' => $this]);
+
+            if ($this->stopped) {
+                break;
+            }
+
+            if (!$anyRan) {
+                $this->triggerEvent('worker.run_loop.idle', ['worker' => $this]);
+                sleep($sleepSeconds);
+            }
+        }
+
+        $this->triggerEvent('worker.run_loop.shutdown', ['worker' => $this]);
+    }
+
+    /**
      * Clear jobs from queue
      *
      * @param  string $queueName
