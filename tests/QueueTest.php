@@ -162,6 +162,51 @@ class QueueTest extends TestCase
         $queue->clearFailed();
     }
 
+    public function testWorkExecJobFailureIsRecordedAsFailedNotCompleted()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $job   = Job::exec(['false']);
+        $job->setMaxAttempts(1);
+
+        $queue->addJob($job);
+        $job = $queue->work();
+
+        $this->assertTrue($job->hasFailed());
+        $this->assertFalse($job->isComplete());
+        $queue->clearFailed();
+    }
+
+    public function testWorkExecJobTimeoutIsEnforcedByProcessNotPcntlAlarm()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $job   = Job::exec(['sleep', '3']);
+        $job->setTimeout(1);
+        $job->setMaxAttempts(1);
+
+        $queue->addJob($job);
+
+        $start   = microtime(true);
+        $job     = $queue->work();
+        $elapsed = microtime(true) - $start;
+
+        $this->assertTrue($job->hasFailed());
+        // Proves the child was actually interrupted around the 1-second
+        // configured timeout, not left to run the full 3 seconds.
+        $this->assertLessThan(2.5, $elapsed);
+
+        // Queue's own pcntl-based TimeoutException always reads
+        // "... exceeded its N second timeout." - confirm that text is
+        // absent, proving runWithTimeout() deferred entirely to Process's
+        // own timeout for this exec job rather than layering its own
+        // competing pcntl alarm on top (which could abort Process's
+        // internal wait()/kill logic mid-flight and leave the child
+        // process orphaned - see runWithTimeout()'s docblock).
+        $messages = $job->getFailedMessages();
+        $this->assertStringNotContainsString('second timeout', end($messages));
+
+        $queue->clearFailed();
+    }
+
     public function testRunTask1()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));

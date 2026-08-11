@@ -16,6 +16,9 @@ namespace Pop\Queue\Process;
 use Pop\Application;
 use Pop\Utils\CallableObject;
 use Laravel\SerializableClosure\SerializableClosure;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Symfony\Component\Process\Process;
 
 /**
  * Abstract job class
@@ -55,10 +58,14 @@ abstract class AbstractJob implements JobInterface
     protected ?string $command = null;
 
     /**
-     * Job CLI executable command
-     * @var ?string
+     * Job CLI executable command - a shell command string (runs via the
+     * shell, e.g. 'ls -la | wc -l'), or an argv-style array to run with no
+     * shell involved at all (e.g. ['ls', '-la'] - the safer form when any
+     * part of the command isn't a fully-trusted literal, since shell
+     * metacharacters in an argv element are inert)
+     * @var string|array|null
      */
-    protected ?string $exec = null;
+    protected string|array|null $exec = null;
 
     /**
      * Job started timestamp
@@ -297,10 +304,10 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job CLI executable command
      *
-     * @param  string $command
+     * @param  string|array $command
      * @return AbstractJob
      */
-    public function setExec(string $command): AbstractJob
+    public function setExec(string|array $command): AbstractJob
     {
         $this->exec = $command;
         return $this;
@@ -329,9 +336,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job CLI executable command
      *
-     * @return ?string
+     * @return string|array|null
      */
-    public function getExec(): ?string
+    public function getExec(): string|array|null
     {
         return $this->exec;
     }
@@ -857,15 +864,41 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
+     * Build the Process instance for this job's exec command, without
+     * running it. Split out from runExec() purely so a test can construct
+     * one and inspect its configured timeout directly, without actually
+     * executing a command.
+     *
+     * @return Process
+     */
+    protected function buildExecProcess(): Process
+    {
+        $process = is_array($this->exec)
+            ? new Process($this->exec)
+            : Process::fromShellCommandline($this->exec);
+
+        // Process defaults to a 60-second timeout on every instance unless
+        // explicitly told otherwise - disable it entirely when this job has
+        // no configured timeout, matching exec()'s old no-timeout-by-default
+        // behavior. Getting this wrong would silently cap every exec job at
+        // 60 seconds regardless of what the job actually needed.
+        $process->setTimeout($this->hasTimeout() ? $this->getTimeout() : null);
+
+        return $process;
+    }
+
+    /**
      * Run CLI executable command
      *
+     * @throws ProcessFailedException|ProcessTimedOutException
      * @return mixed
      */
     protected function runExec(): mixed
     {
-        $output = [];
-        exec($this->exec, $output);
-        $this->results = $output;
+        $process = $this->buildExecProcess();
+        $process->mustRun();
+
+        $this->results = array_filter(explode(PHP_EOL, $process->getOutput()));
         return $this->results;
     }
 

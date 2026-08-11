@@ -6,6 +6,8 @@ use Pop\Application;
 use Pop\Queue\Process\Job;
 use PHPUnit\Framework\TestCase;
 use Pop\Utils\CallableObject;
+use Symfony\Component\Process\Exception\ProcessFailedException;
+use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 class JobTest extends TestCase
 {
@@ -130,6 +132,74 @@ class JobTest extends TestCase
     {
         $job = Job::exec('ls -la');
         $this->assertIsArray($job->run());
+    }
+
+    public function testExecArray()
+    {
+        $job = Job::exec(['ls', '-la']);
+        $this->assertEquals(['ls', '-la'], $job->getExec());
+        $this->assertTrue($job->hasExec());
+    }
+
+    public function testRunExecArray()
+    {
+        $job = Job::exec(['ls', '-la']);
+        $this->assertIsArray($job->run());
+    }
+
+    public function testRunExecThrowsOnFailingCommand()
+    {
+        $job = Job::exec('exit 1');
+        $this->expectException(ProcessFailedException::class);
+        $job->run();
+    }
+
+    public function testRunExecArrayThrowsOnFailingCommand()
+    {
+        $job = Job::exec(['false']);
+        $this->expectException(ProcessFailedException::class);
+        $job->run();
+    }
+
+    public function testRunExecTimeoutThrowsProcessTimedOutException()
+    {
+        $job = Job::exec(['sleep', '3']);
+        $job->setTimeout(1);
+
+        $start = microtime(true);
+
+        try {
+            $job->run();
+            $this->fail('Expected ProcessTimedOutException was not thrown.');
+        } catch (ProcessTimedOutException $e) {
+            $elapsed = microtime(true) - $start;
+            // Proves the child process was actually interrupted around the
+            // 1-second configured timeout, not left to run the full 3
+            // seconds while PHP just moved on.
+            $this->assertLessThan(2.5, $elapsed);
+        }
+    }
+
+    public function testExecProcessHasNoTimeoutByDefault()
+    {
+        $job = new class extends Job {
+            public function exposeExecProcess()
+            {
+                return $this->buildExecProcess();
+            }
+        };
+        $job->setExec(['sleep', '0.1']);
+
+        // Symfony\Process defaults to a 60-second timeout on every instance
+        // unless told otherwise - a job with no configured timeout must get
+        // that disabled entirely (null), matching exec()'s old
+        // no-timeout-by-default behavior. This is a fast, deterministic
+        // check on the constructed-but-not-yet-run Process object, not a
+        // 60+ second test.
+        $this->assertNull($job->exposeExecProcess()->getTimeout());
+
+        $job->setTimeout(5);
+        $this->assertEquals(5.0, $job->exposeExecProcess()->getTimeout());
     }
 
     public function testRunCommand()

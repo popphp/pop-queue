@@ -52,13 +52,18 @@ class Job extends AbstractJob
     }
 
     /**
-     * Create a job object with a CLI executable command
+     * Create a job object with a CLI executable command - a shell command
+     * string (runs via the shell, e.g. Job::exec('ls -la | wc -l')), or an
+     * argv-style array to run with no shell involved at all (e.g.
+     * Job::exec(['ls', '-la']) - the safer form when any part of the
+     * command isn't a fully-trusted literal, since shell metacharacters in
+     * an argv element are inert)
      *
-     * @param  string  $command
-     * @param  ?string $id
+     * @param  string|array $command
+     * @param  ?string      $id
      * @return static
      */
-    public static function exec(string $command, ?string $id = null): static
+    public static function exec(string|array $command, ?string $id = null): static
     {
         return (new static(null, null, $id))->setExec($command);
     }

@@ -113,10 +113,10 @@ interface JobInterface
     /**
      * Set job CLI executable command
      *
-     * @param  string $command
+     * @param  string|array $command
      * @return JobInterface
      */
-    public function setExec(string $command): JobInterface;
+    public function setExec(string|array $command): JobInterface;
 
     /**
      * Get job callable
@@ -135,9 +135,9 @@ interface JobInterface
     /**
      * Get job CLI executable command
      *
-     * @return ?string
+     * @return string|array|null
      */
-    public function getExec(): ?string;
+    public function getExec(): string|array|null;
 
     /**
      * Has job callable

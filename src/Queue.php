@@ -332,7 +332,16 @@ class Queue extends AbstractQueue
     }
 
     /**
-     * Run a job, enforcing its soft timeout when ext-pcntl is available
+     * Run a job, enforcing its soft timeout when ext-pcntl is available.
+     * Exec-type jobs are exempt from this pcntl-based alarm entirely -
+     * AbstractJob::runExec() wires the job's timeout directly into
+     * Symfony\Process's own setTimeout(), which is both more precise and
+     * (unlike a pcntl alarm racing against a raw exec() call) actually
+     * capable of killing the spawned child process on expiry. Layering a
+     * second, competing pcntl alarm on top for the same job risks
+     * interrupting Process's own internal wait()/kill logic mid-flight if
+     * the alarm fires first, defeating the reliable-child-termination
+     * guarantee this task exists to add.
      *
      * @param  AbstractJob  $job
      * @param  ?Application $application
@@ -340,7 +349,7 @@ class Queue extends AbstractQueue
      */
     protected function runWithTimeout(AbstractJob $job, ?Application $application): mixed
     {
-        if (!$job->hasTimeout() || !extension_loaded('pcntl')) {
+        if (!$job->hasTimeout() || !extension_loaded('pcntl') || $job->hasExec()) {
             return $job->run($application);
         }
 
