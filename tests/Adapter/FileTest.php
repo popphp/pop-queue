@@ -583,7 +583,6 @@ class FileTest extends TestCase
         $this->assertEquals($task->getJobId(), $adapter->getTasks()[0]);
 
         $adapter->clearTasks();
-        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $task->getJobId());
     }
 
     public function testRemoveTaskClearsClaimState()
@@ -601,7 +600,6 @@ class FileTest extends TestCase
         $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
 
         $adapter->clearTasks();
-        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $task->getJobId());
     }
 
 }
