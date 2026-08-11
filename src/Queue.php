@@ -282,6 +282,10 @@ class Queue extends AbstractQueue
      */
     protected function evaluateTasksOnce(array $tasks, ?Application $application, bool $onlySubMinute = false): array
     {
+        if (!($this->adapter instanceof TaskAdapterInterface)) {
+            return [];
+        }
+
         $ran = [];
 
         foreach ($tasks as $taskId => $task) {
