@@ -205,7 +205,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * Work next job. Pass a queue name to work that specific queue (exactly
      * today's behavior). Pass nothing to try every registered queue in
      * weight order (highest first), returning the first job successfully
-     * claimed - the actual "priority queue" worker model, since workAll()
+     * claimed - the highest-weight-first worker model, since workAll()
      * fans out to every queue regardless of weight and doesn't need this.
      *
      * @param  ?string $queueName
