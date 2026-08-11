@@ -898,7 +898,7 @@ abstract class AbstractJob implements JobInterface
         $process = $this->buildExecProcess();
         $process->mustRun();
 
-        $this->results = array_filter(explode(PHP_EOL, $process->getOutput()));
+        $this->results = array_values(array_filter(explode(PHP_EOL, $process->getOutput()), fn($line) => $line !== ''));
         return $this->results;
     }
 

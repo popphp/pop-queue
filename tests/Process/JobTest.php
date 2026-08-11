@@ -147,6 +147,14 @@ class JobTest extends TestCase
         $this->assertIsArray($job->run());
     }
 
+    public function testRunExecPreservesLiteralZeroOutputLine()
+    {
+        $job     = Job::exec('echo 0');
+        $results = $job->run();
+
+        $this->assertEquals(['0'], $results);
+    }
+
     public function testRunExecThrowsOnFailingCommand()
     {
         $job = Job::exec('exit 1');

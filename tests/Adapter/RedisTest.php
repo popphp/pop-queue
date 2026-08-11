@@ -512,4 +512,22 @@ class RedisTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveRejectsUnsignedPayloadWhenSigningKeyConfigured()
+    {
+        PayloadSigner::setKey(null);
+
+        $adapter = new Redis();
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        PayloadSigner::setKey('test-secret-key');
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
+    }
+
 }

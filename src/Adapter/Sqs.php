@@ -216,7 +216,7 @@ class Sqs extends AbstractAdapter
 
         $message = $result->get('Messages')[0];
         $raw     = PayloadSigner::verify(base64_decode($message['Body']));
-        $job     = ($raw !== false) ? unserialize($raw) : false;
+        $job     = ($raw !== false) ? unserialize($raw) : null;
 
         if ($job instanceof AbstractJob) {
             $this->receiptHandles[$job->getJobId()] = $message['ReceiptHandle'];

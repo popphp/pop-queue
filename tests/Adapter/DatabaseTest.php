@@ -910,6 +910,28 @@ class DatabaseTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveRejectsUnsignedPayloadWhenSigningKeyConfigured()
+    {
+        PayloadSigner::setKey(null);
+
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        PayloadSigner::setKey('test-secret-key');
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
+    }
+
     public function testClear()
     {
         $db = PopDb::sqliteConnect([

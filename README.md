@@ -26,6 +26,7 @@ pop-queue
     - [AWS SQS](#aws-sqs)
 * [Queues](#queues)
     - [Priority](#priority)
+    - [Signed payloads](#signed-payloads)
 * [Workers](#workers)
 * [Configuration](#configuration)
 
@@ -848,8 +849,9 @@ pushed job will be popped off instead.
 
 ### Signed payloads
 
-Every storage adapter serializes job and task objects to persist them, and unserializes them back
-on read. By default, that's PHP's plain `serialize()`/`unserialize()` — anyone who can write to the
+Every persistent storage adapter (`File`, `Database`, `Redis`, `Sqs`) serializes job and task objects
+to persist them, and unserializes them back on read. By default, that's PHP's plain
+`serialize()`/`unserialize()` — anyone who can write to the
 underlying storage directly (a compromised Redis instance, SQL injection elsewhere in your app, a
 writable queue directory) could otherwise plant a crafted payload and get it executed the moment a
 worker unserializes it.

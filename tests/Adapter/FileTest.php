@@ -77,6 +77,31 @@ class FileTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveRejectsUnsignedPayloadWhenSigningKeyConfigured()
+    {
+        // Push while unkeyed, so the stored payload has no signature at all
+        // - the real "an attacker without the key, or a payload queued
+        // before your app adopted signing" case. This is what the tamper
+        // test above doesn't cover: it proves reserve() actually calls
+        // PayloadSigner::verify() at all, not just that it tolerates
+        // garbage bytes the way plain unserialize() already did before this
+        // feature existed.
+        PayloadSigner::setKey(null);
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        PayloadSigner::setKey('test-secret-key');
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
+    }
+
     public function testPushAndReserve()
     {
         $job = Job::create(function(){
