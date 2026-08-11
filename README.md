@@ -846,6 +846,9 @@ $events->on('queue.job.post', function($job, $queue) {
 $queue->setEvents($events);
 ```
 
+`getEvents()` returns the currently-set manager (or `null`), `events()` is a bare alias for it, and
+`hasEvents()` returns whether one has been set at all.
+
 **Where the event manager comes from:** if you call `$queue->setEvents()`, that manager is used - full stop.
 If you don't, and you pass a `Pop\Application` into `work()`/`run()` that has its own event manager
 registered, that application's manager is used instead. If neither is set, event firing is a silent no-op.
