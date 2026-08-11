@@ -243,12 +243,11 @@ class QueueTest extends TestCase
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
 
-        $fireTimes = [];
-        $task1 = Task::create(function() use (&$fireTimes){
-            $fireTimes['task1'] = microtime(true);
+        $task1 = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
         })->everySecond();
-        $task2 = Task::create(function() use (&$fireTimes){
-            $fireTimes['task2'] = microtime(true);
+        $task2 = Task::create(function(){
+            return 'Task #2' . PHP_EOL;
         })->everySecond();
 
         $queue->addTasks([$task1, $task2]);
@@ -262,35 +261,49 @@ class QueueTest extends TestCase
 
         $this->assertArrayHasKey($task1->getJobId(), $tasks);
         $this->assertArrayHasKey($task2->getJobId(), $tasks);
-        $this->assertArrayHasKey('task1', $fireTimes);
-        $this->assertArrayHasKey('task2', $fireTimes);
+
+        // Read timing off the Task objects run() actually executed and
+        // returned (AbstractJob::run() calls start(), which stamps
+        // getStarted() with time()) rather than a closure side-effect: a
+        // task closure captured `use (&$var)` looks fine in-memory, but
+        // Queue::run() round-trips every task through the adapter's
+        // serialize/store/reload/__wakeup() cycle before invoking it, and
+        // PHP closure serialization cannot preserve a by-reference capture
+        // across that round trip - the closure that actually runs is a
+        // deserialized copy, so writes through the reference never reach
+        // the original test-local variable. Reading getStarted() off the
+        // returned Task avoids that pitfall entirely.
+        $started1 = $tasks[$task1->getJobId()]->getStarted();
+        $started2 = $tasks[$task2->getJobId()]->getStarted();
+
+        $this->assertNotNull($started1);
+        $this->assertNotNull($started2);
         // Both tasks are due immediately (everySecond()), so both should
-        // fire on the shared first pass, within a fraction of a second of
-        // each other - not one waiting for the other's full evaluation
-        // window (the old bug's signature: task2 wouldn't fire at all
-        // until task1's entire 60-second loop had finished). Note this
-        // does NOT assert on run()'s total elapsed time - run()'s tick
-        // loop intentionally runs to its full ~59-second window once any
-        // sub-minute task is present, whether or not that task already
-        // fired on tick 0 (matching the old code's behavior for a single
-        // sub-minute task, and the spec's Non-goals, which keep the
-        // blocking wait as-is until daemon mode exists).
-        $this->assertLessThan(1.5, abs($fireTimes['task2'] - $fireTimes['task1']));
+        // fire on the shared first pass, within the same second or the
+        // next - not one waiting for the other's full evaluation window
+        // (the old bug's signature: task2 wouldn't fire at all until
+        // task1's entire 60-second loop had finished, ~59-60s apart, not
+        // ~0-1s). Note this does NOT assert on run()'s total elapsed time
+        // - run()'s tick loop intentionally runs to its full ~59-second
+        // window once any sub-minute task is present, whether or not that
+        // task already fired on tick 0 (matching the old code's behavior
+        // for a single sub-minute task, and the spec's Non-goals, which
+        // keep the blocking wait as-is until daemon mode exists).
+        $this->assertLessThanOrEqual(1, abs($started2 - $started1));
     }
 
     public function testRunCoarseTaskEvaluatedPromptlyNotDelayedBehindSubMinuteTask()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
 
-        $start = microtime(true);
-        $fireTimes = [];
-
-        $subMinuteTask = Task::create(function() use (&$fireTimes, $start){
-            $fireTimes['sub'] = microtime(true) - $start;
+        $subMinuteTask = Task::create(function(){
+            return 'sub-minute' . PHP_EOL;
         })->everySecond();
-        $coarseTask = Task::create(function() use (&$fireTimes, $start){
-            $fireTimes['coarse'] = microtime(true) - $start;
+        $coarseTask = Task::create(function(){
+            return 'coarse' . PHP_EOL;
         })->everyMinute()->setBuffer(-1);
+
+        $start = time();
 
         // Sub-minute task scheduled first, so under the old bug the coarse
         // task (scheduled second) would wait behind its full 60-second loop.
@@ -300,13 +313,19 @@ class QueueTest extends TestCase
         $queue->clearTasks();
 
         $this->assertArrayHasKey($coarseTask->getJobId(), $tasks);
-        $this->assertArrayHasKey('coarse', $fireTimes);
+
+        // See the comment in the previous test for why this reads
+        // getStarted() off the returned Task rather than a closure
+        // side-effect.
+        $coarseStarted = $tasks[$coarseTask->getJobId()]->getStarted();
+        $this->assertNotNull($coarseStarted);
         // The coarse task fires on the shared first pass, before any
-        // sleep() happens - well under a second, not delayed behind the
-        // sub-minute task's evaluation window. (As above, this doesn't
-        // assert on run()'s total elapsed time, which still runs out its
-        // full tick-loop window because a sub-minute task is present.)
-        $this->assertLessThan(1.0, $fireTimes['coarse']);
+        // sleep() happens - within a second or two of run() starting, not
+        // delayed ~59-60s behind the sub-minute task's evaluation window.
+        // (As above, this doesn't assert on run()'s total elapsed time,
+        // which still runs out its full tick-loop window because a
+        // sub-minute task is present.)
+        $this->assertLessThanOrEqual(2, $coarseStarted - $start);
     }
 
     public function testRunReturnsPromptlyWithNoSubMinuteTasks()
