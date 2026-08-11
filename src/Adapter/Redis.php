@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\PayloadSigner;
 use Pop\Queue\Process\Task;
 
 /**
@@ -145,7 +146,11 @@ class Redis extends AbstractTaskAdapter
     protected function removeFromReserved(string $jobId): ?string
     {
         foreach ($this->redis->zRange($this->prefix . ':reserved', 0, -1) as $value) {
-            $stored = unserialize($value);
+            $raw = PayloadSigner::verify($value);
+            // Suppressed: a corrupt/tampered payload makes unserialize() emit
+            // a warning and return false, which the instanceof check below
+            // handles.
+            $stored = ($raw !== false) ? @unserialize($raw) : false;
             if (($stored instanceof AbstractJob) && ($stored->getJobId() === $jobId)) {
                 $this->redis->zRem($this->prefix . ':reserved', $value);
                 return $value;
@@ -265,7 +270,7 @@ LUA;
     public function push(AbstractJob $job): Redis
     {
         $job->getJobId();
-        $this->redis->lPush($this->prefix, serialize(clone $job));
+        $this->redis->lPush($this->prefix, PayloadSigner::sign(serialize(clone $job)));
         return $this;
     }
 
@@ -299,7 +304,10 @@ LUA;
             // warning and return false, and a payload whose class no longer
             // exists (renamed/removed in a deploy) yields a
             // __PHP_Incomplete_Class - the instanceof check below handles both.
-            $job = @unserialize($value);
+            // A payload that fails PayloadSigner::verify() is treated identically
+            // - $raw is false, so unserialize() is never called on it at all.
+            $raw = PayloadSigner::verify($value);
+            $job = ($raw !== false) ? @unserialize($raw) : false;
 
             if (!($job instanceof AbstractJob)) {
                 // Corrupt/unloadable payload - skip rather than claim it and
@@ -341,7 +349,7 @@ LUA;
         }
 
         $job->delay($delay ?? $job->getBackoffDelay());
-        $this->redis->lPush($this->prefix, serialize(clone $job));
+        $this->redis->lPush($this->prefix, PayloadSigner::sign(serialize(clone $job)));
 
         return $this;
     }
@@ -368,7 +376,7 @@ LUA;
     public function bury(AbstractJob $job, ?string $reason = null): Redis
     {
         $this->removeFromReserved($job->getJobId());
-        $this->redis->set($this->prefix . ':dead-' . $job->getJobId(), serialize(clone $job));
+        $this->redis->set($this->prefix . ':dead-' . $job->getJobId(), PayloadSigner::sign(serialize(clone $job)));
 
         return $this;
     }
@@ -457,7 +465,12 @@ LUA;
             return null;
         }
 
-        return $unserialize ? unserialize($value) : $value;
+        if (!$unserialize) {
+            return $value;
+        }
+
+        $raw = PayloadSigner::verify($value);
+        return ($raw !== false) ? unserialize($raw) : false;
     }
 
     /**
@@ -512,7 +525,7 @@ LUA;
     public function schedule(Task $task): Redis
     {
         if ($task->isValid()) {
-            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task)));
         }
         return $this;
     }
@@ -538,8 +551,13 @@ LUA;
      */
     public function getTask(string $taskId): ?Task
     {
-        $task = $this->redis->get($this->prefix . ':task-' . $taskId);
-        return ($task !== false) ? unserialize($task) : null;
+        $value = $this->redis->get($this->prefix . ':task-' . $taskId);
+        if ($value === false) {
+            return null;
+        }
+
+        $raw = PayloadSigner::verify($value);
+        return ($raw !== false) ? unserialize($raw) : null;
     }
 
     /**
@@ -551,7 +569,7 @@ LUA;
     public function updateTask(Task $task): Redis
     {
         if ($task->isValid()) {
-            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), serialize(clone $task));
+            $this->redis->set($this->prefix . ':task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task)));
         } else {
             $this->removeTask($task->getJobId());
         }

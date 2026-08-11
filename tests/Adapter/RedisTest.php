@@ -5,10 +5,16 @@ namespace Pop\Queue\Test\Adapter;
 use Pop\Queue\Adapter\Redis;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
+use Pop\Queue\Process\PayloadSigner;
 use PHPUnit\Framework\TestCase;
 
 class RedisTest extends TestCase
 {
+
+    protected function tearDown(): void
+    {
+        PayloadSigner::setKey(null);
+    }
 
     public function testConstructor()
     {
@@ -459,6 +465,51 @@ class RedisTest extends TestCase
         $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
 
         $adapter->getRedis()->del($key);
+    }
+
+    public function testPushAndReserveWithSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $job = Job::create(function(){ return 123; });
+
+        $adapter = new Redis();
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals(123, $reserved->run());
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsTamperedPayloadWhenSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $adapter = new Redis();
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        // Directly corrupt the stored (signed) payload in the pending list,
+        // bypassing the adapter entirely - simulates an attacker (or bit
+        // rot) tampering with storage the adapter doesn't otherwise trust.
+        // push() lPushes, so index 0 is the just-pushed job.
+        $stored   = $adapter->redis()->lIndex('pop-queue', 0);
+        $lastChar = substr($stored, -1);
+        $flipped  = chr((ord($lastChar) + 1) % 256);
+        $tampered = substr($stored, 0, -1) . $flipped;
+
+        $adapter->redis()->lSet('pop-queue', 0, $tampered);
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
     }
 
 }
