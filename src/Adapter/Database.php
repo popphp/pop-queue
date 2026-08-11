@@ -215,6 +215,93 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
+     * Build the eligibility predicate for claiming a task's current
+     * due-window: eligible if no claim exists yet, the existing claim is
+     * for a *different* window (a new tick is always claimable
+     * immediately, regardless of the old claim's expiry), or the existing
+     * claim is for the *same* window but has expired. The window is
+     * encoded as a prefix of reserved_by itself ("<window>:<token>"), so
+     * this needs no new column - reserved_until still means "this claim
+     * expires at", reserved_by's prefix now also answers "for which
+     * window". "reserved_by NOT LIKE '<window>:%'" is plain, portable SQL
+     * LIKE - no dialect-specific string functions - and the window value
+     * is purely numeric so it can never contain a LIKE wildcard.
+     *
+     * @param  DbSql  $sql
+     * @param  string $taskId
+     * @param  string $window
+     * @param  int    $now
+     * @return Where
+     */
+    protected function buildTaskClaimEligibleWhere(DbSql $sql, string $taskId, string $window, int $now): Where
+    {
+        $where = new Where($sql);
+        $where->equalTo('type', 'task');
+        $where->equalTo('job_id', $taskId);
+
+        $group = $where->andNest();
+        $group->isNull('reserved_by');
+        $group->or();
+        $group->notLike('reserved_by', $window . ':%');
+        $group->or();
+        $group->lessThanOrEqualTo('reserved_until', $now);
+
+        return $where;
+    }
+
+    /**
+     * Read back the reserved_by token currently stored for a task row.
+     * Used by claimTaskRun() to prove, via the real resulting row state,
+     * whether its own claiming UPDATE actually won - the same approach
+     * claimedBy() uses for job claiming (see reserve()'s docblock for why
+     * an affected-row count isn't portable enough for this).
+     *
+     * @param  string $taskId
+     * @return ?string
+     */
+    protected function claimedByTaskId(string $taskId): ?string
+    {
+        $sql = $this->db->createSql();
+        $sql->select('reserved_by')->from($this->table)->where("type = 'task'")->andWhere('job_id = :job_id');
+        $this->db->prepare($sql);
+        $this->db->bindParams(['job_id' => $taskId]);
+        $this->db->execute();
+        $rows = $this->db->fetchAll();
+
+        return $rows[0]['reserved_by'] ?? null;
+    }
+
+    /**
+     * Atomically claim a task's current due-window. See
+     * buildTaskClaimEligibleWhere() for the eligibility rule.
+     *
+     * @param  string $taskId
+     * @param  string $window
+     * @return bool
+     */
+    public function claimTaskRun(string $taskId, string $window): bool
+    {
+        $now   = time();
+        $token = $window . ':' . bin2hex(random_bytes(8));
+
+        $sql    = $this->db->createSql();
+        $update = $sql->update($this->table)->values([
+            'reserved_until' => ':reserved_until',
+            'reserved_by'    => ':reserved_by'
+        ]);
+        $update->where($this->buildTaskClaimEligibleWhere($update, $taskId, $window, $now));
+
+        $this->db->prepare($sql);
+        $this->db->bindParams([
+            'reserved_until' => ($now + self::TASK_CLAIM_TTL),
+            'reserved_by'    => $token
+        ]);
+        $this->db->execute();
+
+        return ($this->claimedByTaskId($taskId) === $token);
+    }
+
+    /**
      * Get queue start index
      *
      * @return int

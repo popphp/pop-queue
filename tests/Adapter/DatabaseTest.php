@@ -691,6 +691,155 @@ class DatabaseTest extends TestCase
         $first->delete($reserved);
     }
 
+    public function testClaimTaskRunSucceedsOnFirstClaim()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        $adapter->clearTasks();
+    }
+
+    public function testClaimTaskRunRejectsSameWindowWhileLive()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $this->assertFalse($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        $adapter->clearTasks();
+    }
+
+    public function testClaimTaskRunSucceedsForADifferentWindowWhilePreviousIsStillLive()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '101'));
+
+        $adapter->clearTasks();
+    }
+
+    public function testClaimTaskRunSucceedsForSameWindowAfterExpiry()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        // Force the stored claim to look expired directly, rather than a
+        // real 30-second sleep.
+        $sql = $db->createSql();
+        $sql->update('pop_queue')->values(['reserved_until' => ':reserved_until'])
+            ->where("type = 'task'")->andWhere('job_id = :job_id');
+        $db->prepare($sql);
+        $db->bindParams(['reserved_until' => (time() - 1), 'job_id' => $task->getJobId()]);
+        $db->execute();
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        $adapter->clearTasks();
+    }
+
+    public function testRemoveTaskClearsClaimState()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $adapter->removeTask($task->getJobId());
+        $adapter->schedule($task);
+
+        // Claiming the *same* window again after removeTask() must succeed
+        // - removeTask() deletes the whole row, including its claim state.
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        $adapter->clearTasks();
+    }
+
+    public function testConcurrentTaskClaimTokenProofRejectsLoser()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $task = Task::create(function(){ return 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        // Positive control: the winner's real claimTaskRun() call actually
+        // claims the window. This makes the negative assertion below
+        // meaningful.
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        // Loser: simulate a second worker racing for the *same* window,
+        // built via the adapter's own eligibility-predicate helper (not a
+        // hand-rolled reimplementation), so this exercises the real
+        // production predicate.
+        $now        = time();
+        $loserToken = '100:loser-token';
+
+        $sql    = $db->createSql();
+        $update = $sql->update('pop_queue')->values([
+            'reserved_until' => ':reserved_until',
+            'reserved_by'    => ':reserved_by'
+        ]);
+
+        $buildWhere = new \ReflectionMethod($adapter, 'buildTaskClaimEligibleWhere');
+        $buildWhere->setAccessible(true);
+        $update->where($buildWhere->invoke($adapter, $update, $task->getJobId(), '100', $now));
+
+        $db->prepare($sql);
+        $db->bindParams([
+            'reserved_until' => ($now + 30),
+            'reserved_by'    => $loserToken
+        ]);
+        $db->execute();
+
+        // The loser's UPDATE's WHERE re-validates the row's real current
+        // state at write time, so it must not have touched the
+        // already-claimed row.
+        $claimedBy = new \ReflectionMethod($adapter, 'claimedByTaskId');
+        $claimedBy->setAccessible(true);
+        $this->assertNotEquals($loserToken, $claimedBy->invoke($adapter, $task->getJobId()));
+
+        $adapter->clearTasks();
+    }
+
     public function testClear()
     {
         $db = PopDb::sqliteConnect([
