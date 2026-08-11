@@ -599,7 +599,14 @@ class WorkerTest extends TestCase
         // reference problem (a static property belongs to the class, not to
         // any one instance), and the tick listener below - running
         // in-process against the real $worker, not through job
-        // serialization - is what actually ends the loop.
+        // serialization - is what actually ends the loop. Consequently, the
+        // assertTrue($worker->isStopped()) assertion below is satisfied by
+        // the tick listener's own stop() call, not by the job body's
+        // internal $worker->stop() call (which operates on a serialized
+        // clone and so can't affect the real $worker at all) - it doesn't
+        // independently corroborate anything about the job itself. The
+        // load-bearing assertion for "code after stop() inside a job still
+        // runs" is assertTrue(self::$ranAfterStop) alone.
         $job = Job::create(function() use ($worker) {
             $worker->stop();
             // If stop() somehow tore down execution instead of just
@@ -659,6 +666,7 @@ class WorkerTest extends TestCase
         $events = new EventManager();
         $ranAny = false;
 
+        $shutdownFired = false;
         $events->on('worker.run_loop.tick', function($tasks, $worker) use (&$ranAny) {
             foreach ($tasks as $queueTasks) {
                 if (!empty($queueTasks)) {
@@ -667,16 +675,24 @@ class WorkerTest extends TestCase
             }
             $worker->stop();
         });
+        $events->on('worker.run_loop.shutdown', function() use (&$shutdownFired) {
+            $shutdownFired = true;
+        });
         $worker->setEvents($events);
 
         $worker->runLoop(1);
 
         $this->assertTrue($ranAny);
+        // Also covers worker.run_loop.shutdown: this test already drives
+        // runLoop() to a stop via the tick listener above, so asserting the
+        // shutdown event fired here costs one assertion with no added
+        // runtime, rather than a separate test.
+        $this->assertTrue($shutdownFired);
 
         $worker->clearTasks('pop-queue');
     }
 
-    public function testWorkLoopAndRunLoopFireShutdownEvent()
+    public function testWorkLoopFiresShutdownEvent()
     {
         $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
         $worker = Worker::create($queue);
@@ -714,6 +730,53 @@ class WorkerTest extends TestCase
 
         $worker->workLoop(1);
 
+        $this->assertTrue($worker->isStopped());
+    }
+
+    public function testWorkLoopClampsNegativeSleepSecondsToZero()
+    {
+        // sleep(-1) throws an uncaught ValueError in PHP 8.4, but only at
+        // the first idle iteration. A negative $sleepSeconds must be
+        // silently clamped to 0 rather than passed straight to sleep().
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $ticks  = 0;
+
+        $worker = Worker::create($queue);
+        $worker->setEvents($events);
+
+        $events->on('worker.work_loop.idle', function($worker) use (&$ticks) {
+            $ticks++;
+            if ($ticks >= 1) {
+                $worker->stop();
+            }
+        });
+
+        $worker->workLoop(-5);
+
+        $this->assertEquals(1, $ticks);
+        $this->assertTrue($worker->isStopped());
+    }
+
+    public function testRunLoopClampsNegativeSleepSecondsToZero()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $ticks  = 0;
+
+        $worker = Worker::create($queue);
+        $worker->setEvents($events);
+
+        $events->on('worker.run_loop.idle', function($worker) use (&$ticks) {
+            $ticks++;
+            if ($ticks >= 1) {
+                $worker->stop();
+            }
+        });
+
+        $worker->runLoop(-5);
+
+        $this->assertEquals(1, $ticks);
         $this->assertTrue($worker->isStopped());
     }
 

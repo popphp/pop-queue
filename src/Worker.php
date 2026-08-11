@@ -422,6 +422,14 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * correctly without it, just without OS-signal-based shutdown
      * available (only stop() can end them in that case).
      *
+     * Unlike Queue::runWithTimeout()'s SIGALRM handler next door, these
+     * handlers are never restored to SIG_DFL once installed - not even
+     * after workLoop()/runLoop() returns. This is a deliberate, accepted
+     * tradeoff for this pass rather than an oversight: a second
+     * SIGTERM/SIGINT sent after a loop has already ended is simply inert
+     * (caught by this handler and ignored) instead of terminating the
+     * process via the OS default.
+     *
      * @return void
      */
     protected function installSignalHandlers(): void
@@ -445,14 +453,18 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * full pass finds nothing anywhere (every queue returned null),
      * looping again immediately otherwise. Stoppable via stop() directly
      * or, when ext-pcntl is loaded, via SIGTERM/SIGINT - either way, the
-     * current iteration (including any in-flight job) always finishes
-     * before the loop exits.
+     * current iteration's job is never torn down mid-execution and its
+     * remaining code always runs to completion - though a blocking call
+     * inside that code (e.g. sleep()) can itself be interrupted early if
+     * a signal lands during it; see README's Daemon mode section.
+     * A negative $sleepSeconds is silently clamped to 0.
      *
      * @param  int $sleepSeconds
      * @return void
      */
     public function workLoop(int $sleepSeconds = 1): void
     {
+        $sleepSeconds  = max(0, $sleepSeconds);
         $this->stopped = false;
         $this->installSignalHandlers();
 
@@ -493,12 +505,14 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * arriving mid-runAll() (during its own internal sub-minute tick loop)
      * isn't noticed until that call returns - see the design spec's
      * Non-goals for why this latency is accepted rather than fixed here.
+     * A negative $sleepSeconds is silently clamped to 0.
      *
      * @param  int $sleepSeconds
      * @return void
      */
     public function runLoop(int $sleepSeconds = 1): void
     {
+        $sleepSeconds  = max(0, $sleepSeconds);
         $this->stopped = false;
         $this->installSignalHandlers();
 

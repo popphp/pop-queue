@@ -947,6 +947,103 @@ Or, trigger all the next scheduled tasks of all the registered queues:
 $worker->runAll();
 ```
 
+#### Daemon mode
+
+Instead of being triggered externally (e.g. from a cron job), a worker can service its queues
+continuously as a long-running loop with `workLoop()` and `runLoop()`. Each calls its non-looping
+counterpart - `workAll()` and `runAll()` respectively - every iteration, forever, until stopped:
+
+```php
+$worker->workLoop(); // runs forever, servicing jobs as they arrive
+```
+
+Both accept an `int $sleepSeconds = 1` parameter: the loop only sleeps that many seconds between
+passes when a full pass found nothing to do anywhere (every queue empty for `workLoop()`, nothing due
+for `runLoop()`) - if work was found, it loops again immediately, with no sleep. A `$sleepSeconds`
+below `0` is silently clamped to `0`.
+
+**These are two separate loops - run both, in two separate OS processes, to get full daemon
+behavior.** `workLoop()` alone never runs scheduled tasks, and `runLoop()` alone never works jobs. To
+get both, run two independent processes - two systemd units, two supervisor programs, or two
+backgrounded shell invocations:
+
+```bash
+$ php worker.php workLoop &
+$ php worker.php runLoop &
+```
+
+This is a deliberate design choice, not a missing feature: `runAll()` can itself block for up to ~59
+seconds when sub-minute tasks exist, and a single synchronous PHP process can't service jobs during
+that window.
+
+**Graceful shutdown.** `stop()` sets an internal flag that both loops check; `isStopped()` reads it.
+When `ext-pcntl` is loaded, `workLoop()`/`runLoop()` also install SIGTERM/SIGINT handlers
+automatically that call `stop()` - so `kill` or Ctrl-C trigger the same graceful path. Without
+`ext-pcntl`, only calling `stop()` programmatically can end a loop.
+
+State the shutdown guarantee precisely: the loop never tears down or aborts a job or task
+mid-execution - the current iteration's job/task always finishes running before the loop exits.
+However, a *blocking call inside that job's own code* (e.g. `sleep()`) can be interrupted early by the
+signal itself - PHP's `sleep()` returns early, with the remaining seconds, when a signal is delivered
+during it. The job's remaining PHP statements still run afterward, but code relying on a `sleep()`
+call completing its full duration for pacing or rate-limiting should be aware shutdown can cut it
+short. This applies to any blocking I/O in job code generally (sockets, `stream_select()`, etc.), not
+just `sleep()`.
+
+There's also an accepted shutdown-latency limitation specific to `runLoop()`: a stop signal arriving
+while `runAll()`'s own internal sub-minute-task tick loop is mid-flight (up to ~59 seconds) isn't
+noticed until that call returns, since the stop flag is only checked between `runLoop()` iterations,
+not injected into `Queue::run()`'s own loop.
+
+**Daemon mode makes retry configuration effectively mandatory.** Under the old cron-every-minute
+model, a job that always fails with default settings (`maxAttempts` unset = unlimited, no backoff
+configured = 0-second delay) retried once per minute - self-limiting and harmless. Under `workLoop()`,
+that same job is retried immediately, in a tight loop, at full CPU, because a reserved-then-failed job
+still counts as "work was found" for the idle-backoff check (it doesn't sleep between retries).
+**`setMaxAttempts()` and/or `setBackoff()` should be treated as required when jobs run under
+`workLoop()`** - see [Attempts](#attempts) above for how those are configured.
+
+**Run under a process supervisor.** An uncaught exception from an adapter (e.g. a dropped Redis
+connection, a database timeout, a full disk) or from a worker-level event listener propagates out of
+`workLoop()`/`runLoop()` and ends the process - there is no internal retry or restart. A daemon
+deployment should run under a process supervisor (systemd, supervisor, pm2, or equivalent) configured
+to restart the process on exit.
+
+**Worker-level events.** Like queues (see [Events](#events) above), a worker can fire lifecycle events
+around its loops, using the same `Pop\Event\Manager`:
+
+```php
+use Pop\Event\Manager;
+
+$events = new Manager();
+$events->on('worker.work_loop.idle', function($worker) {
+    echo 'No work found this pass' . PHP_EOL;
+});
+
+$worker->setEvents($events);
+```
+
+`getEvents()` returns the currently-set manager (or `null`), `events()` is a bare alias for it, and
+`hasEvents()` returns whether one has been set at all - all three behave the same way on `Worker` as
+they do on `Queue`.
+
+The events fired:
+
+| Event | When | Params |
+|---|---|---|
+| `worker.work_loop.tick` | After every `workAll()` pass inside `workLoop()` | `jobs`, `worker` |
+| `worker.work_loop.idle` | A `workLoop()` pass found no work anywhere, right before the backoff sleep | `worker` |
+| `worker.work_loop.shutdown` | `workLoop()` is about to return after being stopped | `worker` |
+| `worker.run_loop.tick` | After every `runAll()` pass inside `runLoop()` | `tasks`, `worker` |
+| `worker.run_loop.idle` | A `runLoop()` pass found nothing due anywhere, right before the backoff sleep | `worker` |
+| `worker.run_loop.shutdown` | `runLoop()` is about to return after being stopped | `worker` |
+
+**One API asymmetry to be aware of:** `Queue`'s event resolution takes a per-call `?Application
+$application` argument on `work()`/`run()`, so which application's event manager is used (when no
+queue-level manager is set) can vary call to call. `Worker`'s event resolution has no such per-call
+override - it resolves only against whatever `Application` was passed into `Worker`'s own
+constructor. A user expecting `Worker` to behave exactly like `Queue` here will be surprised.
+
 #### Clearing the queues
 
 You can clear the queues in a few different ways:
@@ -965,7 +1062,10 @@ Configuration
 
 If you have a CLI application that is aware of your queues and has access to them, you can
 use that application to be the "manager" of your queues, checking them and processing them
-as needed. Assuming you have a CLI application that processes the queue via a command like:
+as needed. There are two supported ways to run that manager: triggering it periodically via
+cron, or running it continuously as a daemon process (see [Daemon mode](#daemon-mode) above).
+
+**Cron.** Assuming you have a CLI application that processes the queue via a command like:
 
 ```bash
 $ ./app manage queue
@@ -982,6 +1082,11 @@ Or, if you'd like any output to be routed to `/dev/null`:
 ```bash
 * * * * * cd /path/to/your/project && ./app manage queue >> /dev/null 2>&1
 ```
+
+**Daemon mode.** Instead of a periodic cron trigger, `workLoop()`/`runLoop()` let that same manager
+run as a long-lived process that services its queues continuously - see [Daemon mode](#daemon-mode) above
+for the full picture, including why it takes two separate processes and what to configure before
+relying on it.
 
 [Top](#pop-queue)
 
