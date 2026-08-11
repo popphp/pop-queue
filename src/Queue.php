@@ -268,7 +268,67 @@ class Queue extends AbstractQueue
     }
 
     /**
+     * Evaluate every given task exactly once against the current time and
+     * run the ones that are due, returning the ones that ran (successfully
+     * or not) keyed by job ID. Coarse (non-sub-minute) tasks are always
+     * considered; pass $onlySubMinute = true to skip them (used by run()'s
+     * per-second tick loop, where a coarse task's single evaluation already
+     * happened on the shared first pass and doesn't need repeating).
+     *
+     * @param  array        $tasks         taskId => Task
+     * @param  ?Application $application
+     * @param  bool         $onlySubMinute
+     * @return array  jobId => Task, for every task that ran this pass
+     */
+    protected function evaluateTasksOnce(array $tasks, ?Application $application, bool $onlySubMinute = false): array
+    {
+        $ran = [];
+
+        foreach ($tasks as $taskId => $task) {
+            $isSubMinute = $task->cron()->hasSeconds();
+
+            if ($onlySubMinute && !$isSubMinute) {
+                continue;
+            }
+
+            if ($isSubMinute) {
+                $task->__wakeup();
+            }
+
+            if ((!$task->isValid()) || (!$task->cron()->evaluate())) {
+                continue;
+            }
+
+            try {
+                $task->run($application);
+                $task->complete();
+                if (!$isSubMinute) {
+                    $this->adapter->updateTask($task);
+                }
+                $ran[$task->getJobId()] = $task;
+            } catch (\Exception $e) {
+                $task->failed($e->getMessage());
+                if ($isSubMinute) {
+                    $this->adapter->removeTask($taskId);
+                    $this->adapter->schedule($task);
+                } else {
+                    $this->adapter->updateTask($task);
+                }
+                $ran[$task->getJobId()] = $task;
+            }
+        }
+
+        return $ran;
+    }
+
+    /**
      * Run schedule
+     *
+     * Evaluates every scheduled task fairly: all tasks get one shared
+     * evaluation pass immediately, then - only if at least one sub-minute
+     * task exists - up to 59 more passes (one per second) considering only
+     * the sub-minute tasks. This ensures no single task's per-tick work
+     * blocks any other task's evaluation on the same tick.
      *
      * @param  ?Application $application
      * @throws Process\Exception
@@ -278,45 +338,35 @@ class Queue extends AbstractQueue
     {
         $tasks = [];
 
-        if (($this->adapter instanceof TaskAdapterInterface) && ($this->adapter->hasTasks())) {
-            $taskIds = $this->adapter->getTasks();
-            foreach ($taskIds as $taskId) {
-                $task = $this->adapter->getTask($taskId);
-                if ($task instanceof Task) {
-                    $isSubMinute   = ($task->cron()->hasSeconds());
-                    $scheduleCheck = $task->cron()->evaluate();
-                    if ($isSubMinute) {
-                        $timer = 0;
-                        while ($timer < 60) {
-                            if (($task->isValid()) && ($scheduleCheck)) {
-                                $task->__wakeup();
-                                try {
-                                    $task->run($application);
-                                    $task->complete();
-                                    $tasks[$task->getJobId()] = $task;
-                                } catch (\Exception $e) {
-                                    $task->failed($e->getMessage());
-                                    $this->adapter->removeTask($taskId);
-                                    $this->adapter->schedule($task);
-                                    $tasks[$task->getJobId()] = $task;
-                                }
-                            }
-                            sleep(1);
-                            $scheduleCheck = $task->cron()->evaluate();
-                            $timer++;
-                        }
-                    } else if (($task->isValid()) && ($scheduleCheck)) {
-                        try {
-                            $task->run($application);
-                            $task->complete();
-                            $this->adapter->updateTask($task);
-                            $tasks[$task->getJobId()] = $task;
-                        } catch (\Exception $e) {
-                            $task->failed($e->getMessage());
-                            $this->adapter->updateTask($task);
-                            $tasks[$task->getJobId()] = $task;
-                        }
-                    }
+        if ((!($this->adapter instanceof TaskAdapterInterface)) || (!$this->adapter->hasTasks())) {
+            return $tasks;
+        }
+
+        $scheduledTasks = [];
+        foreach ($this->adapter->getTasks() as $taskId) {
+            $task = $this->adapter->getTask($taskId);
+            if ($task instanceof Task) {
+                $scheduledTasks[$taskId] = $task;
+            }
+        }
+
+        foreach ($this->evaluateTasksOnce($scheduledTasks, $application) as $jobId => $task) {
+            $tasks[$jobId] = $task;
+        }
+
+        $hasSubMinute = false;
+        foreach ($scheduledTasks as $task) {
+            if ($task->cron()->hasSeconds()) {
+                $hasSubMinute = true;
+                break;
+            }
+        }
+
+        if ($hasSubMinute) {
+            for ($tick = 1; $tick < 60; $tick++) {
+                sleep(1);
+                foreach ($this->evaluateTasksOnce($scheduledTasks, $application, true) as $jobId => $task) {
+                    $tasks[$jobId] = $task;
                 }
             }
         }
