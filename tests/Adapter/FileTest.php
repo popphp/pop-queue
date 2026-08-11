@@ -220,15 +220,35 @@ class FileTest extends TestCase
 
     public function testLeaseReclaim()
     {
-        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', null, 1); // 1-second lease
+        // Deliberately a long lease, expired by hand rather than by sleeping:
+        // an earlier version of this test used a 1-second lease and two
+        // back-to-back reserve() calls, which legitimately (and correctly)
+        // reclaimed the job on the second call whenever those two calls
+        // straddled a one-second wall-clock boundary - real, intermittent CI
+        // flakiness in the test, not in the adapter.
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', null, 60);
+        $adapter->clear();
+
         $job = Job::create(function(){ return 123; });
         $adapter->push($job);
 
         $first = $adapter->reserve();
         $this->assertNotNull($first);
+
+        $reservedDirs = $adapter->getFolders($adapter->getFolder() . '/reserved');
+        $this->assertCount(1, $reservedDirs);
+        $reservedDir = $adapter->getFolder() . '/reserved/' . $reservedDirs[0];
+
+        // The claim recorded a lease comfortably in the future, so it is not
+        // reclaimable while it's still held.
+        $this->assertGreaterThan(time(), (int)file_get_contents($reservedDir . '/lease'));
         $this->assertNull($adapter->reserve());
 
-        sleep(2);
+        // Age the claim past its lease deterministically, across both signals
+        // isLeaseExpired() consults: the lease file and the directory mtime.
+        $expired = time() - 100;
+        file_put_contents($reservedDir . '/lease', (string)$expired);
+        touch($reservedDir, $expired);
 
         $second = $adapter->reserve();
         $this->assertNotNull($second);

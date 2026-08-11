@@ -263,15 +263,28 @@ class RedisTest extends TestCase
     {
         $job = Job::create(function(){ return 123; });
 
-        $adapter = new Redis('localhost', 6379, 'pop-queue', null, 1); // 1-second lease
+        // Deliberately a long lease, expired by hand rather than by sleeping:
+        // an earlier version of this test used a 1-second lease and two
+        // back-to-back reserve() calls, which legitimately (and correctly)
+        // reclaimed the job on the second call whenever those two calls
+        // straddled a one-second wall-clock boundary - real, intermittent CI
+        // flakiness in the test, not in the adapter.
+        $adapter = new Redis('localhost', 6379, 'pop-queue', null, 60);
         $adapter->clear();
         $adapter->push($job);
 
         $first = $adapter->reserve();
         $this->assertNotNull($first);
+
+        // The claim recorded a lease (the reserved ZSET score) comfortably in
+        // the future, so it is not reclaimable while it's still held.
+        $reserved = $adapter->redis()->zRange('pop-queue:reserved', 0, -1);
+        $this->assertCount(1, $reserved);
+        $this->assertGreaterThan(time(), (int)$adapter->redis()->zScore('pop-queue:reserved', $reserved[0]));
         $this->assertNull($adapter->reserve());
 
-        sleep(2);
+        // Age the claim past its lease deterministically.
+        $adapter->redis()->zAdd('pop-queue:reserved', time() - 100, $reserved[0]);
 
         $second = $adapter->reserve();
         $this->assertNotNull($second);

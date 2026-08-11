@@ -374,14 +374,36 @@ class DatabaseTest extends TestCase
 
         $job = Job::create(function(){ return 123; });
 
-        $adapter = new Database($db, 'pop_queue', null, 1); // 1-second lease
+        // Deliberately a long lease, expired by hand rather than by sleeping:
+        // an earlier version of this test used a 1-second lease and two
+        // back-to-back reserve() calls, which legitimately (and correctly)
+        // reclaimed the job on the second call whenever those two calls
+        // straddled a one-second wall-clock boundary - real, intermittent CI
+        // flakiness in the test, not in the adapter.
+        $adapter = new Database($db, 'pop_queue', null, 60);
+        $adapter->clear();
         $adapter->push($job);
 
         $first = $adapter->reserve();
         $this->assertNotNull($first);
+
+        // The claim recorded a lease comfortably in the future, so it is not
+        // reclaimable while it's still held.
+        $sql = $db->createSql();
+        $sql->select('reserved_until')->from('pop_queue')->where('job_id = :job_id');
+        $db->prepare($sql);
+        $db->bindParams(['job_id' => $job->getJobId()]);
+        $db->execute();
+        $rows = $db->fetchAll();
+        $this->assertGreaterThan(time(), (int)$rows[0]['reserved_until']);
         $this->assertNull($adapter->reserve());
 
-        sleep(2);
+        // Age the claim past its lease deterministically.
+        $sql = $db->createSql();
+        $sql->update('pop_queue')->values(['reserved_until' => ':reserved_until'])->where('job_id = :job_id');
+        $db->prepare($sql);
+        $db->bindParams(['reserved_until' => (time() - 100), 'job_id' => $job->getJobId()]);
+        $db->execute();
 
         $second = $adapter->reserve();
         $this->assertNotNull($second);
