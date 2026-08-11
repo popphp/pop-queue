@@ -764,6 +764,13 @@ and access information to be obtained from the AWS administration console:
 
 *Make sure the correct permissions are granted to the user role attempting to access the SQS service.*
 
+`aws/aws-sdk-php` is not installed automatically with this package — install it separately to use this
+adapter:
+
+```bash
+composer require aws/aws-sdk-php
+```
+
 ```php
 use Pop\Queue\Adapter\Sqs;
 use Aws\Sqs\SqsClient;
