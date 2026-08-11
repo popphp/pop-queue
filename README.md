@@ -589,6 +589,34 @@ like to use alternate values for any these, you can pass them into the construct
 $adapter = new Redis('my.redis.server.com', 6380, 'my-queue');
 ```
 
+The remaining constructor parameters are `$priority`, `$leaseSeconds`, `$password` and `$context`:
+
+```php
+$adapter = new Redis('my.redis.server.com', 6380, 'my-queue', 'FILO', 30, 'my-password');
+```
+
+A reserved job is leased for `$leaseSeconds` (60 by default). If the code that reserved it never
+calls `delete()`, `release()` or `bury()` — for example, the worker process dies — the lease
+expires and the job becomes reservable again by another worker instead of being stranded. Set it
+comfortably longer than your longest expected job runtime — a job that routinely outlives its own
+lease will be handed to a second worker while the first is still running it.
+
+`$password` is sent to the server with `AUTH` after connecting, for a Redis instance that requires
+authentication. `$context` is passed straight through to the `redis` extension's `connect()` call,
+which is how a TLS connection is configured:
+
+```php
+$adapter = new Redis('my.redis.server.com', 6380, 'my-queue', null, 60, 'my-password', [
+    'stream' => [
+        'ssl' => [
+            'verify_peer'      => true,
+            'cafile'           => '/path/to/ca.pem',
+            'verify_peer_name' => true
+        ]
+    ]
+]);
+```
+
 [Top](#pop-queue)
 
 ### Database
@@ -616,6 +644,18 @@ to name it something else, you can pass that into the constructor:
 $adapter = new Database($db, 'my_queue_jobs'); 
 ```
 
+The remaining constructor parameters are `$priority` and `$leaseSeconds`:
+
+```php
+$adapter = new Database($db, 'my_queue_jobs', 'FILO', 30); // 30-second lease, FILO priority
+```
+
+A reserved job is leased for `$leaseSeconds` (60 by default). If the code that reserved it never
+calls `delete()`, `release()` or `bury()` — for example, the worker process dies — the lease
+expires and the job becomes reservable again by another worker instead of being stranded. Set it
+comfortably longer than your longest expected job runtime — a job that routinely outlives its own
+lease will be handed to a second worker while the first is still running it.
+
 [Top](#pop-queue)
 
 ### File
@@ -627,6 +667,18 @@ use Pop\Queue\Adapter\File;
 
 $adapter = new File(__DIR__ . '/queues'); 
 ```
+
+The remaining constructor parameters are `$priority` and `$leaseSeconds`:
+
+```php
+$adapter = new File(__DIR__ . '/queues', 'FILO', 30); // 30-second lease, FILO priority
+```
+
+A reserved job is leased for `$leaseSeconds` (60 by default). If the code that reserved it never
+calls `delete()`, `release()` or `bury()` — for example, the worker process dies — the lease
+expires and the job becomes reservable again by another worker instead of being stranded. Set it
+comfortably longer than your longest expected job runtime — a job that routinely outlives its own
+lease will be handed to a second worker while the first is still running it.
 
 [Top](#pop-queue)
 
@@ -654,6 +706,11 @@ priority, can be passed into the constructor:
 ```php
 $adapter = new Memory(30, 'FILO'); // 30-second lease, FILO priority
 ```
+
+Note the argument order: `Memory` takes `$leaseSeconds` **first**, ahead of `$priority`, while
+`File`, `Database` and `Redis` all take `$leaseSeconds` **after** `$priority` (their `$priority`
+parameter predates leasing, and new parameters could only be appended). The two orders are not
+interchangeable — check the constructor signature when switching an application between adapters.
 
 Because of all of that, it's the recommended adapter for testing — both for this component's own
 test suite and as a drop-in test double in an application that consumes it, where it lets you
