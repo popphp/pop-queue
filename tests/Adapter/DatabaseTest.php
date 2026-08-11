@@ -5,11 +5,17 @@ namespace Pop\Queue\Test\Adapter;
 use Pop\Db\Db as PopDb;
 use Pop\Queue\Adapter\Database;
 use Pop\Queue\Process\Job;
+use Pop\Queue\Process\PayloadSigner;
 use Pop\Queue\Process\Task;
 use PHPUnit\Framework\TestCase;
 
 class DatabaseTest extends TestCase
 {
+
+    protected function tearDown(): void
+    {
+        PayloadSigner::setKey(null);
+    }
 
     public function testConstructor()
     {
@@ -838,6 +844,70 @@ class DatabaseTest extends TestCase
         $this->assertNotEquals($loserToken, $claimedBy->invoke($adapter, $task->getJobId()));
 
         $adapter->clearTasks();
+    }
+
+    public function testPushAndReserveWithSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals(123, $reserved->run());
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsTamperedPayloadWhenSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        // Directly corrupt the stored (signed) payload column, bypassing
+        // the adapter entirely - simulates an attacker (or bit rot)
+        // tampering with storage the adapter doesn't otherwise trust.
+        $select = $db->createSql();
+        $select->select(['id', 'payload'])->from('pop_queue')->where('job_id = :job_id');
+        $db->prepare($select);
+        $db->bindParams(['job_id' => $job->getJobId()]);
+        $db->execute();
+        $row = $db->fetchAll()[0];
+
+        // Corrupt a character near the middle of the payload to ensure it's not padding
+        $midpoint = (int)(strlen($row['payload']) / 2);
+        $midChar  = substr($row['payload'], $midpoint, 1);
+        $flipped  = chr((ord($midChar) + 1) % 256);
+        $tampered = substr($row['payload'], 0, $midpoint) . $flipped . substr($row['payload'], $midpoint + 1);
+
+        $update = $db->createSql();
+        $update->update('pop_queue')->values(['payload' => ':payload'])->where('id = ' . (int)$row['id']);
+        $db->prepare($update);
+        $db->bindParams(['payload' => $tampered]);
+        $db->execute();
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
     }
 
     public function testClear()

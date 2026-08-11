@@ -18,6 +18,7 @@ use Pop\Db\Gateway\Table as DbTable;
 use Pop\Db\Sql\AbstractSql as DbSql;
 use Pop\Db\Sql\Where;
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\PayloadSigner;
 use Pop\Queue\Process\Task;
 
 /**
@@ -369,7 +370,7 @@ class Database extends AbstractTaskAdapter
             'index'   => ($this->getEndIndex() + 1),
             'type'    => 'job',
             'job_id'  => $job->getJobId(),
-            'payload' => base64_encode(serialize(clone $job)),
+            'payload' => base64_encode(PayloadSigner::sign(serialize(clone $job))),
             'status'  => 1
         ]);
         $this->db->execute();
@@ -451,7 +452,12 @@ class Database extends AbstractTaskAdapter
             // warning and return false, and a payload whose class no longer
             // exists (renamed/removed in a deploy) yields a
             // __PHP_Incomplete_Class - the instanceof check below handles both.
-            $job = @unserialize(base64_decode($row['payload']));
+            // A payload that fails PayloadSigner::verify() (tampered, or written
+            // by something other than this application when a signing key is
+            // configured) is treated identically - $raw is false, so
+            // unserialize() is never called on it at all.
+            $raw = PayloadSigner::verify(base64_decode($row['payload']));
+            $job = ($raw !== false) ? @unserialize($raw) : false;
 
             if (!($job instanceof AbstractJob)) {
                 // Corrupt/unloadable payload - skip rather than claim it and
@@ -517,7 +523,7 @@ class Database extends AbstractTaskAdapter
 
         $this->db->prepare($sql);
         $this->db->bindParams([
-            'payload'        => base64_encode(serialize(clone $job)),
+            'payload'        => base64_encode(PayloadSigner::sign(serialize(clone $job))),
             'status'         => 1,
             'reserved_until' => null,
             'reserved_by'    => null,
@@ -567,7 +573,7 @@ class Database extends AbstractTaskAdapter
         $this->db->bindParams([
             'type'    => 'dead',
             'job_id'  => $job->getJobId(),
-            'payload' => base64_encode(serialize(clone $job))
+            'payload' => base64_encode(PayloadSigner::sign(serialize(clone $job)))
         ]);
         $this->db->execute();
 
@@ -653,7 +659,12 @@ class Database extends AbstractTaskAdapter
         $jobs = [];
 
         foreach ($rows as $row) {
-            $jobs[$row['job_id']] = $unserialize ? unserialize(base64_decode($row['payload'])) : $row;
+            if (!$unserialize) {
+                $jobs[$row['job_id']] = $row;
+                continue;
+            }
+            $raw = PayloadSigner::verify(base64_decode($row['payload']));
+            $jobs[$row['job_id']] = ($raw !== false) ? unserialize($raw) : false;
         }
 
         return $jobs;
@@ -679,7 +690,12 @@ class Database extends AbstractTaskAdapter
             return null;
         }
 
-        return $unserialize ? unserialize(base64_decode($rows[0]['payload'])) : $rows[0];
+        if (!$unserialize) {
+            return $rows[0];
+        }
+
+        $raw = PayloadSigner::verify(base64_decode($rows[0]['payload']));
+        return ($raw !== false) ? unserialize($raw) : false;
     }
 
     /**
@@ -749,7 +765,7 @@ class Database extends AbstractTaskAdapter
             $jobData = [
                 'type'    => 'task',
                 'job_id'  => $task->getJobId(),
-                'payload' => base64_encode(serialize(clone $task))
+                'payload' => base64_encode(PayloadSigner::sign(serialize(clone $task)))
             ];
 
             $this->db->prepare($sql);
@@ -796,7 +812,12 @@ class Database extends AbstractTaskAdapter
         $this->db->execute();
         $rows = $this->db->fetchAll();
 
-        return (isset($rows[0]['payload'])) ? unserialize(base64_decode($rows[0]['payload'])) : null;
+        if (!isset($rows[0]['payload'])) {
+            return null;
+        }
+
+        $raw = PayloadSigner::verify(base64_decode($rows[0]['payload']));
+        return ($raw !== false) ? unserialize($raw) : null;
     }
 
     /**
@@ -814,7 +835,7 @@ class Database extends AbstractTaskAdapter
             ])->where("type = 'task'")->andWhere('job_id = :job_id');
 
             $jobData = [
-                'payload' => base64_encode(serialize(clone $task)),
+                'payload' => base64_encode(PayloadSigner::sign(serialize(clone $task))),
                 'job_id'  => $task->getJobId()
             ];
 
