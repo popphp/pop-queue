@@ -5,6 +5,7 @@ namespace Pop\Queue\Test\Adapter;
 use Pop\Queue\Adapter\File;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
+use Pop\Queue\Process\PayloadSigner;
 use PHPUnit\Framework\TestCase;
 
 class FileTest extends TestCase
@@ -24,6 +25,56 @@ class FileTest extends TestCase
     {
         $this->expectException('Pop\Queue\Adapter\Exception');
         $adapter = File::create(__DIR__ . '/../tmp/bad-queue');
+    }
+
+    protected function tearDown(): void
+    {
+        PayloadSigner::setKey(null);
+    }
+
+    public function testPushAndReserveWithSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $job = Job::create(function(){
+            return 123;
+        });
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals(123, $reserved->run());
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
+    public function testReserveSkipsTamperedPayloadWhenSigningKeyConfigured()
+    {
+        PayloadSigner::setKey('test-secret-key');
+
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        // Directly corrupt the stored (signed) payload on disk, bypassing
+        // the adapter entirely - simulates an attacker (or bit rot)
+        // tampering with storage the adapter doesn't otherwise trust.
+        $payloadFile = $adapter->getFolder() . '/pending/1/payload';
+        $stored      = file_get_contents($payloadFile);
+        $lastChar    = substr($stored, -1);
+        $flipped     = chr((ord($lastChar) + 1) % 256);
+        file_put_contents($payloadFile, substr($stored, 0, -1) . $flipped);
+
+        $reserved = $adapter->reserve();
+        $this->assertNull($reserved);
+
+        $adapter->clear();
     }
 
     public function testPushAndReserve()

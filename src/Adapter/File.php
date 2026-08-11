@@ -14,6 +14,7 @@
 namespace Pop\Queue\Adapter;
 
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\PayloadSigner;
 use Pop\Queue\Process\Task;
 
 /**
@@ -256,7 +257,11 @@ class File extends AbstractTaskAdapter
 
             $payloadFile = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
             if (file_exists($payloadFile)) {
-                $stored = unserialize(file_get_contents($payloadFile));
+                $raw = PayloadSigner::verify(file_get_contents($payloadFile));
+                // Suppressed: a corrupt/tampered payload makes unserialize() emit
+                // a warning and return false, which the instanceof check below
+                // handles.
+                $stored = ($raw !== false) ? @unserialize($raw) : false;
                 if (($stored instanceof AbstractJob) && ($stored->getJobId() === $job->getJobId())) {
                     return (int)$index;
                 }
@@ -314,7 +319,7 @@ class File extends AbstractTaskAdapter
             $dir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
         }
 
-        file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', PayloadSigner::sign(serialize(clone $job)));
 
         return $this;
     }
@@ -347,10 +352,15 @@ class File extends AbstractTaskAdapter
 
             // Suppressed: a corrupt/truncated payload makes unserialize() emit a
             // warning and return false, which the instanceof check below handles.
-            $job = @unserialize(file_get_contents($payloadFile));
+            // A payload that fails PayloadSigner::verify() (tampered, or written
+            // by something other than this application when a signing key is
+            // configured) is treated identically - $raw is false, so
+            // unserialize() is never called on it at all.
+            $raw = PayloadSigner::verify(file_get_contents($payloadFile));
+            $job = ($raw !== false) ? @unserialize($raw) : false;
 
             if (!($job instanceof AbstractJob)) {
-                // Corrupt/truncated payload - skip rather than crash or claim garbage.
+                // Corrupt/tampered payload - skip rather than crash or claim garbage.
                 continue;
             }
 
@@ -414,7 +424,7 @@ class File extends AbstractTaskAdapter
         $reservedDir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
         $pendingDir  = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
 
-        file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'payload', serialize(clone $job));
+        file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'payload', PayloadSigner::sign(serialize(clone $job)));
         rename($reservedDir, $pendingDir);
 
         return $this;
@@ -455,7 +465,7 @@ class File extends AbstractTaskAdapter
     public function bury(AbstractJob $job, ?string $reason = null): File
     {
         $this->delete($job);
-        file_put_contents($this->folder . DIRECTORY_SEPARATOR . 'dead-' . $job->getJobId(), serialize(clone $job));
+        file_put_contents($this->folder . DIRECTORY_SEPARATOR . 'dead-' . $job->getJobId(), PayloadSigner::sign(serialize(clone $job)));
 
         return $this;
     }
@@ -571,7 +581,12 @@ class File extends AbstractTaskAdapter
         }
 
         $payload = file_get_contents($path);
-        return $unserialize ? unserialize($payload) : $payload;
+        if (!$unserialize) {
+            return $payload;
+        }
+
+        $raw = PayloadSigner::verify($payload);
+        return ($raw !== false) ? unserialize($raw) : false;
     }
 
     /**
@@ -631,7 +646,7 @@ class File extends AbstractTaskAdapter
     {
         if ($task->isValid()) {
             file_put_contents(
-                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task))
             );
         }
         return $this;
@@ -664,8 +679,13 @@ class File extends AbstractTaskAdapter
      */
     public function getTask(string $taskId): ?Task
     {
-        return (file_exists($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) ?
-            unserialize(file_get_contents($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) : null;
+        $path = $this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId;
+        if (!file_exists($path)) {
+            return null;
+        }
+
+        $raw = PayloadSigner::verify(file_get_contents($path));
+        return ($raw !== false) ? unserialize($raw) : null;
     }
 
     /**
@@ -678,7 +698,7 @@ class File extends AbstractTaskAdapter
     {
         if ($task->isValid()) {
             file_put_contents(
-                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), serialize(clone $task)
+                $this->folder . DIRECTORY_SEPARATOR . 'task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task))
             );
         } else {
             $this->removeTask($task->getJobId());
