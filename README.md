@@ -27,7 +27,11 @@ pop-queue
 * [Queues](#queues)
     - [Priority](#priority)
     - [Signed payloads](#signed-payloads)
+    - [Events](#events)
 * [Workers](#workers)
+    - [Queue weights](#queue-weights)
+    - [Daemon mode](#daemon-mode)
+    - [Clearing the queues](#clearing-the-queues)
 * [Configuration](#configuration)
 
 Overview
