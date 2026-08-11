@@ -5,6 +5,7 @@ namespace Pop\Queue\Test;
 use Pop\Application;
 use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\File;
+use Pop\Queue\Adapter\Memory;
 use Pop\Queue\Queue;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
@@ -22,6 +23,29 @@ class QueueTest extends TestCase
         $this->assertTrue($queue->hasName());
         $this->assertEquals('pop-queue', $queue->getName());
         $this->assertEquals('FIFO', $queue->getPriority());
+    }
+
+    public function testFake()
+    {
+        $queue = Queue::fake();
+        $this->assertInstanceOf('Pop\Queue\Queue', $queue);
+        $this->assertInstanceOf('Pop\Queue\Adapter\Memory', $queue->getAdapter());
+        $this->assertEquals('pop-queue', $queue->getName());
+
+        $job = Job::create(function(){
+            return 123;
+        });
+        $queue->addJob($job);
+        $job = $queue->work();
+
+        $this->assertEquals(123, $job->getResults());
+    }
+
+    public function testFakeWithCustomNameAndPriorityAndLease()
+    {
+        $queue = Queue::fake('test-queue', 'FILO', 30);
+        $this->assertEquals('test-queue', $queue->getName());
+        $this->assertEquals('FILO', $queue->getPriority());
     }
 
     public function testHasNameReturnsFalseWhenNeverSet()

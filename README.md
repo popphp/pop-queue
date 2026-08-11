@@ -749,6 +749,20 @@ test suite and as a drop-in test double in an application that consumes it, wher
 exercise queue behavior (including delay, backoff and lease expiry) without standing up Redis, a
 database or SQS.
 
+`Queue::fake()` is a shortcut for the common case — a `Memory`-backed queue with no further setup:
+
+```php
+use Pop\Queue\Queue;
+
+$queue = Queue::fake(); // same as Queue::create('pop-queue', new Memory())
+```
+
+It accepts the same `$name`/`$priority` you'd pass to `Queue::create()`, plus an optional lease length:
+
+```php
+$queue = Queue::fake('test-queue', 'FILO', 30);
+```
+
 [Top](#pop-queue)
 
 ### AWS SQS

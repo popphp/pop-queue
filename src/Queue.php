@@ -16,6 +16,7 @@ namespace Pop\Queue;
 use Pop\Application;
 use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\AdapterInterface;
+use Pop\Queue\Adapter\Memory;
 use Pop\Queue\Adapter\TaskAdapterInterface;
 use Pop\Queue\Process\AbstractJob;
 use Pop\Queue\Process\Task;
@@ -80,6 +81,26 @@ class Queue extends AbstractQueue
     ): Queue
     {
         return new self($name, $adapter, $priority);
+    }
+
+    /**
+     * Create a Memory-backed queue for testing - a fake, in the sense
+     * familiar from other PHP frameworks' testing conventions. Note
+     * Memory's own constructor takes $leaseSeconds before $priority
+     * (Memory predates this method and that argument order is documented,
+     * pre-existing behavior elsewhere in this codebase) - fake()'s own
+     * parameter order matches create()'s $priority-before-lease convention
+     * instead, and translates between the two internally, so a caller of
+     * fake() never needs to know Memory's own argument order.
+     *
+     * @param  string  $name
+     * @param  ?string $priority
+     * @param  int     $leaseSeconds
+     * @return Queue
+     */
+    public static function fake(string $name = 'pop-queue', ?string $priority = null, int $leaseSeconds = 60): Queue
+    {
+        return new self($name, new Memory($leaseSeconds, $priority));
     }
 
     /**
