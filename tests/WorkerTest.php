@@ -3,6 +3,7 @@
 namespace Pop\Queue\Test;
 
 use Pop\Application;
+use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\File;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
@@ -394,6 +395,108 @@ class WorkerTest extends TestCase
         $this->assertLessThan(90, $elapsed);
 
         $worker->clearAllTasks();
+    }
+
+    public function testSetAndGetEventsOnWorker()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+        $events = new EventManager();
+
+        $this->assertFalse($worker->hasEvents());
+        $worker->setEvents($events);
+        $this->assertTrue($worker->hasEvents());
+        $this->assertSame($events, $worker->getEvents());
+        $this->assertSame($events, $worker->events());
+    }
+
+    public function testTriggerEventOnWorkerUsesWorkerEventsWhenSet()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+        $events = new EventManager();
+        $fired  = [];
+        $events->on('test.event', function($foo) use (&$fired) {
+            $fired[] = $foo;
+        });
+        $worker->setEvents($events);
+
+        $method = new \ReflectionMethod($worker, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($worker, 'test.event', ['foo' => 'bar']);
+
+        $this->assertEquals(['bar'], $fired);
+    }
+
+    public function testTriggerEventOnWorkerFallsBackToApplicationEvents()
+    {
+        $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $application = new Application();
+        $events      = new EventManager();
+        $fired       = [];
+        $events->on('test.event', function($foo) use (&$fired) {
+            $fired[] = $foo;
+        });
+        $application->registerEvents($events);
+
+        $worker = Worker::create($queue, $application);
+
+        $method = new \ReflectionMethod($worker, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($worker, 'test.event', ['foo' => 'bar']);
+
+        $this->assertEquals(['bar'], $fired);
+    }
+
+    public function testTriggerEventOnWorkerPrefersWorkerEventsOverApplication()
+    {
+        $queue        = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $workerEvents = new EventManager();
+        $appEvents    = new EventManager();
+        $application  = new Application();
+        $workerFired  = [];
+        $appFired     = [];
+
+        $workerEvents->on('test.event', function($foo) use (&$workerFired) {
+            $workerFired[] = $foo;
+        });
+        $appEvents->on('test.event', function($foo) use (&$appFired) {
+            $appFired[] = $foo;
+        });
+
+        $worker = Worker::create($queue, $application);
+        $worker->setEvents($workerEvents);
+        $application->registerEvents($appEvents);
+
+        $method = new \ReflectionMethod($worker, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($worker, 'test.event', ['foo' => 'bar']);
+
+        $this->assertEquals(['bar'], $workerFired);
+        $this->assertEquals([], $appFired);
+    }
+
+    public function testTriggerEventOnWorkerIsNoOpWithNoEventsAnywhere()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+
+        $method = new \ReflectionMethod($worker, 'triggerEvent');
+        $method->setAccessible(true);
+
+        // Must not throw.
+        $method->invoke($worker, 'test.event', ['foo' => 'bar']);
+        $this->assertTrue(true);
+    }
+
+    public function testStopSetsStoppedFlag()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $worker = Worker::create($queue);
+
+        $this->assertFalse($worker->isStopped());
+        $worker->stop();
+        $this->assertTrue($worker->isStopped());
     }
 
 }

@@ -15,6 +15,7 @@ namespace Pop\Queue;
 
 use ArrayIterator;
 use Pop\Application;
+use Pop\Event\Manager as EventManager;
 use Pop\Queue\Process\AbstractJob;
 
 /**
@@ -49,6 +50,25 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * @var ?Application
      */
     protected ?Application $application = null;
+
+    /**
+     * Event manager, for worker-level lifecycle observability hooks
+     * (worker.work_loop.*, worker.run_loop.*). If not set, and this
+     * Worker was constructed with an Application that has its own event
+     * manager, that Application's manager is used instead - see
+     * triggerEvent(). If neither is available, event firing is a silent
+     * no-op.
+     * @var ?EventManager
+     */
+    protected ?EventManager $events = null;
+
+    /**
+     * Whether a graceful shutdown has been requested, via stop() directly
+     * or via a caught SIGTERM/SIGINT (see installSignalHandlers()).
+     * workLoop()/runLoop() each reset this to false at their own start.
+     * @var bool
+     */
+    protected bool $stopped = false;
 
     /**
      * Constructor
@@ -111,6 +131,93 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     public function hasApplication(): bool
     {
         return ($this->application !== null);
+    }
+
+    /**
+     * Set event manager
+     *
+     * @param  EventManager $events
+     * @return Worker
+     */
+    public function setEvents(EventManager $events): Worker
+    {
+        $this->events = $events;
+        return $this;
+    }
+
+    /**
+     * Get event manager
+     *
+     * @return ?EventManager
+     */
+    public function getEvents(): ?EventManager
+    {
+        return $this->events;
+    }
+
+    /**
+     * Get event manager (alias)
+     *
+     * @return ?EventManager
+     */
+    public function events(): ?EventManager
+    {
+        return $this->events;
+    }
+
+    /**
+     * Has event manager
+     *
+     * @return bool
+     */
+    public function hasEvents(): bool
+    {
+        return ($this->events !== null);
+    }
+
+    /**
+     * Trigger a worker-level lifecycle event. Uses this Worker's own event
+     * manager if one is set via setEvents(); otherwise falls back to the
+     * event manager of the Application this Worker was constructed with,
+     * if it has one; otherwise does nothing. Never throws on its own
+     * account - if the resolved manager's trigger() call throws (e.g. a
+     * listener's own code throws), that exception propagates to the
+     * caller exactly as any other uncaught exception would.
+     *
+     * @param  string $name
+     * @param  array  $params
+     * @return void
+     */
+    protected function triggerEvent(string $name, array $params): void
+    {
+        if ($this->hasEvents()) {
+            $this->events->trigger($name, $params);
+        } else if (($this->application !== null) && ($this->application->events() !== null)) {
+            $this->application->events()->trigger($name, $params);
+        }
+    }
+
+    /**
+     * Request a graceful shutdown of a running workLoop()/runLoop() call.
+     * Takes effect at that loop's next iteration boundary - never mid-job
+     * or mid-task-evaluation.
+     *
+     * @return Worker
+     */
+    public function stop(): Worker
+    {
+        $this->stopped = true;
+        return $this;
+    }
+
+    /**
+     * Whether a graceful shutdown has been requested
+     *
+     * @return bool
+     */
+    public function isStopped(): bool
+    {
+        return $this->stopped;
     }
 
     /**
