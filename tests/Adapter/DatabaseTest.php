@@ -518,6 +518,62 @@ class DatabaseTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveSkipsCorruptPayload()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        // Insert a row with a corrupt/truncated payload directly, bypassing
+        // push(), at a lower index so it is the first candidate under FIFO
+        // ordering. Same shape as a payload whose class no longer exists
+        // after a deploy (which unserializes to a __PHP_Incomplete_Class,
+        // not an AbstractJob).
+        $sql = $db->createSql();
+        $sql->insert('pop_queue')->values([
+            'index'   => ':index',
+            'type'    => ':type',
+            'job_id'  => ':job_id',
+            'payload' => ':payload',
+            'status'  => ':status'
+        ]);
+        $db->prepare($sql);
+        $db->bindParams([
+            'index'   => 1,
+            'type'    => 'job',
+            'job_id'  => 'corrupt-job-id',
+            'payload' => base64_encode('not-valid-serialized-data'),
+            'status'  => 1
+        ]);
+        $db->execute();
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($job->getJobId(), $reserved->getJobId());
+
+        // The corrupt row must be skipped outright, never claimed and leased
+        // (status left at 1, no reserved_by token) - a leased corrupt row
+        // would be reclaimed on lease expiry and poison every worker that
+        // reserves after it, forever.
+        $check = $db->createSql();
+        $check->select(['status', 'reserved_by'])->from('pop_queue')->where('job_id = :job_id');
+        $db->prepare($check);
+        $db->bindParams(['job_id' => 'corrupt-job-id']);
+        $db->execute();
+        $rows = $db->fetchAll();
+        $this->assertEquals(1, (int)$rows[0]['status']);
+        $this->assertNull($rows[0]['reserved_by']);
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
     public function testEnsureReservedUntilColumnBackfillsPhase1ReservedRows()
     {
         // Build a Phase-1-shaped table by hand, in an isolated sqlite file:

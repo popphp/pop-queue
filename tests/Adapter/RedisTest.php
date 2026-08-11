@@ -355,4 +355,33 @@ class RedisTest extends TestCase
         $adapter->clear();
     }
 
+    public function testReserveSkipsCorruptPayload()
+    {
+        $adapter = new Redis();
+        $adapter->clear();
+
+        // Write a corrupt/truncated payload straight into the pending list,
+        // bypassing push(). push() lPushes, so this tail entry is the first
+        // candidate under FIFO ordering. Same shape as a payload whose class
+        // no longer exists after a deploy (which unserializes to a
+        // __PHP_Incomplete_Class, not an AbstractJob).
+        $adapter->redis()->lPush('pop-queue', 'not-valid-serialized-data');
+
+        $job = Job::create(function(){ return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+        $this->assertEquals($job->getJobId(), $reserved->getJobId());
+
+        // The corrupt entry must be skipped outright, never claimed and
+        // leased - a leased corrupt entry would be reclaimed on lease expiry
+        // and poison every worker that reserves after it, forever.
+        $this->assertContains('not-valid-serialized-data', $adapter->redis()->lRange('pop-queue', 0, -1));
+        $this->assertNotContains('not-valid-serialized-data', $adapter->redis()->zRange('pop-queue:reserved', 0, -1));
+
+        $adapter->delete($reserved);
+        $adapter->clear();
+    }
+
 }

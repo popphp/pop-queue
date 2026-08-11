@@ -249,9 +249,22 @@ LUA;
         }
 
         foreach ($values as $value) {
-            $job = unserialize($value);
+            // Suppressed: a corrupt/truncated payload makes unserialize() emit a
+            // warning and return false, and a payload whose class no longer
+            // exists (renamed/removed in a deploy) yields a
+            // __PHP_Incomplete_Class - the instanceof check below handles both.
+            $job = @unserialize($value);
 
-            if (($job instanceof AbstractJob) && !$job->isAvailable()) {
+            if (!($job instanceof AbstractJob)) {
+                // Corrupt/unloadable payload - skip rather than claim it and
+                // then blow up returning a non-AbstractJob. Claiming it would
+                // be worse than a one-shot crash now that leases exist: the
+                // claim would expire, get reclaimed back to eligible, and
+                // poison the next worker too, forever.
+                continue;
+            }
+
+            if (!$job->isAvailable()) {
                 continue;
             }
 
