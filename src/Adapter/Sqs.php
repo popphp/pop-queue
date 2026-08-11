@@ -16,6 +16,7 @@ namespace Pop\Queue\Adapter;
 use Aws\Sqs\SqsClient;
 use Pop\Queue\Queue;
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Process\PayloadSigner;
 
 /**
  * SQS adapter class
@@ -168,7 +169,7 @@ class Sqs extends AbstractAdapter
                     'StringValue' => $job->getJobId()
                 ]
             ],
-            'MessageBody' => base64_encode(serialize(clone $job)),
+            'MessageBody' => base64_encode(PayloadSigner::sign(serialize(clone $job))),
             'QueueUrl'    => $this->queueUrl
         ];
 
@@ -214,7 +215,8 @@ class Sqs extends AbstractAdapter
         }
 
         $message = $result->get('Messages')[0];
-        $job     = unserialize(base64_decode($message['Body']));
+        $raw     = PayloadSigner::verify(base64_decode($message['Body']));
+        $job     = ($raw !== false) ? unserialize($raw) : false;
 
         if ($job instanceof AbstractJob) {
             $this->receiptHandles[$job->getJobId()] = $message['ReceiptHandle'];
