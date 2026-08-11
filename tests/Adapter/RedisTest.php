@@ -397,4 +397,68 @@ class RedisTest extends TestCase
         $adapter->clear();
     }
 
+    public function testClaimTaskRunSucceedsOnFirstClaim()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue-claim-test');
+        $taskId  = 'claim-test-task-1';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        $adapter->getRedis()->del('pop-queue-claim-test:claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunRejectsSameWindowWhileLive()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue-claim-test');
+        $taskId  = 'claim-test-task-2';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+        $this->assertFalse($adapter->claimTaskRun($taskId, '100'));
+
+        $adapter->getRedis()->del('pop-queue-claim-test:claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunSucceedsForADifferentWindowWhilePreviousIsStillLive()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue-claim-test');
+        $taskId  = 'claim-test-task-3';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+        $this->assertTrue($adapter->claimTaskRun($taskId, '101'));
+
+        $adapter->getRedis()->del('pop-queue-claim-test:claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunSucceedsForSameWindowAfterExpiry()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue-claim-test');
+        $taskId  = 'claim-test-task-4';
+        $key     = 'pop-queue-claim-test:claim-task-' . $taskId;
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        // Overwrite with an already-expired claim value directly, rather
+        // than a real 30-second sleep.
+        $adapter->getRedis()->set($key, '100:' . (time() - 1));
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        $adapter->getRedis()->del($key);
+    }
+
+    public function testRemoveTaskClearsClaimState()
+    {
+        $adapter = new Redis('localhost', 6379, 'pop-queue-claim-test');
+        $taskId  = 'claim-test-task-5';
+        $key     = 'pop-queue-claim-test:claim-task-' . $taskId;
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+        $adapter->removeTask($taskId);
+
+        $this->assertFalse((bool)$adapter->getRedis()->exists($key));
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        $adapter->getRedis()->del($key);
+    }
+
 }

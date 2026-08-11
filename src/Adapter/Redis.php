@@ -211,6 +211,52 @@ LUA;
     }
 
     /**
+     * Atomically claim a task's current due-window. Redis has no single
+     * native command for "compare stored value, swap if different-window-
+     * or-expired", so this uses a small Lua eval() script - the same
+     * approach atomicReclaimIfStillExpired() already uses for job-lease
+     * reclaim. The key's value format is "<window>:<expiresAtUnixTimestamp>";
+     * a native Redis EXPIRE is also set on a successful claim so garbage
+     * collection happens even if removeTask() is somehow skipped, on top
+     * of the explicit del() removeTask() performs.
+     *
+     * @param  string $taskId
+     * @param  string $window
+     * @return bool
+     */
+    public function claimTaskRun(string $taskId, string $window): bool
+    {
+        $script = <<<'LUA'
+local key    = KEYS[1]
+local window = ARGV[1]
+local now    = tonumber(ARGV[2])
+local ttl    = tonumber(ARGV[3])
+
+local current = redis.call('GET', key)
+if current then
+    local sep = string.find(current, ':')
+    if sep then
+        local storedWindow = string.sub(current, 1, sep - 1)
+        local storedExpiry = tonumber(string.sub(current, sep + 1))
+        if storedWindow == window and storedExpiry and storedExpiry > now then
+            return 0
+        end
+    end
+end
+
+local expiresAt = now + ttl
+redis.call('SET', key, window .. ':' .. tostring(expiresAt))
+redis.call('EXPIRE', key, ttl)
+return 1
+LUA;
+
+        $key    = $this->prefix . ':claim-task-' . $taskId;
+        $result = $this->redis->eval($script, [$key, $window, time(), self::TASK_CLAIM_TTL], 1);
+
+        return ((int)$result === 1);
+    }
+
+    /**
      * Push job on to queue
      *
      * @param  AbstractJob $job
@@ -521,6 +567,7 @@ LUA;
     public function removeTask(string $taskId): Redis
     {
         $this->redis->del($this->prefix . ':task-' . $taskId);
+        $this->redis->del($this->prefix . ':claim-task-' . $taskId);
         return $this;
     }
 
