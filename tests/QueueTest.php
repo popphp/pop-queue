@@ -24,6 +24,26 @@ class QueueTest extends TestCase
         $this->assertEquals('FIFO', $queue->getPriority());
     }
 
+    public function testHasNameReturnsFalseWhenNeverSet()
+    {
+        $queue = new class extends \Pop\Queue\AbstractQueue {
+            public function work(?\Pop\Application $application = null): ?\Pop\Queue\Process\AbstractJob
+            {
+                return null;
+            }
+            public function run(?\Pop\Application $application = null): array
+            {
+                return [];
+            }
+            public function clear(): \Pop\Queue\AbstractQueue
+            {
+                return $this;
+            }
+        };
+
+        $this->assertFalse($queue->hasName());
+    }
+
     public function testPriority()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'), 'FIFO');

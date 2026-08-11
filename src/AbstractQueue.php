@@ -35,7 +35,7 @@ abstract class AbstractQueue implements QueueInterface
      * Queue name
      * @var string
      */
-    protected string $name;
+    protected string $name = '';
 
     /**
      * Queue adapter
@@ -72,7 +72,7 @@ abstract class AbstractQueue implements QueueInterface
      */
     public function hasName(): bool
     {
-        return $this->name;
+        return ($this->name !== '');
     }
 
     /**
