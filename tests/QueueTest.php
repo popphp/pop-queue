@@ -243,54 +243,70 @@ class QueueTest extends TestCase
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
 
-        $task1 = Task::create(function(){
-            return 'Task #1' . PHP_EOL;
+        $fireTimes = [];
+        $task1 = Task::create(function() use (&$fireTimes){
+            $fireTimes['task1'] = microtime(true);
         })->everySecond();
-        $task2 = Task::create(function(){
-            return 'Task #2' . PHP_EOL;
+        $task2 = Task::create(function() use (&$fireTimes){
+            $fireTimes['task2'] = microtime(true);
         })->everySecond();
 
         $queue->addTasks([$task1, $task2]);
 
-        $start = microtime(true);
         $tasks = $queue->run();
-        $elapsed = microtime(true) - $start;
+        // Clear before asserting: run()'s tick loop always runs to its full
+        // window once entered (see below), so an assertion failure here
+        // must not skip cleanup and leak sub-minute tasks into later tests
+        // sharing this same File-backed folder.
+        $queue->clearTasks();
 
         $this->assertArrayHasKey($task1->getJobId(), $tasks);
         $this->assertArrayHasKey($task2->getJobId(), $tasks);
-        // Both tasks are due immediately (everySecond()), so both should be
-        // evaluated on the shared first pass, before any sleep() happens -
-        // under the old bug, task2 wasn't touched at all until task1's full
-        // 60-second loop finished, so this would take well over a minute
-        // instead of completing in a couple of seconds.
-        $this->assertLessThan(3, $elapsed);
-
-        $queue->clearTasks();
+        $this->assertArrayHasKey('task1', $fireTimes);
+        $this->assertArrayHasKey('task2', $fireTimes);
+        // Both tasks are due immediately (everySecond()), so both should
+        // fire on the shared first pass, within a fraction of a second of
+        // each other - not one waiting for the other's full evaluation
+        // window (the old bug's signature: task2 wouldn't fire at all
+        // until task1's entire 60-second loop had finished). Note this
+        // does NOT assert on run()'s total elapsed time - run()'s tick
+        // loop intentionally runs to its full ~59-second window once any
+        // sub-minute task is present, whether or not that task already
+        // fired on tick 0 (matching the old code's behavior for a single
+        // sub-minute task, and the spec's Non-goals, which keep the
+        // blocking wait as-is until daemon mode exists).
+        $this->assertLessThan(1.5, abs($fireTimes['task2'] - $fireTimes['task1']));
     }
 
     public function testRunCoarseTaskEvaluatedPromptlyNotDelayedBehindSubMinuteTask()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
 
-        $subMinuteTask = Task::create(function(){
-            return 'sub-minute' . PHP_EOL;
+        $start = microtime(true);
+        $fireTimes = [];
+
+        $subMinuteTask = Task::create(function() use (&$fireTimes, $start){
+            $fireTimes['sub'] = microtime(true) - $start;
         })->everySecond();
-        $coarseTask = Task::create(function(){
-            return 'coarse' . PHP_EOL;
+        $coarseTask = Task::create(function() use (&$fireTimes, $start){
+            $fireTimes['coarse'] = microtime(true) - $start;
         })->everyMinute()->setBuffer(-1);
 
         // Sub-minute task scheduled first, so under the old bug the coarse
         // task (scheduled second) would wait behind its full 60-second loop.
         $queue->addTasks([$subMinuteTask, $coarseTask]);
 
-        $start = microtime(true);
         $tasks = $queue->run();
-        $elapsed = microtime(true) - $start;
+        $queue->clearTasks();
 
         $this->assertArrayHasKey($coarseTask->getJobId(), $tasks);
-        $this->assertLessThan(3, $elapsed);
-
-        $queue->clearTasks();
+        $this->assertArrayHasKey('coarse', $fireTimes);
+        // The coarse task fires on the shared first pass, before any
+        // sleep() happens - well under a second, not delayed behind the
+        // sub-minute task's evaluation window. (As above, this doesn't
+        // assert on run()'s total elapsed time, which still runs out its
+        // full tick-loop window because a sub-minute task is present.)
+        $this->assertLessThan(1.0, $fireTimes['coarse']);
     }
 
     public function testRunReturnsPromptlyWithNoSubMinuteTasks()
@@ -305,11 +321,12 @@ class QueueTest extends TestCase
         $start = microtime(true);
         $tasks = $queue->run();
         $elapsed = microtime(true) - $start;
+        $queue->clearTasks();
 
         $this->assertArrayHasKey($task->getJobId(), $tasks);
+        // No sub-minute task exists here, so the tick loop is skipped
+        // entirely - run() returns right after the single shared pass.
         $this->assertLessThan(1, $elapsed);
-
-        $queue->clearTasks();
     }
 
 }
