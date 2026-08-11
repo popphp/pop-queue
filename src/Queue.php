@@ -285,7 +285,7 @@ class Queue extends AbstractQueue
      * @param  bool         $onlySubMinute
      * @return array  jobId => Task, for every task that ran this pass
      */
-    protected function evaluateTasksOnce(array $tasks, ?Application $application, bool $onlySubMinute = false): array
+    public function evaluateTasksOnce(array $tasks, ?Application $application, bool $onlySubMinute = false): array
     {
         if (!($this->adapter instanceof TaskAdapterInterface)) {
             return [];
@@ -339,6 +339,31 @@ class Queue extends AbstractQueue
     }
 
     /**
+     * Fetch every currently scheduled task from the adapter, once. Returns
+     * an empty array if the adapter doesn't support tasks
+     * (TaskAdapterInterface) or has none scheduled - callers don't need to
+     * duplicate that guard.
+     *
+     * @return array  taskId => Task
+     */
+    public function getScheduledTasks(): array
+    {
+        if ((!($this->adapter instanceof TaskAdapterInterface)) || (!$this->adapter->hasTasks())) {
+            return [];
+        }
+
+        $scheduledTasks = [];
+        foreach ($this->adapter->getTasks() as $taskId) {
+            $task = $this->adapter->getTask($taskId);
+            if ($task instanceof Task) {
+                $scheduledTasks[$taskId] = $task;
+            }
+        }
+
+        return $scheduledTasks;
+    }
+
+    /**
      * Run schedule
      *
      * Evaluates every scheduled task fairly: all tasks get one shared
@@ -355,16 +380,9 @@ class Queue extends AbstractQueue
     {
         $tasks = [];
 
-        if ((!($this->adapter instanceof TaskAdapterInterface)) || (!$this->adapter->hasTasks())) {
+        $scheduledTasks = $this->getScheduledTasks();
+        if (empty($scheduledTasks)) {
             return $tasks;
-        }
-
-        $scheduledTasks = [];
-        foreach ($this->adapter->getTasks() as $taskId) {
-            $task = $this->adapter->getTask($taskId);
-            if ($task instanceof Task) {
-                $scheduledTasks[$taskId] = $task;
-            }
         }
 
         foreach ($this->evaluateTasksOnce($scheduledTasks, $application) as $jobId => $task) {

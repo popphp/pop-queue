@@ -404,4 +404,40 @@ class QueueTest extends TestCase
         $queue1->clearTasks();
     }
 
+    public function testGetScheduledTasksReturnsTaskSet()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $task  = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everyMinute();
+
+        $queue->addTask($task);
+
+        $scheduledTasks = $queue->getScheduledTasks();
+        $this->assertArrayHasKey($task->getJobId(), $scheduledTasks);
+        $this->assertInstanceOf('Pop\Queue\Process\Task', $scheduledTasks[$task->getJobId()]);
+
+        $queue->clearTasks();
+    }
+
+    public function testGetScheduledTasksReturnsEmptyArrayWhenNoTasks()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $this->assertEquals([], $queue->getScheduledTasks());
+    }
+
+    public function testEvaluateTasksOnceIsPubliclyCallable()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $task  = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everySecond();
+
+        // No reflection needed - evaluateTasksOnce() is public now, called
+        // directly the way Worker::runAll() (Task 2) needs to call it
+        // across multiple queues.
+        $ran = $queue->evaluateTasksOnce([$task->getJobId() => $task], null, false);
+        $this->assertArrayHasKey($task->getJobId(), $ran);
+    }
+
 }
