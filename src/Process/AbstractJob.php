@@ -28,7 +28,7 @@ use Symfony\Component\Process\Process;
  * @author     Nick Sagona, III <dev@noladev.com>
  * @copyright  Copyright (c) 2009-2026 NOLA Interactive, LLC.
  * @license    https://www.popphp.org/license     New BSD License
- * @version    2.1.3
+ * @version    3.0.0
  */
 abstract class AbstractJob implements JobInterface
 {
