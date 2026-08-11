@@ -858,6 +858,31 @@ Or, you can trigger the next jobs of all the registered queues:
 $worker->workAll();
 ```
 
+#### Queue weights
+
+Queues can be registered with a weight, so a worker servicing several queues can express that
+some matter more than others:
+
+```php
+$worker = Worker::create();
+$worker->addQueue($queue1, 10); // high weight
+$worker->addQueue($queue2, 1);  // low weight
+```
+
+Weight defaults to `0` if never set, so registering a queue without a weight behaves exactly as
+before — queues are serviced in the order they were added. `getQueues()`, `workAll()`, and
+`runAll()` all iterate queues in weight order (highest first). This is unrelated to the FIFO/FILO
+`Priority` setting above, which controls the order jobs are popped off *within* a single queue -
+weight controls which *queue* a worker considers first, not which job.
+
+Calling `work()` with no queue name tries every registered queue in weight order and returns the
+first job successfully claimed - the highest-weight queue is always preferred, falling through to
+lower-weight queues only when nothing is available higher up:
+
+```php
+$job = $worker->work(); // tries $queue1 first, then $queue2
+```
+
 Managing the scheduled tasks is similar with the `run()` method:
 
 ```php

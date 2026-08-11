@@ -365,7 +365,9 @@ class WorkerTest extends TestCase
         $queue2->addTask($task2);
 
         $worker = Worker::create([$queue1, $queue2]);
-        $tasks  = $worker->runAll();
+        $start   = microtime(true);
+        $tasks   = $worker->runAll();
+        $elapsed = microtime(true) - $start;
 
         $this->assertArrayHasKey($task1->getJobId(), $tasks['pop-queue1']);
         $this->assertArrayHasKey($task2->getJobId(), $tasks['pop-queue2']);
@@ -381,6 +383,15 @@ class WorkerTest extends TestCase
         // signature: queue2 wouldn't be touched at all until queue1's
         // run() had fully returned).
         $this->assertLessThanOrEqual(1, abs($started2 - $started1));
+
+        // A shared tick loop (sleep(1) once per tick, not once per queue per
+        // tick) means two queues each with a sub-minute task still finish in
+        // ~59 seconds total, not ~118s - this is the property a regression that
+        // moved sleep() inside the per-queue loop would silently break, even
+        // though it would NOT break the getStarted()-gap assertion above (both
+        // tasks would still fire together on the very first pass, before any
+        // sleep happens either way).
+        $this->assertLessThan(90, $elapsed);
 
         $worker->clearAllTasks();
     }

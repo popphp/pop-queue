@@ -162,8 +162,8 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     protected function getQueuesByWeight(): array
     {
         $queues = $this->queues;
-        uasort($queues, function($a, $b) {
-            return ($this->weights[$b->getName()] ?? 0) <=> ($this->weights[$a->getName()] ?? 0);
+        uksort($queues, function($a, $b) {
+            return ($this->weights[$b] ?? 0) <=> ($this->weights[$a] ?? 0);
         });
         return $queues;
     }
@@ -271,15 +271,15 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     {
         $tasks         = [];
         $queueTaskSets = [];
+        $queues        = $this->getQueuesByWeight();
 
-        foreach ($this->getQueuesByWeight() as $queueName => $queue) {
+        foreach ($queues as $queueName => $queue) {
             $tasks[$queueName]         = [];
             $queueTaskSets[$queueName] = $queue->getScheduledTasks();
         }
 
         foreach ($queueTaskSets as $queueName => $scheduledTasks) {
-            $queue = $this->queues[$queueName];
-            foreach ($queue->evaluateTasksOnce($scheduledTasks, $this->application) as $jobId => $task) {
+            foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application) as $jobId => $task) {
                 $tasks[$queueName][$jobId] = $task;
             }
         }
@@ -298,8 +298,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
             for ($tick = 1; $tick < 60; $tick++) {
                 sleep(1);
                 foreach ($queueTaskSets as $queueName => $scheduledTasks) {
-                    $queue = $this->queues[$queueName];
-                    foreach ($queue->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
+                    foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
                         $tasks[$queueName][$jobId] = $task;
                     }
                 }
