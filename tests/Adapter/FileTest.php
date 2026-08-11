@@ -602,4 +602,15 @@ class FileTest extends TestCase
         $adapter->clearTasks();
     }
 
+    public function testClearTasksSweepsOrphanedClaimMarkers()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $orphanPath = __DIR__ . '/../tmp/pop-queue/claim-task-orphaned-id-with-no-task-file';
+        file_put_contents($orphanPath, '100:' . (time() + 30));
+
+        $adapter->clearTasks();
+
+        $this->assertFileDoesNotExist($orphanPath);
+    }
+
 }

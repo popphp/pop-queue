@@ -737,6 +737,12 @@ class File extends AbstractTaskAdapter
             $this->removeTask($taskId);
         }
 
+        foreach ($this->getFiles($this->folder) as $file) {
+            if (str_starts_with($file, 'claim-task-')) {
+                unlink($this->folder . DIRECTORY_SEPARATOR . $file);
+            }
+        }
+
         return $this;
     }
 

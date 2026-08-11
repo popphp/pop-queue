@@ -327,6 +327,7 @@ class Queue extends AbstractQueue
                 if ($isSubMinute) {
                     $this->adapter->removeTask($taskId);
                     $this->adapter->schedule($task);
+                    $this->adapter->claimTaskRun($taskId, $window);
                 } else {
                     $this->adapter->updateTask($task);
                 }

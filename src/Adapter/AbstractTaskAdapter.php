@@ -31,12 +31,19 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
     /**
      * How long, in seconds, a claim blocks a *same-window* re-claim.
      * Shared by every concrete adapter's claimTaskRun() implementation.
-     * Not configurable - it only needs to cover one claim-then-execute
-     * round trip and has no relationship to any task's cron recurrence
-     * interval (the explicit window value each implementation compares
-     * against is what makes that safe).
+     * Not configurable - it has no relationship to any task's cron
+     * recurrence interval (the explicit window value each implementation
+     * compares against is what makes that safe). It does need to outlast
+     * the longest window a claim must survive: a claim is never refreshed
+     * or released while its task runs, and a coarse (non-sub-minute) task
+     * is due across its entire ~60-second window (evaluate() stays true
+     * for the whole minute, not just at :00), so a second worker can
+     * legitimately re-evaluate the same coarse task's window many seconds
+     * after the first worker claimed it. 90 seconds covers a full
+     * 60-second coarse window plus slack, not just one claim-then-execute
+     * round trip.
      */
-    protected const TASK_CLAIM_TTL = 30;
+    protected const TASK_CLAIM_TTL = 90;
 
     /**
      * Schedule job with queue

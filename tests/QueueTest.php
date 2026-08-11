@@ -239,6 +239,34 @@ class QueueTest extends TestCase
         $this->assertArrayNotHasKey($coarseTask->getJobId(), $ran);
     }
 
+    public function testEvaluateTasksOnceReclaimsAfterSubMinuteFailureSoASecondWorkerCannotDoubleRun()
+    {
+        $adapter = new File(__DIR__ . '/tmp/pop-queue');
+        $queue1  = Queue::create('pop-queue', $adapter);
+        $queue2  = Queue::create('pop-queue', $adapter);
+
+        $task = Task::create(function(){
+            throw new \Exception('Error!');
+        })->everySecond();
+
+        $queue1->addTask($task);
+
+        $method = new \ReflectionMethod($queue1, 'evaluateTasksOnce');
+        $method->setAccessible(true);
+
+        $scheduledTasks = [$task->getJobId() => $adapter->getTask($task->getJobId())];
+
+        $ran1 = $method->invoke($queue1, $scheduledTasks, null, false);
+        $ran2 = $method->invoke($queue2, $scheduledTasks, null, false);
+
+        $ranInPass1 = array_key_exists($task->getJobId(), $ran1);
+        $ranInPass2 = array_key_exists($task->getJobId(), $ran2);
+
+        $this->assertTrue($ranInPass1 xor $ranInPass2, 'Only one of the two evaluateTasksOnce() calls should have executed the failing sub-minute task for the same window - the claim must survive the failure-handling remove+reschedule cycle.');
+
+        $adapter->clearTasks();
+    }
+
     public function testRunCoSchedulesBothSubMinuteTasksOnEveryTick()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));

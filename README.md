@@ -402,6 +402,12 @@ deduplication via shared storage, not distributed consensus: workers whose clock
 few seconds could still both run the same task. If a task's side effects can't tolerate that residual risk,
 make the task itself idempotent.
 
+A claim persists for up to 90 seconds if the task it's guarding never completes (it's never refreshed or
+explicitly released) - long enough to safely cover a coarse (minute-granularity) task's full due-window.
+
+Note: adding `claimTaskRun()` to `TaskAdapterInterface` is a breaking change for any third-party adapter
+implementing that interface directly - they must now implement this method too.
+
 [Top](#pop-queue)
 
 ### Scheduling
