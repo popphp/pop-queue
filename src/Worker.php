@@ -37,6 +37,14 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     protected array $queues = [];
 
     /**
+     * Queue weights, keyed by queue name. Higher services first. Not named
+     * "priority" - that word is already used elsewhere in this codebase for
+     * the unrelated FIFO/FILO adapter job-ordering setting.
+     * @var array
+     */
+    protected array $weights = [];
+
+    /**
      * Application object
      * @var ?Application
      */
@@ -109,11 +117,13 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * Add queue
      *
      * @param  Queue $queue
+     * @param  int   $weight
      * @return Worker
      */
-    public function addQueue(Queue $queue): Worker
+    public function addQueue(Queue $queue, int $weight = 0): Worker
     {
-        $this->queues[$queue->getName()] = $queue;
+        $this->queues[$queue->getName()]  = $queue;
+        $this->weights[$queue->getName()] = $weight;
         return $this;
     }
 
@@ -138,7 +148,24 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function getQueues(): array
     {
-        return $this->queues;
+        return $this->getQueuesByWeight();
+    }
+
+    /**
+     * Get queues ordered by weight, highest first. PHP's sort functions
+     * are stable since 8.0, so queues with equal weight (including the
+     * default-zero case when no weight was ever set) keep their original
+     * insertion order automatically.
+     *
+     * @return array
+     */
+    protected function getQueuesByWeight(): array
+    {
+        $queues = $this->queues;
+        uasort($queues, function($a, $b) {
+            return ($this->weights[$b->getName()] ?? 0) <=> ($this->weights[$a->getName()] ?? 0);
+        });
+        return $queues;
     }
 
     /**
@@ -164,20 +191,40 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
-     * Work next job in queue
+     * Get a queue's weight (0 if never set)
      *
      * @param  string $queueName
+     * @return int
+     */
+    public function getWeight(string $queueName): int
+    {
+        return $this->weights[$queueName] ?? 0;
+    }
+
+    /**
+     * Work next job. Pass a queue name to work that specific queue (exactly
+     * today's behavior). Pass nothing to try every registered queue in
+     * weight order (highest first), returning the first job successfully
+     * claimed - the actual "priority queue" worker model, since workAll()
+     * fans out to every queue regardless of weight and doesn't need this.
+     *
+     * @param  ?string $queueName
      * @return ?AbstractJob
      */
-    public function work(string $queueName): ?AbstractJob
+    public function work(?string $queueName = null): ?AbstractJob
     {
-        $job = null;
-
-        if (isset($this->queues[$queueName])) {
-            $job = $this->queues[$queueName]->work($this->application);
+        if ($queueName !== null) {
+            return isset($this->queues[$queueName]) ? $this->queues[$queueName]->work($this->application) : null;
         }
 
-        return $job;
+        foreach ($this->getQueuesByWeight() as $queue) {
+            $job = $queue->work($this->application);
+            if ($job !== null) {
+                return $job;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -188,7 +235,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     public function workAll(): array
     {
         $jobs = [];
-        foreach ($this->queues as $queueName => $queue) {
+        foreach ($this->getQueuesByWeight() as $queueName => $queue) {
             $jobs[$queueName] = $queue->work($this->application);
         }
         return $jobs;
@@ -210,16 +257,55 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
-     * Run next scheduled task across in all queues
+     * Run next scheduled task across all queues, fairly: every queue gets
+     * one shared evaluation pass immediately, then - only if at least one
+     * queue has a sub-minute task - up to 59 more shared passes (one per
+     * second, sleeping once per tick, not once per queue per tick),
+     * mirroring Queue::run()'s own pass-1-then-tick-loop shape one level
+     * up. No single queue's tick-loop work can block another queue's
+     * evaluation on the same tick.
      *
      * @return array
      */
     public function runAll(): array
     {
-        $tasks = [];
-        foreach ($this->queues as $queueName => $queue) {
-            $tasks[$queueName] = $queue->run($this->application);
+        $tasks         = [];
+        $queueTaskSets = [];
+
+        foreach ($this->getQueuesByWeight() as $queueName => $queue) {
+            $tasks[$queueName]         = [];
+            $queueTaskSets[$queueName] = $queue->getScheduledTasks();
         }
+
+        foreach ($queueTaskSets as $queueName => $scheduledTasks) {
+            $queue = $this->queues[$queueName];
+            foreach ($queue->evaluateTasksOnce($scheduledTasks, $this->application) as $jobId => $task) {
+                $tasks[$queueName][$jobId] = $task;
+            }
+        }
+
+        $hasSubMinute = false;
+        foreach ($queueTaskSets as $scheduledTasks) {
+            foreach ($scheduledTasks as $task) {
+                if ($task->cron()->hasSeconds()) {
+                    $hasSubMinute = true;
+                    break 2;
+                }
+            }
+        }
+
+        if ($hasSubMinute) {
+            for ($tick = 1; $tick < 60; $tick++) {
+                sleep(1);
+                foreach ($queueTaskSets as $queueName => $scheduledTasks) {
+                    $queue = $this->queues[$queueName];
+                    foreach ($queue->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
+                        $tasks[$queueName][$jobId] = $task;
+                    }
+                }
+            }
+        }
+
         return $tasks;
     }
 
@@ -272,7 +358,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function clearAll(): Worker
     {
-        foreach ($this->queues as $queue) {
+        foreach ($this->getQueuesByWeight() as $queue) {
             $queue->clear();
         }
         return $this;
@@ -285,7 +371,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function clearAllFailed(): Worker
     {
-        foreach ($this->queues as $queue) {
+        foreach ($this->getQueuesByWeight() as $queue) {
             $queue->clearFailed();
         }
         return $this;
@@ -298,7 +384,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function clearAllTasks(): Worker
     {
-        foreach ($this->queues as $queue) {
+        foreach ($this->getQueuesByWeight() as $queue) {
             $queue->clearTasks();
         }
         return $this;
@@ -347,7 +433,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     public function __unset(string $name): void
     {
         if (isset($this->queues[$name])) {
-            unset($this->queues[$name]);
+            unset($this->queues[$name], $this->weights[$name]);
         }
     }
 
@@ -413,7 +499,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function getIterator(): ArrayIterator
     {
-        return new ArrayIterator($this->queues);
+        return new ArrayIterator($this->getQueuesByWeight());
     }
 
 }
