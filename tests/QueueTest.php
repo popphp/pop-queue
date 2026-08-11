@@ -528,7 +528,7 @@ class QueueTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function testTriggerEventIsNoOpWhenApplicationHasNoEventsRegistered()
+    public function testTriggerEventIsNoOpWhenApplicationHasNoListenersForTheEvent()
     {
         $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
         $application = new Application();
@@ -536,8 +536,15 @@ class QueueTest extends TestCase
         $method = new \ReflectionMethod($queue, 'triggerEvent');
         $method->setAccessible(true);
 
-        // A bare, un-bootstrapped Application has a null event manager -
-        // must not throw.
+        // Pop\Application::__construct() always calls bootstrap(), which
+        // always registers a non-null (empty) Event\Manager if one wasn't
+        // already set - so $application->events() is never null here. This
+        // exercises Manager::trigger()'s own no-op for an event name with
+        // no registered listeners, not the `$application->events() !== null`
+        // guard inside triggerEvent() - that guard is defensive only (Queue's
+        // $events property is protected and there's no public way to hand it
+        // a null Application-with-null-events through this codebase's own
+        // API), and is fine to leave uncovered as a result.
         $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
         $this->assertTrue(true);
     }
@@ -745,6 +752,30 @@ class QueueTest extends TestCase
             ['queue.task.post', $task->getJobId()],
         ], $fired);
         $this->assertArrayHasKey($task->getJobId(), $ran);
+    }
+
+    public function testWorkForwardsApplicationToTriggerEventEndToEnd()
+    {
+        $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $application = new Application();
+        $events      = new EventManager();
+        $fired       = [];
+
+        $events->on('queue.job.post', function($job, $queue) use (&$fired) {
+            $fired[] = $job->getJobId();
+        });
+        $application->registerEvents($events);
+
+        $job = Job::create(function(){
+            return 'Job #1' . PHP_EOL;
+        });
+        $queue->addJob($job);
+
+        $queue->work($application);
+
+        $this->assertEquals([$job->getJobId()], $fired);
+
+        $queue->clear();
     }
 
     public function testEvaluateTasksOnceFiresTaskFailedEvent()

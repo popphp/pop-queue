@@ -828,6 +828,55 @@ pushed job will be popped off instead.
 
 *(When you use a SQS FIFO queue, the queue priority is automatically set to FIFO)*
 
+### Events
+
+A queue can fire lifecycle events around job and task execution, for observability - logging, metrics,
+tracing, whatever a listener wants to do. This reuses `Pop\Event\Manager`, the same event system
+`Pop\Application` uses for its own lifecycle (`app.init`, `app.route.pre`, etc.), rather than a separate
+mechanism:
+
+```php
+use Pop\Event\Manager;
+
+$events = new Manager();
+$events->on('queue.job.post', function($job, $queue) {
+    echo 'Job ' . $job->getJobId() . ' completed on queue ' . $queue->getName() . PHP_EOL;
+});
+
+$queue->setEvents($events);
+```
+
+**Where the event manager comes from:** if you call `$queue->setEvents()`, that manager is used - full stop.
+If you don't, and you pass a `Pop\Application` into `work()`/`run()` that has its own event manager
+registered, that application's manager is used instead. If neither is set, event firing is a silent no-op.
+Setting a queue-level manager completely suppresses the application fallback for that queue - it's one or
+the other, never both.
+
+**Listener signatures are positional, not a single params array.** `Manager::trigger()` passes its params
+array to each listener with the keys stripped - so a listener for an event fired with
+`['job' => $job, 'queue' => $this]` must be written `function($job, $queue) { ... }`, **not**
+`function($params) { ... }` expecting one array argument. (`Manager::trigger()` also always appends a
+trailing `result` value itself, so an extra trailing positional argument is always present too - a listener
+that declares fewer parameters simply ignores it.)
+
+The events fired:
+
+| Event | When | Params |
+|---|---|---|
+| `queue.job.pre` | About to run a valid, reserved job | `job`, `queue` |
+| `queue.job.post` | Job ran and completed successfully | `job`, `queue` |
+| `queue.job.failed` | Job threw | `job`, `queue`, `exception` |
+| `queue.job.buried` | Job was permanently buried (already invalid before it could run, or failed and no longer valid for retry) | `job`, `queue`, `reason` |
+| `queue.task.pre` | About to run a due, claimed task | `task`, `queue` |
+| `queue.task.post` | Task ran and completed successfully | `task`, `queue` |
+| `queue.task.failed` | Task threw | `task`, `queue`, `exception` |
+
+A listener that itself throws propagates straight out of `work()`/`run()` - it is never caught or
+misattributed as the job/task having failed. One consequence worth knowing: if a `queue.job.pre` listener
+throws, the job stays reserved but never runs (it self-heals once its lease expires and gets reclaimed); if
+a `queue.task.pre` listener throws, that task's current due-window is already claimed and is simply skipped
+- the task runs again on its next due-window as normal.
+
 Workers
 -------
 

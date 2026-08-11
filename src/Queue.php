@@ -302,6 +302,7 @@ class Queue extends AbstractQueue
         $this->triggerEvent('queue.job.pre', ['job' => $job, 'queue' => $this], $application);
 
         $exception = null;
+        $buried    = false;
 
         try {
             $this->runWithTimeout($job, $application);
@@ -313,6 +314,7 @@ class Queue extends AbstractQueue
             if ($job->isValid()) {
                 $this->adapter->release($job);
             } else {
+                $buried = true;
                 $this->adapter->bury($job, $e->getMessage());
             }
         }
@@ -321,7 +323,7 @@ class Queue extends AbstractQueue
             $this->triggerEvent('queue.job.post', ['job' => $job, 'queue' => $this], $application);
         } else {
             $this->triggerEvent('queue.job.failed', ['job' => $job, 'queue' => $this, 'exception' => $exception], $application);
-            if (!$job->isValid()) {
+            if ($buried) {
                 $this->triggerEvent('queue.job.buried', ['job' => $job, 'queue' => $this, 'reason' => $exception->getMessage()], $application);
             }
         }
