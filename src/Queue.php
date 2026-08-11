@@ -14,6 +14,7 @@
 namespace Pop\Queue;
 
 use Pop\Application;
+use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\AdapterInterface;
 use Pop\Queue\Adapter\TaskAdapterInterface;
 use Pop\Queue\Process\AbstractJob;
@@ -38,6 +39,15 @@ class Queue extends AbstractQueue
      */
     const FIFO = 'FIFO'; // Same as LILO
     const FILO = 'FILO'; // Same as LIFO
+
+    /**
+     * Event manager, for lifecycle observability hooks (queue.job.*, queue.task.*).
+     * If not set, and an Application with its own event manager is passed into
+     * work()/run(), that Application's event manager is used instead - see
+     * triggerEvent(). If neither is available, event firing is a silent no-op.
+     * @var ?EventManager
+     */
+    protected ?EventManager $events = null;
 
     /**
      * Constructor
@@ -132,6 +142,71 @@ class Queue extends AbstractQueue
     public function isLifo(): bool
     {
         return $this->adapter->isLifo();
+    }
+
+    /**
+     * Set event manager
+     *
+     * @param  EventManager $events
+     * @return Queue
+     */
+    public function setEvents(EventManager $events): Queue
+    {
+        $this->events = $events;
+        return $this;
+    }
+
+    /**
+     * Get event manager
+     *
+     * @return ?EventManager
+     */
+    public function getEvents(): ?EventManager
+    {
+        return $this->events;
+    }
+
+    /**
+     * Get event manager (alias)
+     *
+     * @return ?EventManager
+     */
+    public function events(): ?EventManager
+    {
+        return $this->events;
+    }
+
+    /**
+     * Has event manager
+     *
+     * @return bool
+     */
+    public function hasEvents(): bool
+    {
+        return ($this->events !== null);
+    }
+
+    /**
+     * Trigger a lifecycle event. Uses this Queue's own event manager if one
+     * is set via setEvents(); otherwise falls back to $application's event
+     * manager if one was passed in and has events registered; otherwise
+     * does nothing. Never throws on its own account - if the resolved
+     * manager's trigger() call throws (e.g. a listener's own code throws),
+     * that exception propagates to the caller exactly as any other
+     * uncaught exception would.
+     *
+     * @param  string       $name
+     * @param  array        $params
+     * @param  ?Application $application
+     * @return void
+     */
+    protected function triggerEvent(string $name, array $params, ?Application $application = null): void
+    {
+        if ($this->hasEvents()) {
+            $this->events->trigger($name, $params);
+        } else if (($application !== null) && ($application->events() !== null)) {
+            $application->events()->trigger($name, $params);
+        }
     }
 
     /**

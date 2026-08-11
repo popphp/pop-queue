@@ -2,6 +2,8 @@
 
 namespace Pop\Queue\Test;
 
+use Pop\Application;
+use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\File;
 use Pop\Queue\Queue;
 use Pop\Queue\Process\Job;
@@ -438,6 +440,106 @@ class QueueTest extends TestCase
         // across multiple queues.
         $ran = $queue->evaluateTasksOnce([$task->getJobId() => $task], null, false);
         $this->assertArrayHasKey($task->getJobId(), $ran);
+    }
+
+    public function testSetAndGetEvents()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+
+        $this->assertFalse($queue->hasEvents());
+        $queue->setEvents($events);
+        $this->assertTrue($queue->hasEvents());
+        $this->assertSame($events, $queue->getEvents());
+        $this->assertSame($events, $queue->events());
+    }
+
+    public function testTriggerEventUsesQueueEventsWhenSet()
+    {
+        $queue  = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $events = new EventManager();
+        $fired  = [];
+        $events->on('test.event', function($foo) use (&$fired) {
+            $fired[] = $foo;
+        });
+        $queue->setEvents($events);
+
+        $method = new \ReflectionMethod($queue, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($queue, 'test.event', ['foo' => 'bar']);
+
+        $this->assertEquals(['bar'], $fired);
+    }
+
+    public function testTriggerEventFallsBackToApplicationEvents()
+    {
+        $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $application = new Application();
+        $events      = new EventManager();
+        $fired       = [];
+        $events->on('test.event', function($foo) use (&$fired) {
+            $fired[] = $foo;
+        });
+        $application->registerEvents($events);
+
+        $method = new \ReflectionMethod($queue, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
+
+        $this->assertEquals(['bar'], $fired);
+    }
+
+    public function testTriggerEventPrefersQueueEventsOverApplication()
+    {
+        $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $queueEvents = new EventManager();
+        $appEvents   = new EventManager();
+        $application = new Application();
+        $queueFired  = [];
+        $appFired    = [];
+
+        $queueEvents->on('test.event', function($foo) use (&$queueFired) {
+            $queueFired[] = $foo;
+        });
+        $appEvents->on('test.event', function($foo) use (&$appFired) {
+            $appFired[] = $foo;
+        });
+
+        $queue->setEvents($queueEvents);
+        $application->registerEvents($appEvents);
+
+        $method = new \ReflectionMethod($queue, 'triggerEvent');
+        $method->setAccessible(true);
+        $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
+
+        $this->assertEquals(['bar'], $queueFired);
+        $this->assertEquals([], $appFired);
+    }
+
+    public function testTriggerEventIsNoOpWithNoEventsAnywhere()
+    {
+        $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+
+        $method = new \ReflectionMethod($queue, 'triggerEvent');
+        $method->setAccessible(true);
+
+        // Must not throw.
+        $method->invoke($queue, 'test.event', ['foo' => 'bar']);
+        $this->assertTrue(true);
+    }
+
+    public function testTriggerEventIsNoOpWhenApplicationHasNoEventsRegistered()
+    {
+        $queue       = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
+        $application = new Application();
+
+        $method = new \ReflectionMethod($queue, 'triggerEvent');
+        $method->setAccessible(true);
+
+        // A bare, un-bootstrapped Application has a null event manager -
+        // must not throw.
+        $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
+        $this->assertTrue(true);
     }
 
 }
