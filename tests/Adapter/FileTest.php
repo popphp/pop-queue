@@ -524,4 +524,84 @@ class FileTest extends TestCase
         $adapter->clear();
     }
 
+    public function testClaimTaskRunSucceedsOnFirstClaim()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $taskId  = 'claim-test-task-1';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunRejectsSameWindowWhileLive()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $taskId  = 'claim-test-task-2';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+        $this->assertFalse($adapter->claimTaskRun($taskId, '100'));
+
+        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunSucceedsForADifferentWindowWhilePreviousIsStillLive()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $taskId  = 'claim-test-task-3';
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+        $this->assertTrue($adapter->claimTaskRun($taskId, '101'));
+
+        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $taskId);
+    }
+
+    public function testClaimTaskRunSucceedsForSameWindowAfterExpiry()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $taskId  = 'claim-test-task-4';
+        $path    = __DIR__ . '/../tmp/pop-queue/claim-task-' . $taskId;
+
+        // Write an already-expired claim marker directly, rather than a
+        // real 30-second sleep.
+        file_put_contents($path, '100:' . (time() - 1));
+
+        $this->assertTrue($adapter->claimTaskRun($taskId, '100'));
+
+        unlink($path);
+    }
+
+    public function testClaimTaskMarkerFilenameDoesNotCorruptGetTasks()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $task    = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+        $adapter->schedule($task);
+
+        $adapter->claimTaskRun($task->getJobId(), '100');
+
+        $this->assertCount(1, $adapter->getTasks());
+        $this->assertEquals($task->getJobId(), $adapter->getTasks()[0]);
+
+        $adapter->clearTasks();
+        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $task->getJobId());
+    }
+
+    public function testRemoveTaskClearsClaimState()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue', 'FILO');
+        $task    = Task::create(function(){ echo 'Task #1'; })->everyMinute();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $adapter->removeTask($task->getJobId());
+
+        $this->assertFileDoesNotExist(__DIR__ . '/../tmp/pop-queue/claim-task-' . $task->getJobId());
+
+        $adapter->schedule($task);
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        $adapter->clearTasks();
+        unlink(__DIR__ . '/../tmp/pop-queue/claim-task-' . $task->getJobId());
+    }
+
 }

@@ -39,4 +39,23 @@ class FileConcurrencyTest extends ConcurrencyTestCase
         $adapter->clear();
     }
 
+    public function testConcurrentTaskClaimNeverDoubleClaims()
+    {
+        $folder = __DIR__ . '/../tmp/pop-queue-task-claim-concurrency';
+        if (!file_exists($folder)) {
+            mkdir($folder);
+        }
+
+        $taskId      = 'concurrency-claim-task';
+        $window      = '100';
+        $workerCount = 8;
+
+        $results = $this->runConcurrentTaskClaims('file', $folder, $taskId, $window, $workerCount);
+
+        $claimed = array_filter($results, fn($r) => $r === '1');
+        $this->assertCount(1, $claimed, 'Exactly one worker should have won the claim for the same task/window.');
+
+        unlink($folder . '/claim-task-' . $taskId);
+    }
+
 }

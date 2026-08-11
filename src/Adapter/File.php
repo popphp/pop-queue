@@ -698,6 +698,9 @@ class File extends AbstractTaskAdapter
         if (file_exists($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId)) {
             unlink($this->folder . DIRECTORY_SEPARATOR . 'task-' . $taskId);
         }
+        if (file_exists($this->taskClaimPath($taskId))) {
+            unlink($this->taskClaimPath($taskId));
+        }
         return $this;
     }
 
@@ -735,6 +738,67 @@ class File extends AbstractTaskAdapter
         }
 
         return $this;
+    }
+
+    /**
+     * Get the claim-marker file path for a task
+     *
+     * @param  string $taskId
+     * @return string
+     */
+    protected function taskClaimPath(string $taskId): string
+    {
+        return $this->folder . DIRECTORY_SEPARATOR . 'claim-task-' . $taskId;
+    }
+
+    /**
+     * Atomically claim a task's current due-window via a small sidecar
+     * file, deliberately separate from the task's own serialized
+     * definition file (task-<taskId>) so a claim attempt never touches or
+     * re-serializes the closure-bearing Task object. Content format is
+     * "<window>:<expiresAtUnixTimestamp>". flock() provides real
+     * cross-process mutual exclusion for the read-decide-write.
+     *
+     * @param  string $taskId
+     * @param  string $window
+     * @return bool
+     */
+    public function claimTaskRun(string $taskId, string $window): bool
+    {
+        $path = $this->taskClaimPath($taskId);
+
+        $fh = fopen($path, 'c+');
+        if ($fh === false) {
+            return false;
+        }
+
+        if (!flock($fh, LOCK_EX)) {
+            fclose($fh);
+            return false;
+        }
+
+        $contents = stream_get_contents($fh);
+        $now      = time();
+        $claimed  = true;
+
+        if (!empty($contents)) {
+            [$storedWindow, $storedExpiry] = array_pad(explode(':', $contents, 2), 2, '0');
+            if (($storedWindow === $window) && ((int)$storedExpiry > $now)) {
+                $claimed = false;
+            }
+        }
+
+        if ($claimed) {
+            ftruncate($fh, 0);
+            rewind($fh);
+            fwrite($fh, $window . ':' . ($now + self::TASK_CLAIM_TTL));
+            fflush($fh);
+        }
+
+        flock($fh, LOCK_UN);
+        fclose($fh);
+
+        return $claimed;
     }
 
     /**
