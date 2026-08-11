@@ -395,6 +395,13 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->addTask($task);
 ```
 
+When multiple workers share the same adapter storage (e.g. several server processes each invoking the
+scheduler around the same moment), `run()` claims each due task before executing it, so only one worker
+actually runs a given task for a given due-window - the others silently skip it. This is best-effort
+deduplication via shared storage, not distributed consensus: workers whose clocks disagree by more than a
+few seconds could still both run the same task. If a task's side effects can't tolerate that residual risk,
+make the task itself idempotent.
+
 [Top](#pop-queue)
 
 ### Scheduling

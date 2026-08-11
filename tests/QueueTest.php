@@ -348,4 +348,32 @@ class QueueTest extends TestCase
         $this->assertLessThan(5, $elapsed);
     }
 
+    public function testRunOnlyOneOfTwoQueuesSharingAnAdapterExecutesTheSameDueTask()
+    {
+        $adapter = new File(__DIR__ . '/tmp/pop-queue');
+        $queue1  = Queue::create('pop-queue', $adapter);
+        $queue2  = Queue::create('pop-queue', $adapter);
+
+        $task = Task::create(function(){
+            return 'Task #1' . PHP_EOL;
+        })->everyMinute()->setBuffer(-1);
+
+        $queue1->addTask($task);
+
+        // Two Queue instances sharing one adapter instance/folder,
+        // evaluating the same due task in the same process - proves the
+        // adapter-level claim actually gates Queue::run(), without needing
+        // a real second process (the adapter-level tests already prove
+        // real cross-process concurrency).
+        $tasks1 = $queue1->run();
+        $tasks2 = $queue2->run();
+
+        $ranInQueue1 = array_key_exists($task->getJobId(), $tasks1);
+        $ranInQueue2 = array_key_exists($task->getJobId(), $tasks2);
+
+        $this->assertTrue($ranInQueue1 xor $ranInQueue2, 'Exactly one of the two queues should have executed the shared due task.');
+
+        $queue1->clearTasks();
+    }
+
 }

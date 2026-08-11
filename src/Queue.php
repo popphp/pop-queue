@@ -275,6 +275,11 @@ class Queue extends AbstractQueue
      * per-second tick loop, where a coarse task's single evaluation already
      * happened on the shared first pass and doesn't need repeating).
      *
+     * Before running a due task, atomically claims it for the current
+     * due-window via the adapter (claimTaskRun()) - if another worker
+     * sharing the same adapter storage already claimed this task's window,
+     * this call skips it silently rather than running it a second time.
+     *
      * @param  array        $tasks         taskId => Task
      * @param  ?Application $application
      * @param  bool         $onlySubMinute
@@ -300,6 +305,13 @@ class Queue extends AbstractQueue
             }
 
             if ((!$task->isValid()) || (!$task->cron()->evaluate())) {
+                continue;
+            }
+
+            $window = $isSubMinute ? (string)time() : (string)intdiv(time(), 60);
+            if (!$this->adapter->claimTaskRun($taskId, $window)) {
+                // Another worker already claimed this task's current
+                // due-window - not a failure, just not ours to run.
                 continue;
             }
 
