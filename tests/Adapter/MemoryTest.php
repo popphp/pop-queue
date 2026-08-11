@@ -282,4 +282,68 @@ class MemoryTest extends TestCase
         $this->assertFalse($adapter->hasTasks());
         $this->assertEquals(0, $adapter->getTaskCount());
     }
+
+    public function testClaimTaskRunSucceedsOnFirstClaim()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+    }
+
+    public function testClaimTaskRunRejectsSameWindowWhileLive()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $this->assertFalse($adapter->claimTaskRun($task->getJobId(), '100'));
+    }
+
+    public function testClaimTaskRunSucceedsForADifferentWindowWhilePreviousIsStillLive()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '101'));
+    }
+
+    public function testClaimTaskRunSucceedsForSameWindowAfterExpiry()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+
+        // Force the stored claim to look expired without a real 30-second
+        // sleep, via the adapter's own internal state.
+        $property = new \ReflectionProperty($adapter, 'taskClaims');
+        $property->setAccessible(true);
+        $claims = $property->getValue($adapter);
+        $claims[$task->getJobId()][1] = time() - 1;
+        $property->setValue($adapter, $claims);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+    }
+
+    public function testRemoveTaskClearsClaimState()
+    {
+        $adapter = new Memory();
+        $task = Task::create(function(){ echo 'Task #1'; })->everySecond();
+        $adapter->schedule($task);
+
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+        $adapter->removeTask($task->getJobId());
+        $adapter->schedule($task);
+
+        // Claiming the *same* window again after removeTask() must succeed
+        // as if the task had never been claimed - proving removeTask()
+        // actually cleared the prior claim state.
+        $this->assertTrue($adapter->claimTaskRun($task->getJobId(), '100'));
+    }
 }

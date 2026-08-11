@@ -59,6 +59,12 @@ class Memory extends AbstractTaskAdapter
     protected array $tasks = [];
 
     /**
+     * Task claim state: taskId => [window, expiresAt]
+     * @var array
+     */
+    protected array $taskClaims = [];
+
+    /**
      * Push/reserve ordering sequence counter
      * @var int
      */
@@ -264,7 +270,7 @@ class Memory extends AbstractTaskAdapter
 
     public function removeTask(string $taskId): Memory
     {
-        unset($this->tasks[$taskId]);
+        unset($this->tasks[$taskId], $this->taskClaims[$taskId]);
 
         return $this;
     }
@@ -281,9 +287,26 @@ class Memory extends AbstractTaskAdapter
 
     public function clearTasks(): Memory
     {
-        $this->tasks = [];
+        $this->tasks       = [];
+        $this->taskClaims  = [];
 
         return $this;
+    }
+
+    public function claimTaskRun(string $taskId, string $window): bool
+    {
+        $now = time();
+
+        if (isset($this->taskClaims[$taskId])) {
+            [$claimedWindow, $expiresAt] = $this->taskClaims[$taskId];
+            if (($claimedWindow === $window) && ($expiresAt > $now)) {
+                return false;
+            }
+        }
+
+        $this->taskClaims[$taskId] = [$window, $now + self::TASK_CLAIM_TTL];
+
+        return true;
     }
 
 }

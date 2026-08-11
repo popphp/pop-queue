@@ -29,6 +29,16 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
 {
 
     /**
+     * How long, in seconds, a claim blocks a *same-window* re-claim.
+     * Shared by every concrete adapter's claimTaskRun() implementation.
+     * Not configurable - it only needs to cover one claim-then-execute
+     * round trip and has no relationship to any task's cron recurrence
+     * interval (the explicit window value each implementation compares
+     * against is what makes that safe).
+     */
+    protected const TASK_CLAIM_TTL = 30;
+
+    /**
      * Schedule job with queue
      *
      * @param  Task $task
@@ -87,5 +97,14 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
      * @return AbstractTaskAdapter
      */
     abstract public function clearTasks(): AbstractTaskAdapter;
+
+    /**
+     * Atomically claim a task's current due-window
+     *
+     * @param  string $taskId
+     * @param  string $window
+     * @return bool
+     */
+    abstract public function claimTaskRun(string $taskId, string $window): bool;
 
 }

@@ -88,4 +88,19 @@ interface TaskAdapterInterface
      */
     public function clearTasks(): TaskAdapterInterface;
 
+    /**
+     * Atomically claim a task's current due-window. Returns true if this
+     * call claimed $taskId for $window (no other live claim for that same
+     * window exists); false if another claim for the same window is
+     * already live. A claim for a *different* window from what's
+     * currently stored always succeeds immediately, regardless of the old
+     * claim's expiry - only a same-window re-claim is blocked, and only
+     * until the stored claim's TTL elapses.
+     *
+     * @param  string $taskId
+     * @param  string $window
+     * @return bool
+     */
+    public function claimTaskRun(string $taskId, string $window): bool;
+
 }
