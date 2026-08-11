@@ -332,10 +332,11 @@ $job->setBackoff(30);
 $job->setBackoff([10, 30, 60]);
 ```
 
-**NOTE:** As of this release, `setBackoff()`'s delay is only honored by the `Memory` adapter. The
-`Redis`, `Database`, `File`, and `AWS SQS` adapters currently retry a failed job immediately
-regardless of any backoff set on it — adapter-level backoff support is planned for a future
-release.
+**NOTE:** As of the atomic-adapter rewrite, `setBackoff()`'s delay is honored by `Memory`, `File`,
+`Database`, and `Redis` — a failed job with a backoff set won't be retried until the delay elapses,
+on any of those four. `AWS SQS` is the one exception: its `release()` deletes and re-sends the
+message without recomputing a delay, so a backed-off job on that adapter retries immediately
+regardless of `setBackoff()`.
 
 A job (or task) can also be dispatched with a delay, so it isn't eligible to run until later:
 
@@ -557,8 +558,9 @@ Adapters
 By default, there are five available adapters, but additional ones could be created as long as they
 implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
 
-A job that fails and still has attempts remaining is retried (immediately on `Redis`/`Database`/
-`File`/`AWS SQS`, or after any backoff delay on `Memory` — see [Attempts](#attempts) above); a job
+A job that fails and still has attempts remaining is retried (after any backoff delay on
+`Memory`/`File`/`Database`/`Redis`, immediately regardless of backoff on `AWS SQS` — see
+[Attempts](#attempts) above); a job
 that exhausts its attempts is buried instead of being silently dropped. On `Memory`, `Redis`,
 `Database` and `File`, a buried job is moved to that adapter's own dead-letter store, where it can
 be inspected and recovered — see each adapter's `getDeadJobs()`/`getDeadJob()`/`retryDeadJob()`/
@@ -639,12 +641,15 @@ use Pop\Queue\Adapter\Memory;
 $adapter = new Memory();
 ```
 
-It is the reference implementation of the adapter contract — the one adapter that implements the
-full job lifecycle correctly today: `delay()` eligibility, retry backoff applied by `release()`,
-and lease-based crash recovery. A reserved job is leased for 60 seconds by default; if the code
-that reserved it never calls `delete()`, `release()` or `bury()` (for example, the worker process
-dies), the lease expires and the job becomes reservable again instead of being stranded. The lease
-length, and the queue priority, can be passed into the constructor:
+It is the reference implementation of the adapter contract, implementing the full job lifecycle —
+`delay()` eligibility, retry backoff applied by `release()`, and lease-based crash recovery — with
+no server, extension or disk access required. `File`, `Database`, and `Redis` implement that same
+lifecycle too (with real concurrency safety, since more than one process can reserve against them
+at once); `Memory` is simply the simplest of the four to reason about and stand up in a test. A
+reserved job is leased for 60 seconds by default; if the code that reserved it never calls
+`delete()`, `release()` or `bury()` (for example, the worker process dies), the lease expires and
+the job becomes reservable again instead of being stranded. The lease length, and the queue
+priority, can be passed into the constructor:
 
 ```php
 $adapter = new Memory(30, 'FILO'); // 30-second lease, FILO priority
