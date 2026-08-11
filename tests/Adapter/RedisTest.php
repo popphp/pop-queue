@@ -319,4 +319,40 @@ class RedisTest extends TestCase
         $this->assertInstanceOf('Pop\Queue\Adapter\Redis', $adapter);
     }
 
+    public function testReleaseNoOpsWhenLeaseAlreadyReclaimed()
+    {
+        $job = Job::create(function(){ return 123; });
+
+        $adapter = new Redis('localhost', 6379, 'pop-queue', null, 1); // 1-second lease
+        $adapter->clear();
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+
+        sleep(2);
+
+        // Directly trigger the reclaim step - what reserve() does internally
+        // as its first action - without also re-claiming the job in the same
+        // call, so the job ends up sitting in pending, unclaimed by anyone.
+        // This is the state a too-slow worker's later release() call can
+        // race against: its lease already expired and self-healed, but it
+        // doesn't know that yet.
+        $reclaim = new \ReflectionMethod($adapter, 'reclaimExpiredLeases');
+        $reclaim->setAccessible(true);
+        $reclaim->invoke($adapter);
+
+        $this->assertEquals(1, $adapter->count(), 'Precondition: the reclaimed job should be the only copy, sitting in pending.');
+
+        // The original worker, unaware its lease already expired and was
+        // reclaimed out from under it, finally calls release() on its stale
+        // reference. This must not push a second copy on top of the one
+        // already sitting in pending.
+        $adapter->release($reserved);
+
+        $this->assertEquals(1, $adapter->count(), 'release() on an already-reclaimed job must not duplicate it in pending.');
+
+        $adapter->clear();
+    }
+
 }

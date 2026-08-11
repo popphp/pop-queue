@@ -277,7 +277,10 @@ LUA;
      */
     public function release(AbstractJob $job, ?int $delay = null): Redis
     {
-        $this->removeFromReserved($job->getJobId());
+        if ($this->removeFromReserved($job->getJobId()) === null) {
+            return $this;
+        }
+
         $job->delay($delay ?? $job->getBackoffDelay());
         $this->redis->lPush($this->prefix, serialize(clone $job));
 
