@@ -353,4 +353,30 @@ class JobTest extends TestCase
         $this->assertEquals(0, $job->getBackoffDelay());
     }
 
+    public function testGetDurationIsNullBeforeRunning()
+    {
+        $job = Job::create(function(){ return 1; });
+        $this->assertNull($job->getDuration());
+    }
+
+    public function testGetDurationIsNullWhileStillRunning()
+    {
+        $job = Job::create(function(){ return 1; });
+        $job->start();
+
+        // Started but never completed - there is no duration yet.
+        $this->assertNull($job->getDuration());
+    }
+
+    public function testGetDurationAfterCompleting()
+    {
+        $job = Job::create(function(){ return 1; });
+        $job->start();
+        $job->complete();
+
+        $duration = $job->getDuration();
+        $this->assertIsInt($duration);
+        $this->assertGreaterThanOrEqual(0, $duration);
+    }
+
 }

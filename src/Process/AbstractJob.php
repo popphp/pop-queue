@@ -713,6 +713,19 @@ abstract class AbstractJob implements JobInterface
     }
 
     /**
+     * Get how long the job took to run, in seconds, or null unless it both
+     * started and completed. Convenience for observability listeners, which
+     * would otherwise all repeat the same timestamp subtraction.
+     *
+     * @return ?int
+     */
+    public function getDuration(): ?int
+    {
+        return (($this->started !== null) && ($this->completed !== null))
+            ? ($this->completed - $this->started) : null;
+    }
+
+    /**
      * Is job complete
      *
      * @return bool
