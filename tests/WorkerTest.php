@@ -175,6 +175,61 @@ class WorkerTest extends TestCase
         $worker->clearAll();
     }
 
+    public function testClearFailedClearsOnlyTheNamedQueue()
+    {
+        $queue1 = Queue::create('pop-queue1', new File(__DIR__ . '/tmp/pop-queue'));
+        $queue2 = Queue::create('pop-queue2', new File(__DIR__ . '/tmp/pop-queue2'));
+        $job1   = Job::create(function(){
+            throw new \Exception('Error!');
+        });
+        $job2   = Job::create(function(){
+            throw new \Exception('Error!');
+        });
+        $job1->setMaxAttempts(1);
+        $job2->setMaxAttempts(1);
+
+        $queue1->addJob($job1);
+        $queue2->addJob($job2);
+
+        $worker = Worker::create([$queue1, $queue2]);
+        $worker->workAll();
+
+        $this->assertTrue($queue1->adapter()->hasDeadJobs());
+        $this->assertTrue($queue2->adapter()->hasDeadJobs());
+
+        // Unlike clearAllFailed(), the single-queue variant must leave every
+        // other queue's dead-letter store untouched.
+        $worker->clearFailed('pop-queue1');
+
+        $this->assertFalse($queue1->adapter()->hasDeadJobs());
+        $this->assertTrue($queue2->adapter()->hasDeadJobs());
+
+        $worker->clearAllFailed();
+        $worker->clearAll();
+    }
+
+    public function testClearFailedOnAnUnknownQueueNameIsANoOp()
+    {
+        $queue  = Queue::create('pop-queue1', new File(__DIR__ . '/tmp/pop-queue'));
+        $job    = Job::create(function(){
+            throw new \Exception('Error!');
+        });
+        $job->setMaxAttempts(1);
+
+        $queue->addJob($job);
+        $worker = Worker::create($queue);
+        $worker->workAll();
+
+        $this->assertTrue($queue->adapter()->hasDeadJobs());
+
+        $worker->clearFailed('does-not-exist');
+
+        $this->assertTrue($queue->adapter()->hasDeadJobs());
+
+        $worker->clearAllFailed();
+        $worker->clearAll();
+    }
+
     public function testRunQueue()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));

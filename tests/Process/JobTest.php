@@ -325,6 +325,7 @@ class JobTest extends TestCase
     {
         $job = new Job(function(){echo 1;}, null, 1);
         $job->setBackoff(15);
+        $this->assertEquals(15, $job->getBackoff());
         $job->failed();
         $this->assertEquals(15, $job->getBackoffDelay());
         $job->failed();
@@ -335,6 +336,9 @@ class JobTest extends TestCase
     {
         $job = new Job(function(){echo 1;}, null, 1);
         $job->setBackoff([10, 30, 60]);
+        // getBackoff() returns the configured schedule as given; getBackoffDelay()
+        // resolves it against the current attempt count.
+        $this->assertEquals([10, 30, 60], $job->getBackoff());
         $job->failed();
         $this->assertEquals(10, $job->getBackoffDelay());
         $job->failed();
@@ -350,6 +354,7 @@ class JobTest extends TestCase
         $job = new Job(function(){echo 1;}, null, 1);
         $job->failed();
         $this->assertFalse($job->hasBackoff());
+        $this->assertNull($job->getBackoff());
         $this->assertEquals(0, $job->getBackoffDelay());
     }
 

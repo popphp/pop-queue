@@ -303,21 +303,6 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
-     * Get queue start index
-     *
-     * @return int
-     */
-    protected function getStartIndex(): int
-    {
-        $sql = $this->db->createSql();
-        $sql->select('index')->from($this->table)->where('index IS NOT NULL')->orderBy('index')->limit(1);
-        $this->db->query($sql);
-
-        $rows = $this->db->fetchAll();
-        return (isset($rows[0]['index'])) ? (int)$rows[0]['index'] : 0;
-    }
-
-    /**
      * Get queue end index
      *
      * @return int
@@ -330,22 +315,6 @@ class Database extends AbstractTaskAdapter
 
         $rows = $this->db->fetchAll();
         return (isset($rows[0]['index'])) ? (int)$rows[0]['index'] : 0;
-    }
-
-    /**
-     * Get queue slot status
-     *
-     * @param  int $index
-     * @return int
-     */
-    protected function getSlotStatus(int $index): int
-    {
-        $sql = $this->db->createSql();
-        $sql->select('status')->from($this->table)->where('index = ' . (int)$index);
-        $this->db->query($sql);
-
-        $rows = $this->db->fetchAll();
-        return (isset($rows[0]['status'])) ? (int)$rows[0]['status'] : 0;
     }
 
     /**
