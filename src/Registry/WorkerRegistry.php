@@ -36,6 +36,15 @@ class WorkerRegistry
     protected RegistryInterface $registry;
 
     /**
+     * This process's own record, once registered. A WorkerRegistry instance
+     * represents this process's view of the registry, which is what lets the
+     * event listeners attached by attachTo() mutate the record by closing
+     * over $this.
+     * @var ?WorkerRecord
+     */
+    protected ?WorkerRecord $record = null;
+
+    /**
      * Constructor
      *
      * @param RegistryInterface $registry
@@ -53,6 +62,73 @@ class WorkerRegistry
     public function getRegistry(): RegistryInterface
     {
         return $this->registry;
+    }
+
+    /**
+     * Register this process, writing its record to the backend
+     *
+     * @param  ?string $name       optional operator-facing label
+     * @param  array   $queueNames names of the queues being serviced
+     * @param  string  $mode       WorkerRecord::MODE_DAEMON or MODE_SINGLE_PASS
+     * @return WorkerRecord
+     */
+    public function register(?string $name = null, array $queueNames = [], string $mode = WorkerRecord::MODE_SINGLE_PASS): WorkerRecord
+    {
+        $this->record = WorkerRecord::create($name, $queueNames, $mode);
+        $this->registry->write($this->record);
+
+        return $this->record;
+    }
+
+    /**
+     * Whether this process has registered
+     *
+     * @return bool
+     */
+    public function isRegistered(): bool
+    {
+        return ($this->record !== null);
+    }
+
+    /**
+     * This process's own record, or null if it hasn't registered
+     *
+     * @return ?WorkerRecord
+     */
+    public function getRecord(): ?WorkerRecord
+    {
+        return $this->record;
+    }
+
+    /**
+     * Refresh this process's heartbeat and flush its record. A no-op when
+     * not registered, so callers never need to guard.
+     *
+     * @return void
+     */
+    public function heartbeat(): void
+    {
+        if ($this->record === null) {
+            return;
+        }
+
+        $this->record->touch();
+        $this->registry->write($this->record);
+    }
+
+    /**
+     * Remove this process's record. A no-op when not registered.
+     *
+     * @return void
+     */
+    public function deregister(): void
+    {
+        if ($this->record === null) {
+            return;
+        }
+
+        $this->registry->delete($this->record->getId());
+        $this->record = null;
     }
 
     /**

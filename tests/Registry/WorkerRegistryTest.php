@@ -96,4 +96,78 @@ class WorkerRegistryTest extends TestCase
         $this->assertEquals(1, $registry->countWorkers());
     }
 
+    public function testIsNotRegisteredInitially()
+    {
+        $registry = new WorkerRegistry(new Memory());
+
+        $this->assertFalse($registry->isRegistered());
+        $this->assertNull($registry->getRecord());
+    }
+
+    public function testRegisterWritesARecordAndTracksIt()
+    {
+        $backend  = new Memory();
+        $registry = new WorkerRegistry($backend);
+
+        $record = $registry->register('billing-worker', ['billing', 'email'], WorkerRecord::MODE_DAEMON);
+
+        $this->assertTrue($registry->isRegistered());
+        $this->assertSame($record, $registry->getRecord());
+        $this->assertEquals('billing-worker', $record->getName());
+        $this->assertEquals(['billing', 'email'], $record->getQueues());
+        $this->assertEquals('daemon', $record->getMode());
+
+        // And it is actually in the backend, visible to another process.
+        $this->assertCount(1, $backend->all());
+        $this->assertNotNull($backend->read($record->getId()));
+    }
+
+    public function testHeartbeatRefreshesTheStoredRecord()
+    {
+        $backend  = new Memory();
+        $registry = new WorkerRegistry($backend);
+        $record   = $registry->register('worker-a', [], WorkerRecord::MODE_DAEMON);
+
+        // Force the in-memory record to look stale, then heartbeat.
+        $record->setCurrentJob('job-abc', 'billing', 30);
+        $registry->heartbeat();
+
+        $stored = $backend->read($record->getId());
+        $this->assertEquals('job-abc', $stored->getCurrentJobId());
+        $this->assertFalse($stored->isStale(90));
+    }
+
+    public function testHeartbeatIsANoOpWhenNotRegistered()
+    {
+        $backend  = new Memory();
+        $registry = new WorkerRegistry($backend);
+
+        $registry->heartbeat();
+
+        $this->assertEmpty($backend->all());
+    }
+
+    public function testDeregisterRemovesTheRecordAndClearsState()
+    {
+        $backend  = new Memory();
+        $registry = new WorkerRegistry($backend);
+        $record   = $registry->register('worker-a', [], WorkerRecord::MODE_SINGLE_PASS);
+
+        $registry->deregister();
+
+        $this->assertFalse($registry->isRegistered());
+        $this->assertNull($registry->getRecord());
+        $this->assertNull($backend->read($record->getId()));
+        $this->assertEmpty($backend->all());
+    }
+
+    public function testDeregisterIsANoOpWhenNotRegistered()
+    {
+        $registry = new WorkerRegistry(new Memory());
+
+        $registry->deregister();
+
+        $this->assertFalse($registry->isRegistered());
+    }
+
 }
