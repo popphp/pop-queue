@@ -7,6 +7,9 @@ use Pop\Event\Manager as EventManager;
 use Pop\Queue\Adapter\File;
 use Pop\Queue\Process\Job;
 use Pop\Queue\Process\Task;
+use Pop\Queue\Registry\Adapter\Memory as RegistryMemory;
+use Pop\Queue\Registry\WorkerRegistry;
+use Pop\Queue\Registry\WorkerRecord;
 use Pop\Queue\Worker;
 use Pop\Queue\Queue;
 use PHPUnit\Framework\TestCase;
@@ -778,6 +781,138 @@ class WorkerTest extends TestCase
 
         $this->assertEquals(1, $ticks);
         $this->assertTrue($worker->isStopped());
+    }
+
+    public function testRegistryAccessors()
+    {
+        $worker   = Worker::create();
+        $registry = new WorkerRegistry(new RegistryMemory());
+
+        $this->assertFalse($worker->hasRegistry());
+        $this->assertNull($worker->getRegistry());
+
+        $worker->setRegistry($registry);
+
+        $this->assertTrue($worker->hasRegistry());
+        $this->assertSame($registry, $worker->getRegistry());
+        $this->assertSame($registry, $worker->registry());
+    }
+
+    public function testNameAccessors()
+    {
+        $worker = Worker::create();
+
+        $this->assertFalse($worker->hasName());
+        $this->assertNull($worker->getName());
+
+        $worker->setName('billing-worker-01');
+
+        $this->assertTrue($worker->hasName());
+        $this->assertEquals('billing-worker-01', $worker->getName());
+    }
+
+    public function testSinglePassWorkRegistersAndDeregistersItself()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $worker->setName('cron-worker');
+        $worker->setRegistry($registry);
+
+        $queue->addJob(Job::create(function(){ return 1; }));
+        $worker->workAll();
+
+        // Registered for the duration of the pass, gone afterwards.
+        $this->assertFalse($registry->isRegistered());
+        $this->assertEmpty($backend->all());
+    }
+
+    public function testSinglePassRegistrationIsVisibleWhileTheJobRuns()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $worker->setName('cron-worker');
+        $worker->setRegistry($registry);
+
+        $seen = null;
+        $queue->addJob(Job::create(function() use ($backend, &$seen) {
+            $all  = $backend->all();
+            $seen = count($all);
+            return 1;
+        }));
+        $worker->workAll();
+
+        $this->assertEquals(1, $seen, 'the worker should be registered while its job runs');
+    }
+
+    public function testWorkerWithNoRegistryIsUnaffected()
+    {
+        $queue  = Queue::fake('billing');
+        $worker = Worker::create($queue);
+
+        $queue->addJob(Job::create(function(){ return 123; }));
+        $jobs = $worker->workAll();
+
+        $this->assertFalse($worker->hasRegistry());
+        $this->assertEquals(123, $jobs['billing']->getResults());
+    }
+
+    public function testWorkLoopRegistersAsDaemonAndDeregistersOnStop()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $worker->setRegistry($registry);
+
+        // Observe the record mid-loop, then stop.
+        $observedMode = null;
+        $observedCount = null;
+        $events = new EventManager();
+        $events->on('worker.work_loop.tick', function($jobs, $w) use ($backend, &$observedMode, &$observedCount) {
+            $all = $backend->all();
+            $observedCount = count($all);
+            if (!empty($all)) {
+                $observedMode = reset($all)->getMode();
+            }
+            $w->stop();
+        });
+        $worker->setEvents($events);
+
+        $worker->workLoop(1);
+
+        $this->assertEquals(1, $observedCount, 'daemon should be registered during the loop');
+        $this->assertEquals('daemon', $observedMode);
+        $this->assertFalse($registry->isRegistered(), 'daemon should deregister on stop');
+        $this->assertEmpty($backend->all());
+    }
+
+    public function testInnerWorkAllDoesNotDeregisterTheDaemonThatOwnsTheRecord()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $worker->setRegistry($registry);
+
+        // workAll() runs inside workLoop() every tick. If its own
+        // ensureRegistered()/deregister() pair mistakenly took ownership,
+        // the daemon's record would vanish mid-loop. Assert it is still
+        // there at tick time - i.e. after at least one inner workAll().
+        $stillThere = null;
+        $events = new EventManager();
+        $events->on('worker.work_loop.tick', function($jobs, $w) use ($backend, &$stillThere) {
+            $stillThere = count($backend->all());
+            $w->stop();
+        });
+        $worker->setEvents($events);
+
+        $worker->workLoop(1);
+
+        $this->assertEquals(1, $stillThere);
     }
 
 }

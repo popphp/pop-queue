@@ -17,6 +17,8 @@ use ArrayIterator;
 use Pop\Application;
 use Pop\Event\Manager as EventManager;
 use Pop\Queue\Process\AbstractJob;
+use Pop\Queue\Registry\WorkerRecord;
+use Pop\Queue\Registry\WorkerRegistry;
 
 /**
  * Queue worker class
@@ -69,6 +71,21 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      * @var bool
      */
     protected bool $stopped = false;
+
+    /**
+     * Optional operator-facing label for this worker, surfaced in its
+     * registry record
+     * @var ?string
+     */
+    protected ?string $name = null;
+
+    /**
+     * Worker registry, for observability. Null (the default) means no
+     * registry work happens at all and behavior is identical to a build
+     * without this feature.
+     * @var ?WorkerRegistry
+     */
+    protected ?WorkerRegistry $registry = null;
 
     /**
      * Constructor
@@ -173,6 +190,83 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     public function hasEvents(): bool
     {
         return ($this->events !== null);
+    }
+
+    /**
+     * Set the worker registry, and wire its tracking onto this worker's
+     * queues
+     *
+     * @param  WorkerRegistry $registry
+     * @return Worker
+     */
+    public function setRegistry(WorkerRegistry $registry): Worker
+    {
+        $this->registry = $registry;
+        $registry->attachTo($this);
+
+        return $this;
+    }
+
+    /**
+     * Get the worker registry
+     *
+     * @return ?WorkerRegistry
+     */
+    public function getRegistry(): ?WorkerRegistry
+    {
+        return $this->registry;
+    }
+
+    /**
+     * Get the worker registry (alias)
+     *
+     * @return ?WorkerRegistry
+     */
+    public function registry(): ?WorkerRegistry
+    {
+        return $this->registry;
+    }
+
+    /**
+     * Has a worker registry
+     *
+     * @return bool
+     */
+    public function hasRegistry(): bool
+    {
+        return ($this->registry !== null);
+    }
+
+    /**
+     * Set this worker's operator-facing label
+     *
+     * @param  ?string $name
+     * @return Worker
+     */
+    public function setName(?string $name): Worker
+    {
+        $this->name = $name;
+        return $this;
+    }
+
+    /**
+     * Get this worker's operator-facing label
+     *
+     * @return ?string
+     */
+    public function getName(): ?string
+    {
+        return $this->name;
+    }
+
+    /**
+     * Has an operator-facing label
+     *
+     * @return bool
+     */
+    public function hasName(): bool
+    {
+        return ($this->name !== null);
     }
 
     /**
@@ -309,6 +403,57 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     }
 
     /**
+     * Register this process with the registry if nothing has already,
+     * returning whether THIS call performed the registration.
+     *
+     * That return value is the ownership rule that lets one mechanism serve
+     * both deployment models: a single-pass work()/run() that registered
+     * deregisters itself on the way out, while the same call made from
+     * inside a daemon loop finds the loop's registration already in place,
+     * takes no ownership, and leaves the daemon's record alone.
+     *
+     * @param  string $mode
+     * @return bool
+     */
+    protected function ensureRegistered(string $mode): bool
+    {
+        if (!$this->hasRegistry() || $this->registry->isRegistered()) {
+            return false;
+        }
+
+        $this->registry->register($this->name, array_keys($this->queues), $mode);
+
+        return true;
+    }
+
+    /**
+     * Refresh this worker's heartbeat, if it has a registry. A no-op
+     * otherwise, and a no-op inside the registry when not registered.
+     *
+     * @return void
+     */
+    protected function heartbeat(): void
+    {
+        if ($this->hasRegistry()) {
+            $this->registry->heartbeat();
+        }
+    }
+
+    /**
+     * Deregister this process, but only if the given flag says this call
+     * owned the registration
+     *
+     * @param  bool $owned
+     * @return void
+     */
+    protected function deregisterIfOwned(bool $owned): void
+    {
+        if ($owned && $this->hasRegistry()) {
+            $this->registry->deregister();
+        }
+    }
+
+    /**
      * Work next job. Pass a queue name to work that specific queue (exactly
      * today's behavior). Pass nothing to try every registered queue in
      * weight order (highest first), returning the first job successfully
@@ -320,18 +465,24 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function work(?string $queueName = null): ?AbstractJob
     {
-        if ($queueName !== null) {
-            return isset($this->queues[$queueName]) ? $this->queues[$queueName]->work($this->application) : null;
-        }
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_SINGLE_PASS);
 
-        foreach ($this->getQueuesByWeight() as $queue) {
-            $job = $queue->work($this->application);
-            if ($job !== null) {
-                return $job;
+        try {
+            if ($queueName !== null) {
+                return isset($this->queues[$queueName]) ? $this->queues[$queueName]->work($this->application) : null;
             }
-        }
 
-        return null;
+            foreach ($this->getQueuesByWeight() as $queue) {
+                $job = $queue->work($this->application);
+                if ($job !== null) {
+                    return $job;
+                }
+            }
+
+            return null;
+        } finally {
+            $this->deregisterIfOwned($owned);
+        }
     }
 
     /**
@@ -341,11 +492,17 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function workAll(): array
     {
-        $jobs = [];
-        foreach ($this->getQueuesByWeight() as $queueName => $queue) {
-            $jobs[$queueName] = $queue->work($this->application);
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_SINGLE_PASS);
+
+        try {
+            $jobs = [];
+            foreach ($this->getQueuesByWeight() as $queueName => $queue) {
+                $jobs[$queueName] = $queue->work($this->application);
+            }
+            return $jobs;
+        } finally {
+            $this->deregisterIfOwned($owned);
         }
-        return $jobs;
     }
 
     /**
@@ -356,11 +513,17 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function run(string $queueName): array
     {
-        $tasks = [];
-        if (isset($this->queues[$queueName])) {
-            $tasks[$queueName] = $this->queues[$queueName]->run($this->application);
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_SINGLE_PASS);
+
+        try {
+            $tasks = [];
+            if (isset($this->queues[$queueName])) {
+                $tasks[$queueName] = $this->queues[$queueName]->run($this->application);
+            }
+            return $tasks;
+        } finally {
+            $this->deregisterIfOwned($owned);
         }
-        return $tasks;
     }
 
     /**
@@ -376,43 +539,49 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     public function runAll(): array
     {
-        $tasks         = [];
-        $queueTaskSets = [];
-        $queues        = $this->getQueuesByWeight();
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_SINGLE_PASS);
 
-        foreach ($queues as $queueName => $queue) {
-            $tasks[$queueName]         = [];
-            $queueTaskSets[$queueName] = $queue->getScheduledTasks();
-        }
+        try {
+            $tasks         = [];
+            $queueTaskSets = [];
+            $queues        = $this->getQueuesByWeight();
 
-        foreach ($queueTaskSets as $queueName => $scheduledTasks) {
-            foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application) as $jobId => $task) {
-                $tasks[$queueName][$jobId] = $task;
+            foreach ($queues as $queueName => $queue) {
+                $tasks[$queueName]         = [];
+                $queueTaskSets[$queueName] = $queue->getScheduledTasks();
             }
-        }
 
-        $hasSubMinute = false;
-        foreach ($queueTaskSets as $scheduledTasks) {
-            foreach ($scheduledTasks as $task) {
-                if ($task->cron()->hasSeconds()) {
-                    $hasSubMinute = true;
-                    break 2;
+            foreach ($queueTaskSets as $queueName => $scheduledTasks) {
+                foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application) as $jobId => $task) {
+                    $tasks[$queueName][$jobId] = $task;
                 }
             }
-        }
 
-        if ($hasSubMinute) {
-            for ($tick = 1; $tick < 60; $tick++) {
-                sleep(1);
-                foreach ($queueTaskSets as $queueName => $scheduledTasks) {
-                    foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
-                        $tasks[$queueName][$jobId] = $task;
+            $hasSubMinute = false;
+            foreach ($queueTaskSets as $scheduledTasks) {
+                foreach ($scheduledTasks as $task) {
+                    if ($task->cron()->hasSeconds()) {
+                        $hasSubMinute = true;
+                        break 2;
                     }
                 }
             }
-        }
 
-        return $tasks;
+            if ($hasSubMinute) {
+                for ($tick = 1; $tick < 60; $tick++) {
+                    sleep(1);
+                    foreach ($queueTaskSets as $queueName => $scheduledTasks) {
+                        foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
+                            $tasks[$queueName][$jobId] = $task;
+                        }
+                    }
+                }
+            }
+
+            return $tasks;
+        } finally {
+            $this->deregisterIfOwned($owned);
+        }
     }
 
     /**
@@ -468,30 +637,37 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
         $this->stopped = false;
         $this->installSignalHandlers();
 
-        while (!$this->stopped) {
-            $jobs = $this->workAll();
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_DAEMON);
 
-            $anyWorked = false;
-            foreach ($jobs as $job) {
-                if ($job !== null) {
-                    $anyWorked = true;
+        try {
+            while (!$this->stopped) {
+                $jobs = $this->workAll();
+
+                $anyWorked = false;
+                foreach ($jobs as $job) {
+                    if ($job !== null) {
+                        $anyWorked = true;
+                        break;
+                    }
+                }
+
+                $this->heartbeat();
+                $this->triggerEvent('worker.work_loop.tick', ['jobs' => $jobs, 'worker' => $this]);
+
+                if ($this->stopped) {
                     break;
+                }
+
+                if (!$anyWorked) {
+                    $this->triggerEvent('worker.work_loop.idle', ['worker' => $this]);
+                    sleep($sleepSeconds);
                 }
             }
 
-            $this->triggerEvent('worker.work_loop.tick', ['jobs' => $jobs, 'worker' => $this]);
-
-            if ($this->stopped) {
-                break;
-            }
-
-            if (!$anyWorked) {
-                $this->triggerEvent('worker.work_loop.idle', ['worker' => $this]);
-                sleep($sleepSeconds);
-            }
+            $this->triggerEvent('worker.work_loop.shutdown', ['worker' => $this]);
+        } finally {
+            $this->deregisterIfOwned($owned);
         }
-
-        $this->triggerEvent('worker.work_loop.shutdown', ['worker' => $this]);
     }
 
     /**
@@ -516,30 +692,37 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
         $this->stopped = false;
         $this->installSignalHandlers();
 
-        while (!$this->stopped) {
-            $tasks = $this->runAll();
+        $owned = $this->ensureRegistered(WorkerRecord::MODE_DAEMON);
 
-            $anyRan = false;
-            foreach ($tasks as $queueTasks) {
-                if (!empty($queueTasks)) {
-                    $anyRan = true;
+        try {
+            while (!$this->stopped) {
+                $tasks = $this->runAll();
+
+                $anyRan = false;
+                foreach ($tasks as $queueTasks) {
+                    if (!empty($queueTasks)) {
+                        $anyRan = true;
+                        break;
+                    }
+                }
+
+                $this->heartbeat();
+                $this->triggerEvent('worker.run_loop.tick', ['tasks' => $tasks, 'worker' => $this]);
+
+                if ($this->stopped) {
                     break;
+                }
+
+                if (!$anyRan) {
+                    $this->triggerEvent('worker.run_loop.idle', ['worker' => $this]);
+                    sleep($sleepSeconds);
                 }
             }
 
-            $this->triggerEvent('worker.run_loop.tick', ['tasks' => $tasks, 'worker' => $this]);
-
-            if ($this->stopped) {
-                break;
-            }
-
-            if (!$anyRan) {
-                $this->triggerEvent('worker.run_loop.idle', ['worker' => $this]);
-                sleep($sleepSeconds);
-            }
+            $this->triggerEvent('worker.run_loop.shutdown', ['worker' => $this]);
+        } finally {
+            $this->deregisterIfOwned($owned);
         }
-
-        $this->triggerEvent('worker.run_loop.shutdown', ['worker' => $this]);
     }
 
     /**
