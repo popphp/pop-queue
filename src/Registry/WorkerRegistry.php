@@ -13,6 +13,10 @@
  */
 namespace Pop\Queue\Registry;
 
+use Pop\Event\Manager as EventManager;
+use Pop\Queue\Queue;
+use Pop\Queue\Worker;
+
 /**
  * Worker registry class
  *
@@ -201,6 +205,85 @@ class WorkerRegistry
     public function prune(int $olderThanSeconds = 3600): int
     {
         return $this->registry->prune($olderThanSeconds);
+    }
+
+    /**
+     * Wire this registry's current-job and counter tracking onto a worker's
+     * queues, via the queue lifecycle events.
+     *
+     * Tracking rides on the existing events rather than new plumbing because
+     * Queue::work() reserves AND runs a job internally - the Worker only
+     * receives it after it ran, so it structurally cannot record the current
+     * job before execution. queue.job.pre fires before execution, which is
+     * exactly the hook needed.
+     *
+     * @param  Worker $worker
+     * @return void
+     */
+    public function attachTo(Worker $worker): void
+    {
+        foreach ($worker->getQueues() as $queue) {
+            $events = $this->resolveEventManager($queue, $worker);
+
+            // Listener params are positional, not an array - Manager::trigger()
+            // strips the keys before calling.
+            $events->on('queue.job.pre', function($job, $queue) {
+                if ($this->record !== null) {
+                    $this->record->setCurrentJob($job->getJobId(), $queue->getName(), $job->getTimeout());
+                    // Persisted BEFORE the job runs: a worker that wedges
+                    // mid-job can't write anything afterwards, so this is the
+                    // only chance to record what it died on.
+                    $this->registry->write($this->record);
+                }
+            });
+
+            $events->on('queue.job.post', function($job, $queue) {
+                if ($this->record !== null) {
+                    $this->record->clearCurrentJob();
+                    $this->record->incrementProcessed();
+                    // Deliberately no write - the cleared state and counters
+                    // flush on the next heartbeat, keeping steady-state write
+                    // volume flat regardless of job throughput.
+                }
+            });
+
+            $events->on('queue.job.failed', function($job, $queue, $exception) {
+                if ($this->record !== null) {
+                    $this->record->clearCurrentJob();
+                    $this->record->incrementFailed();
+                }
+            });
+        }
+    }
+
+    /**
+     * Find the event manager a queue's events actually reach, without
+     * disturbing existing wiring.
+     *
+     * Queue::triggerEvent() uses the queue's own manager if set, else the
+     * Application's - and setting a queue-level manager SUPPRESSES the
+     * Application fallback. So attaching to the wrong one, or installing a
+     * new one where a fallback was in play, would silently orphan a user's
+     * app-level listeners.
+     *
+     * @param  Queue  $queue
+     * @param  Worker $worker
+     * @return EventManager
+     */
+    protected function resolveEventManager(Queue $queue, Worker $worker): EventManager
+    {
+        if ($queue->hasEvents()) {
+            return $queue->events();
+        }
+
+        if ($worker->hasApplication() && ($worker->getApplication()->events() !== null)) {
+            return $worker->getApplication()->events();
+        }
+
+        $events = new EventManager();
+        $queue->setEvents($events);
+
+        return $events;
     }
 
 }
