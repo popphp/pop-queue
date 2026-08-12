@@ -8,6 +8,7 @@ pop-queue
 
 * [Overview](#overview)
 * [Install](#install)
+    - [Requirements](#requirements)
 * [Quickstart](#quickstart)
 * [Jobs](#jobs)
     - [Callables](#callables)
@@ -30,9 +31,11 @@ pop-queue
     - [Events](#events)
 * [Workers](#workers)
     - [Queue weights](#queue-weights)
+    - [Accessing the queues](#accessing-the-queues)
     - [Daemon mode](#daemon-mode)
     - [Clearing the queues](#clearing-the-queues)
 * [Configuration](#configuration)
+* [Upgrading to 3.0](#upgrading-to-30)
 
 Overview
 --------
@@ -69,6 +72,25 @@ Or, require it in your composer.json file
     "require": {
         "popphp/pop-queue" : "^3.0.0"
     }
+
+### Requirements
+
+`pop-queue` requires **PHP 8.4.0 or greater**. Everything else depends on which features you use:
+
+| Requirement | Needed for | Without it |
+|---|---|---|
+| `ext-redis` | The [Redis](#redis) adapter | The other adapters work normally |
+| `aws/aws-sdk-php` | The [AWS SQS](#aws-sqs) adapter | The other adapters work normally |
+| `proc_open()` | [CLI command](#cli-commands) jobs | `Symfony\Process` throws when the job runs |
+| `ext-pcntl` | Job [timeouts](#attempts) on callable/command jobs, and signal-based [graceful shutdown](#daemon-mode) | Jobs run untimed; loops end only via `stop()` |
+
+`aws/aws-sdk-php` is **not** installed automatically — install it separately if you use the SQS
+adapter (see [AWS SQS](#aws-sqs)).
+
+Note that `proc_open()` is a new requirement for CLI command jobs as of 3.0. Earlier versions shelled
+out with `exec()`; 3.0 uses `Symfony\Process`, which needs `proc_open()`. Some shared hosts disable
+`proc_open()` while leaving `exec()` enabled — on those, CLI command jobs that previously worked will
+now throw. Every other job type is unaffected.
 
 [Top](#pop-queue)
 
@@ -207,8 +229,8 @@ $closure = function($num) {
 $job3 = Job::create($closure, 1);
 ```
 
-If the callable needs access to the main application object, you can pass that to the
-queue object, and it will be prepended to the parameters of the callable object:
+If the callable needs access to the main application object, that object gets prepended to the
+parameters of the callable. Write the job to accept it:
 
 ```php
 use Pop\Queue\Queue;
@@ -225,8 +247,8 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->addJob($job);
 ```
 
-Once the callable is added to the queue, the worker will need to be aware of the application
-object in order to pass it down to the job:
+Then supply the application object at the point the job is actually worked. There are two ways to do
+that. Pass it to the worker, which hands it down to every queue it services:
 
 ```php
 use Pop\Queue\Queue;
@@ -241,6 +263,13 @@ $worker = Worker::create($queue, $application);
 
 // When the worker works the job, it will push the application object to the job
 $worker->workAll();
+```
+
+Or, if you're working a queue directly without a worker, pass it to `work()` (or `run()`) per call:
+
+```php
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
+$queue->work($application);
 ```
 
 [Top](#pop-queue)
@@ -356,11 +385,10 @@ $job->setBackoff(30);
 $job->setBackoff([10, 30, 60]);
 ```
 
-**NOTE:** As of the atomic-adapter rewrite, `setBackoff()`'s delay is honored by `Memory`, `File`,
-`Database`, and `Redis` — a failed job with a backoff set won't be retried until the delay elapses,
-on any of those four. `AWS SQS` is the one exception: its `release()` deletes and re-sends the
-message without recomputing a delay, so a backed-off job on that adapter retries immediately
-regardless of `setBackoff()`.
+**NOTE:** `setBackoff()`'s delay is honored by `Memory`, `File`, `Database`, and `Redis` — a failed
+job with a backoff set won't be retried until the delay elapses, on any of those four. `AWS SQS` is
+the one exception: its `release()` deletes and re-sends the message without recomputing a delay, so a
+backed-off job on that adapter retries immediately regardless of `setBackoff()`.
 
 A job (or task) can also be dispatched with a delay, so it isn't eligible to run until later:
 
@@ -381,12 +409,17 @@ doesn't allow per-message `DelaySeconds` on a FIFO SQS queue (it's a queue-level
 instead), so on a `.fifo` queue a job's `delay()` is not applied — the job becomes available
 immediately, same as if no delay were set.
 
-And a job can set a soft execution timeout, enforced when the `pcntl` extension is available:
+And a job can set an execution timeout:
 
 ```php
 // Interrupt the job if it runs longer than 30 seconds
 $job->setTimeout(30);
 ```
+
+How that timeout is enforced depends on the job type. For [CLI command](#cli-commands) jobs it's
+enforced by `Symfony\Process`, which needs no extension and can actually terminate the spawned child
+process. For callable and application command jobs it's a *soft* timeout enforced with a `pcntl`
+alarm — so it requires the `pcntl` extension, and without it those jobs run untimed.
 
 The `isValid()` method is also available and checks both the max attempts and the
 "run until" setting (which is used more with task objects - see below.)
@@ -429,8 +462,8 @@ make the task itself idempotent.
 A claim persists for up to 90 seconds if the task it's guarding never completes (it's never refreshed or
 explicitly released) - long enough to safely cover a coarse (minute-granularity) task's full due-window.
 
-Note: adding `claimTaskRun()` to `TaskAdapterInterface` is a breaking change for any third-party adapter
-implementing that interface directly - they must now implement this method too.
+Note: task claiming requires a `claimTaskRun()` method on the adapter, which is a breaking change for
+third-party adapters written against 2.x — see [Upgrading to 3.0](#upgrading-to-30).
 
 [Top](#pop-queue)
 
@@ -534,14 +567,14 @@ $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
 });
 // Using a valid date/time string
-$task->every30Minutes()->runUntil('2023-11-30 23:59:59');
+$task->every30Minutes()->runUntil('2027-11-30 23:59:59');
 ```
 
 It can also accept a timestamp:
 
 ```php
 // Using a valid UNIX timestamp
-$task->every30Minutes()->runUntil(1701410399);
+$task->every30Minutes()->runUntil(1827619199);
 ```
 
 The `isExpired()` method will evaluate if the job is beyond the "run until" value.
@@ -592,8 +625,20 @@ $task->setBuffer(-1);
 Adapters
 --------
 
-By default, there are five available adapters, but additional ones could be created as long as they
-implement `Pop\Queue\Adapter\AdapterInterface` and extend `Pop\Queue\Adapter\AbstractAdapter`.
+By default, there are five available adapters, but additional ones can be created. Which contract you
+implement depends on whether your adapter needs to support scheduled tasks as well as jobs:
+
+- **Jobs only** — implement `Pop\Queue\Adapter\AdapterInterface` and extend
+  `Pop\Queue\Adapter\AbstractAdapter`. This covers `push()`/`reserve()`/`release()`/`delete()`/`bury()`,
+  FIFO/FILO priority, and the dead-letter methods. (`AWS SQS` is the one bundled adapter at this level.)
+- **Jobs and tasks** — implement `Pop\Queue\Adapter\TaskAdapterInterface` and extend
+  `Pop\Queue\Adapter\AbstractTaskAdapter` (which itself extends `AbstractAdapter`). On top of the job
+  contract, this adds `schedule()`, `getTask()`/`getTasks()`, `updateTask()`, `removeTask()`,
+  `clearTasks()` — and `claimTaskRun()`, which is what makes task deduplication across multiple workers
+  work (see [Tasks](#tasks) above).
+
+`Queue::addTask()` type-checks the adapter against `TaskAdapterInterface` and throws if it doesn't
+qualify, which is how the jobs-only restriction is enforced at runtime.
 
 A job that fails and still has attempts remaining is retried (after any backoff delay on
 `Memory`/`File`/`Database`/`Redis`, immediately regardless of backoff on `AWS SQS` — see
@@ -871,6 +916,35 @@ This simply means that with FIFO, the first job pushed in will be the **first** 
 And with FILO, the first job pushed in will be the **last** job popped off, as the most recently
 pushed job will be popped off instead.
 
+Priority can be set as the third constructor argument of the queue, or afterwards with
+`setPriority()`:
+
+```php
+use Pop\Queue\Queue;
+use Pop\Queue\Adapter\File;
+
+$queue = new Queue('pop-queue', new File(__DIR__ . '/queue'), Queue::FILO);
+
+// Or set it after the fact
+$queue->setPriority(Queue::FILO);
+$queue->setPriority('FILO'); // the constants are just these two strings
+```
+
+The `Queue::FIFO` and `Queue::FILO` constants are available, and every adapter also accepts a
+priority directly in its own constructor (see each adapter above for its exact argument position).
+Setting it on the queue delegates to the adapter, so the two are equivalent.
+
+To read it back:
+
+```php
+$queue->getPriority(); // 'FIFO' or 'FILO'
+$queue->isFifo();      // bool
+$queue->isFilo();      // bool
+```
+
+Because the same two orderings are commonly named LILO and LIFO, aliases are provided —
+`isLilo()` is identical to `isFifo()`, and `isLifo()` is identical to `isFilo()`.
+
 *(When you use a SQS FIFO queue, the queue priority is automatically set to FIFO)*
 
 ### Signed payloads
@@ -1023,6 +1097,58 @@ Or, trigger all the next scheduled tasks of all the registered queues:
 $worker->runAll();
 ```
 
+#### Accessing the queues
+
+Queues can be added one at a time with `addQueue()` (optionally with a [weight](#queue-weights)), or
+several at once with `addQueues()`:
+
+```php
+$worker->addQueue($queue1);
+$worker->addQueue($queue2, 10);   // with a weight
+$worker->addQueues([$queue3, $queue4]);
+```
+
+And read back by name:
+
+```php
+$worker->getQueue('pop-queue1');   // ?Queue - null if not registered
+$worker->hasQueue('pop-queue1');   // bool
+$worker->getWeight('pop-queue1');  // int - 0 if never weighted
+$worker->getQueues();              // array of all queues, in weight order
+```
+
+The worker also implements `ArrayAccess`, `Countable` and `IteratorAggregate`, and exposes queues as
+magic properties — so the same collection can be reached in whichever style reads best:
+
+```php
+// Array access, keyed by queue name
+$worker['pop-queue1'] = $queue1;
+$queue = $worker['pop-queue1'];
+isset($worker['pop-queue1']);
+unset($worker['pop-queue1']);
+
+// Property access, same thing
+$worker->{'pop-queue1'} = $queue1;
+$queue = $worker->{'pop-queue1'};
+
+// Countable and iterable
+count($worker);
+foreach ($worker as $name => $queue) {
+    // ...
+}
+```
+
+Iteration and `getQueues()` both return queues in weight order (highest first), not insertion order.
+Note that when adding a queue via array or property access, the queue's own name is what registers it
+— the offset/property name you use is not what it's keyed by.
+
+If the worker was given an application object, it's available too:
+
+```php
+$worker->getApplication(); // ?Application ($worker->application() is an alias)
+$worker->hasApplication(); // bool
+```
+
 #### Daemon mode
 
 Instead of being triggered externally (e.g. from a cron job), a worker can service its queues
@@ -1163,6 +1289,60 @@ Or, if you'd like any output to be routed to `/dev/null`:
 run as a long-lived process that services its queues continuously - see [Daemon mode](#daemon-mode) above
 for the full picture, including why it takes two separate processes and what to configure before
 relying on it.
+
+[Top](#pop-queue)
+
+Upgrading to 3.0
+----------------
+
+**If your application uses `Queue`, `Worker`, `Job` and `Task` in the documented way, 3.0 should be a
+drop-in upgrade.** Those public APIs only gained methods in 3.0 — nothing was removed or renamed. The
+breaking changes below affect custom adapters, custom `JobInterface` implementations, and CLI command
+jobs.
+
+**1. The adapter contract was rewritten.** This is the largest change. Jobs are no longer popped in a
+single step; they're reserved, then explicitly resolved. `AdapterInterface` changed as follows:
+
+| 2.x | 3.0 |
+|---|---|
+| `pop()` | `reserve()`, then one of `delete()` (success), `release()` (retry) or `bury()` (give up) |
+| `hasFailedJob()`, `getFailedJob()`, `hasFailedJobs()`, `getFailedJobs()`, `clearFailed()` | `hasDeadJobs()`, `countDead()`, `getDeadJob()`, `getDeadJobs()`, `retryDeadJob()`, `deleteDeadJob()`, `clearDead()` |
+| `getStart()`, `getEnd()`, `getStatus()` | removed — replaced by `count()` |
+
+This only affects adapters you wrote yourself. Note that `Queue::clearFailed()` and
+`Worker::clearFailed()` still exist and still work — they now delegate to the adapter's `clearDead()` —
+so application code calling those needs no change.
+
+The rewrite also gave every bundled adapter except SQS a reservation *lease*, so a job whose worker
+dies is reclaimed instead of being stranded. A custom adapter is responsible for its own lease
+handling.
+
+**2. `TaskAdapterInterface` gained `claimTaskRun()`.** Any adapter implementing that interface directly
+must now implement this method too. It's what lets multiple workers share one storage backend without
+double-running a scheduled task — see [Tasks](#tasks).
+
+**3. `JobInterface::setExec()`/`getExec()` were widened** to accept and return `string|array` rather
+than `string`/`?string`, to support the shell-free array form of [CLI commands](#cli-commands). A class
+implementing `JobInterface` directly with the old narrower signatures will fail to load until widened
+to match.
+
+**4. CLI command jobs now run through `Symfony\Process` instead of `exec()`.** Three consequences:
+
+- They require `proc_open()` (see [Requirements](#requirements)). Some shared hosts disable it while
+  leaving `exec()` enabled.
+- **A command that exits non-zero now fails the job.** In 2.x the exit code was never checked, so a
+  failing command silently completed successfully. If you have CLI jobs that routinely exit non-zero
+  without that being an error, they will now be retried and eventually buried.
+- `setTimeout()` now actually terminates the child process on expiry rather than abandoning it.
+
+**5. `aws/aws-sdk-php` is no longer installed automatically.** If you use the [AWS SQS](#aws-sqs)
+adapter, add it explicitly:
+
+```bash
+composer require aws/aws-sdk-php
+```
+
+Everyone else gets a substantially smaller install.
 
 [Top](#pop-queue)
 
