@@ -3,6 +3,7 @@
 namespace Pop\Queue\Test\Registry;
 
 use Pop\Queue\Registry\Adapter\Memory;
+use Pop\Queue\Registry\RegistryInterface;
 use Pop\Queue\Registry\WorkerRecord;
 use Pop\Queue\Registry\WorkerRegistry;
 use PHPUnit\Framework\TestCase;
@@ -168,6 +169,31 @@ class WorkerRegistryTest extends TestCase
         $registry->deregister();
 
         $this->assertFalse($registry->isRegistered());
+    }
+
+    public function testRegisterLeavesTheRegistryUnregisteredWhenTheBackendWriteFails()
+    {
+        $backend = new class implements RegistryInterface {
+            public function write(WorkerRecord $record): void { throw new \RuntimeException('write failed'); }
+            public function read(string $id): ?WorkerRecord { return null; }
+            public function all(): array { return []; }
+            public function delete(string $id): void {}
+            public function prune(int $olderThanSeconds): int { return 0; }
+        };
+
+        $registry = new WorkerRegistry($backend);
+
+        try {
+            $registry->register('worker-a', [], WorkerRecord::MODE_DAEMON);
+        } catch (\Throwable $e) {
+            // register() still throws by design - Worker::ensureRegistered()
+            // is what swallows it.
+        }
+
+        // Nothing was persisted, so this instance must not claim to be
+        // registered - otherwise it could never retry.
+        $this->assertFalse($registry->isRegistered());
+        $this->assertNull($registry->getRecord());
     }
 
 }

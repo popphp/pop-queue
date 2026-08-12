@@ -1014,4 +1014,44 @@ class WorkerTest extends TestCase
         $this->assertEmpty($backend->all());
     }
 
+    public function testRegistrationIsRetriedAfterATransientBackendFailure()
+    {
+        $backend = new class implements \Pop\Queue\Registry\RegistryInterface {
+            public array $records = [];
+            public int $writes = 0;
+            public function write(WorkerRecord $record): void
+            {
+                $this->writes++;
+                if ($this->writes === 1) {
+                    throw new \RuntimeException('transient failure');
+                }
+                $this->records[$record->getId()] = $record;
+            }
+            public function read(string $id): ?WorkerRecord { return $this->records[$id] ?? null; }
+            public function all(): array { return $this->records; }
+            public function delete(string $id): void { unset($this->records[$id]); }
+            public function prune(int $olderThanSeconds): int { return 0; }
+        };
+
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $registry = new WorkerRegistry($backend);
+        $worker->setRegistry($registry);
+
+        // First pass: registration write fails and is swallowed.
+        $worker->workAll();
+        $this->assertFalse($registry->isRegistered());
+
+        // Second pass: the backend has recovered, so registration must be
+        // retried rather than permanently skipped.
+        $observed = null;
+        $queue->addJob(Job::create(function() use ($backend, &$observed) {
+            $observed = count($backend->all());
+            return 1;
+        }));
+        $worker->workAll();
+
+        $this->assertEquals(1, $observed, 'the worker should have re-registered on the second pass');
+    }
+
 }

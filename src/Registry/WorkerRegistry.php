@@ -95,8 +95,15 @@ class WorkerRegistry
      */
     public function register(?string $name = null, array $queueNames = [], string $mode = WorkerRecord::MODE_SINGLE_PASS): WorkerRecord
     {
-        $this->record = WorkerRecord::create($name, $queueNames, $mode);
-        $this->registry->write($this->record);
+        $record = WorkerRecord::create($name, $queueNames, $mode);
+
+        // Write BEFORE adopting the record. If the backend throws, this
+        // instance must remain genuinely unregistered - otherwise
+        // isRegistered() would report true for a record that was never
+        // persisted, and Worker::ensureRegistered()'s early-return would
+        // permanently prevent any retry for the life of the process.
+        $this->registry->write($record);
+        $this->record = $record;
 
         return $this->record;
     }
