@@ -42,6 +42,27 @@ class MemoryTest extends TestCase
         $this->assertEquals(1, $registry->read($record->getId())->getJobsProcessed());
     }
 
+    public function testWriteStoresASnapshotNotAReferenceToTheCallersObject()
+    {
+        $registry = new Memory();
+        $record   = WorkerRecord::create('worker-a');
+        $registry->write($record);
+
+        // Mutate the caller's object AFTER writing, with no second write().
+        $record->incrementProcessed();
+        $record->setCurrentJob('job-abc', 'billing', 30);
+
+        // The stored snapshot from read() must not have followed the caller's mutations.
+        $stored = $registry->read($record->getId());
+        $this->assertEquals(0, $stored->getJobsProcessed());
+        $this->assertNull($stored->getCurrentJobId());
+
+        // Verify that all() also returns fresh snapshots, not references.
+        $allRecords = $registry->all();
+        $this->assertEquals(0, $allRecords[$record->getId()]->getJobsProcessed());
+        $this->assertNull($allRecords[$record->getId()]->getCurrentJobId());
+    }
+
     public function testAllReturnsEveryRecord()
     {
         $registry = new Memory();
