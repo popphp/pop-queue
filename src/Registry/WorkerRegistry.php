@@ -49,6 +49,17 @@ class WorkerRegistry
     protected ?WorkerRecord $record = null;
 
     /**
+     * Event managers this registry has already attached listeners to, keyed
+     * by spl_object_id. resolveEventManager() returns the SAME manager for
+     * every queue whenever the Application-level fallback is in play, and
+     * Manager::on() is additive - without this guard, N queues would install
+     * N copies of each listener on one manager and a single job would count
+     * N times. It also makes repeated setRegistry()/attachTo() calls safe.
+     * @var array
+     */
+    protected array $attached = [];
+
+    /**
      * Constructor
      *
      * @param RegistryInterface $registry
@@ -70,6 +81,12 @@ class WorkerRegistry
 
     /**
      * Register this process, writing its record to the backend
+     *
+     * Note: when a Worker is given this registry, it calls this for you at
+     * the right point in its lifecycle. Calling it directly opts you out of
+     * that - the Worker will see an existing registration, take no
+     * ownership, and never deregister it, so the record outlives the run and
+     * is only reaped by prune().
      *
      * @param  ?string $name       optional operator-facing label
      * @param  array   $queueNames names of the queues being serviced
@@ -223,37 +240,83 @@ class WorkerRegistry
     public function attachTo(Worker $worker): void
     {
         foreach ($worker->getQueues() as $queue) {
-            $events = $this->resolveEventManager($queue, $worker);
-
-            // Listener params are positional, not an array - Manager::trigger()
-            // strips the keys before calling.
-            $events->on('queue.job.pre', function($job, $queue) {
-                if ($this->record !== null) {
-                    $this->record->setCurrentJob($job->getJobId(), $queue->getName(), $job->getTimeout());
-                    // Persisted BEFORE the job runs: a worker that wedges
-                    // mid-job can't write anything afterwards, so this is the
-                    // only chance to record what it died on.
-                    $this->registry->write($this->record);
-                }
-            });
-
-            $events->on('queue.job.post', function($job, $queue) {
-                if ($this->record !== null) {
-                    $this->record->clearCurrentJob();
-                    $this->record->incrementProcessed();
-                    // Deliberately no write - the cleared state and counters
-                    // flush on the next heartbeat, keeping steady-state write
-                    // volume flat regardless of job throughput.
-                }
-            });
-
-            $events->on('queue.job.failed', function($job, $queue, $exception) {
-                if ($this->record !== null) {
-                    $this->record->clearCurrentJob();
-                    $this->record->incrementFailed();
-                }
-            });
+            $this->attachListeners($this->resolveEventManager($queue, $worker));
         }
+    }
+
+    /**
+     * Attach this registry's listeners to one event manager, at most once
+     * per manager for the lifetime of this registry instance.
+     *
+     * @param  EventManager $events
+     * @return void
+     */
+    protected function attachListeners(EventManager $events): void
+    {
+        $id = spl_object_id($events);
+        if (isset($this->attached[$id])) {
+            return;
+        }
+        $this->attached[$id] = true;
+
+        // Listener params are positional, not an array - Manager::trigger()
+        // strips the keys before calling.
+        $events->on('queue.job.pre', function($job, $queue) {
+            if ($this->record !== null) {
+                $this->record->setCurrentJob($job->getJobId(), $queue->getName(), $job->getTimeout());
+                // Persisted BEFORE the job runs: a worker that wedges
+                // mid-job can't write anything afterwards, so this is the
+                // only chance to record what it died on.
+                try {
+                    $this->registry->write($this->record);
+                } catch (\Throwable $e) {
+                    // Best-effort - a failed write costs stuck-detection
+                    // fidelity for this job, never the job itself.
+                }
+            }
+        });
+
+        $events->on('queue.job.post', function($job, $queue) {
+            if ($this->record !== null) {
+                $this->record->clearCurrentJob();
+                $this->record->incrementProcessed();
+                // Deliberately no write - the cleared state and counters
+                // flush on the next heartbeat, keeping steady-state write
+                // volume flat regardless of job throughput.
+            }
+        });
+
+        $events->on('queue.job.failed', function($job, $queue, $exception) {
+            if ($this->record !== null) {
+                $this->record->clearCurrentJob();
+                $this->record->incrementFailed();
+            }
+        });
+
+        $events->on('queue.task.pre', function($task, $queue) {
+            if ($this->record !== null) {
+                $this->record->setCurrentJob($task->getJobId(), $queue->getName(), $task->getTimeout());
+                try {
+                    $this->registry->write($this->record);
+                } catch (\Throwable $e) {
+                    // Best-effort, as with jobs.
+                }
+            }
+        });
+
+        $events->on('queue.task.post', function($task, $queue) {
+            if ($this->record !== null) {
+                $this->record->clearCurrentJob();
+                $this->record->incrementProcessed();
+            }
+        });
+
+        $events->on('queue.task.failed', function($task, $queue, $exception) {
+            if ($this->record !== null) {
+                $this->record->clearCurrentJob();
+                $this->record->incrementFailed();
+            }
+        });
     }
 
     /**

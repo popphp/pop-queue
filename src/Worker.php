@@ -325,6 +325,14 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
     {
         $this->queues[$queue->getName()]  = $queue;
         $this->weights[$queue->getName()] = $weight;
+
+        // A queue added after setRegistry() would otherwise never be wired.
+        // attachTo() is idempotent per event manager, so re-attaching costs
+        // nothing for queues already covered.
+        if ($this->hasRegistry()) {
+            $this->registry->attachTo($this);
+        }
+
         return $this;
     }
 
@@ -421,9 +429,15 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
             return false;
         }
 
-        $this->registry->register($this->name, array_keys($this->queues), $mode);
-
-        return true;
+        try {
+            $this->registry->register($this->name, array_keys($this->queues), $mode);
+            return true;
+        } catch (\Throwable $e) {
+            // Observability must never stop the queue. Returning false is
+            // load-bearing: nothing was written, so the finally must not
+            // later try to delete a record that does not exist.
+            return false;
+        }
     }
 
     /**
@@ -434,8 +448,15 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     protected function heartbeat(): void
     {
-        if ($this->hasRegistry()) {
+        if (!$this->hasRegistry()) {
+            return;
+        }
+
+        try {
             $this->registry->heartbeat();
+        } catch (\Throwable $e) {
+            // Best-effort: a missed heartbeat is a stale-looking worker, not
+            // a stopped queue.
         }
     }
 
@@ -448,8 +469,16 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
      */
     protected function deregisterIfOwned(bool $owned): void
     {
-        if ($owned && $this->hasRegistry()) {
+        if (!$owned || !$this->hasRegistry()) {
+            return;
+        }
+
+        try {
             $this->registry->deregister();
+        } catch (\Throwable $e) {
+            // Swallowed deliberately: this runs in a finally, so throwing
+            // here would discard the return value of work that actually
+            // succeeded. A stranded record is reaped by prune().
         }
     }
 
@@ -570,6 +599,7 @@ class Worker implements \ArrayAccess, \Countable, \IteratorAggregate
             if ($hasSubMinute) {
                 for ($tick = 1; $tick < 60; $tick++) {
                     sleep(1);
+                    $this->heartbeat();
                     foreach ($queueTaskSets as $queueName => $scheduledTasks) {
                         foreach ($queues[$queueName]->evaluateTasksOnce($scheduledTasks, $this->application, true) as $jobId => $task) {
                             $tasks[$queueName][$jobId] = $task;

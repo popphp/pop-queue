@@ -915,4 +915,103 @@ class WorkerTest extends TestCase
         $this->assertEquals(1, $stillThere);
     }
 
+    public function testRegistryFailuresNeverStopTheQueue()
+    {
+        $backend = new class implements \Pop\Queue\Registry\RegistryInterface {
+            public function write(\Pop\Queue\Registry\WorkerRecord $record): void { throw new \RuntimeException('write failed'); }
+            public function read(string $id): ?\Pop\Queue\Registry\WorkerRecord { return null; }
+            public function all(): array { return []; }
+            public function delete(string $id): void { throw new \RuntimeException('delete failed'); }
+            public function prune(int $olderThanSeconds): int { return 0; }
+        };
+
+        $queue  = Queue::fake('billing');
+        $worker = Worker::create($queue);
+        $worker->setRegistry(new WorkerRegistry($backend));
+
+        $queue->addJob(Job::create(function(){ return 123; }));
+        $jobs = $worker->workAll();
+
+        // The job must still run, and its results must still come back.
+        $this->assertEquals(123, $jobs['billing']->getResults());
+    }
+
+    public function testQueueAddedAfterSetRegistryIsStillTracked()
+    {
+        $worker   = Worker::create();
+        $registry = new WorkerRegistry(new RegistryMemory());
+        $worker->setRegistry($registry);
+        $registry->register('w', [], WorkerRecord::MODE_DAEMON);
+
+        $queue = Queue::fake('billing');
+        $worker->addQueue($queue);
+
+        $queue->addJob(Job::create(function(){ return 1; }));
+        $worker->workAll();   // pre-registered, so this call takes no ownership
+
+        $this->assertEquals(1, $registry->getRecord()->getJobsProcessed());
+    }
+
+    public function testTaskExecutionIsTrackedLikeJobExecution()
+    {
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $registry = new WorkerRegistry(new RegistryMemory());
+        $worker->setRegistry($registry);
+        $registry->register('w', ['billing'], WorkerRecord::MODE_DAEMON);
+
+        $task = Task::create(function(){ return 1; })->everyMinute();
+        $task->getCron()->setBuffer(-1);   // always due, so the pass runs it
+        $queue->addTask($task);
+
+        $worker->runAll();
+
+        $this->assertEquals(1, $registry->getRecord()->getJobsProcessed());
+        $this->assertNull($registry->getRecord()->getCurrentJobId());
+    }
+
+    public function testSinglePassRunAllRegistersAndDeregistersItself()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $worker->setRegistry($registry);
+
+        $worker->runAll();
+
+        $this->assertFalse($registry->isRegistered());
+        $this->assertEmpty($backend->all());
+    }
+
+    public function testExceptionEscapingWorkStillDeregisters()
+    {
+        $backend  = new RegistryMemory();
+        $registry = new WorkerRegistry($backend);
+        $queue    = Queue::fake('billing');
+
+        // A throwing queue.job.pre listener propagates out of work() - the
+        // finally must still deregister rather than stranding the record.
+        // Attach the throwing listener to the queue's own manager BEFORE
+        // building the Worker/registry, so it fires before the registry's
+        // own queue.job.pre listener does its (harmless) work.
+        $events = new EventManager();
+        $events->on('queue.job.pre', function($job, $q) { throw new \RuntimeException('listener blew up'); });
+        $queue->setEvents($events);
+
+        $worker = Worker::create($queue);
+        $worker->setRegistry($registry);
+
+        $queue->addJob(Job::create(function(){ return 1; }));
+
+        try {
+            $worker->workAll();
+        } catch (\Throwable $e) {
+            // expected
+        }
+
+        $this->assertFalse($registry->isRegistered());
+        $this->assertEmpty($backend->all());
+    }
+
 }

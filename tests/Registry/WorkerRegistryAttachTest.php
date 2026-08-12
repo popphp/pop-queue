@@ -143,4 +143,39 @@ class WorkerRegistryAttachTest extends TestCase
         $this->assertFalse($registry->isRegistered());
     }
 
+    public function testCountersAreNotInflatedWhenSeveralQueuesShareOneEventManager()
+    {
+        $application = new Application();
+        $q1 = Queue::fake('alpha');
+        $q2 = Queue::fake('beta');
+        $worker = Worker::create([$q1, $q2], $application);
+
+        $registry = new WorkerRegistry(new RegistryMemory());
+        $registry->register('w', ['alpha', 'beta'], WorkerRecord::MODE_DAEMON);
+        $registry->attachTo($worker);
+
+        $q1->addJob(Job::create(function(){ return 1; }));
+        $worker->work('alpha');
+
+        // One job worked must count exactly once, however many queues share
+        // the Application's event manager.
+        $this->assertEquals(1, $registry->getRecord()->getJobsProcessed());
+    }
+
+    public function testAttachingTwiceDoesNotDoubleCount()
+    {
+        $queue    = Queue::fake('billing');
+        $worker   = Worker::create($queue);
+        $registry = new WorkerRegistry(new RegistryMemory());
+        $registry->register('w', ['billing'], WorkerRecord::MODE_DAEMON);
+
+        $registry->attachTo($worker);
+        $registry->attachTo($worker);
+
+        $queue->addJob(Job::create(function(){ return 1; }));
+        $queue->work();
+
+        $this->assertEquals(1, $registry->getRecord()->getJobsProcessed());
+    }
+
 }

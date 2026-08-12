@@ -1284,7 +1284,7 @@ use Pop\Event\Manager;
 $events = new Manager();
 
 $events->on('queue.job.post', function($job, $queue) {
-    StatsD::timing("queue.{$queue->getName()}.duration", $job->getDuration() * 1000);
+    StatsD::timing("queue.{$queue->getName()}.duration_seconds", $job->getDuration());
 });
 
 $events->on('queue.job.failed', function($job, $queue, $exception) {
@@ -1295,7 +1295,10 @@ $queue->setEvents($events);
 ```
 
 `$job->getDuration()` returns the run time in seconds (or `null` unless the job both started and
-completed). See [Events](#events) for the full list and the positional-listener gotcha.
+completed). `started`/`completed` are whole-second timestamps, so the resolution is whole seconds too —
+most sub-second jobs report `0`.
+
+See [Events](#events) for the full list and the positional-listener gotcha.
 
 **Liveness comes from the registry.** Events tell you about jobs that ran; they cannot tell you a worker
 has silently died, because a dead worker emits nothing. The registry gives each worker process an identity
@@ -1326,15 +1329,15 @@ From anywhere else — a status command, a dashboard, a health check — query i
 ```php
 $registry = new WorkerRegistry(new RegistryRedis());
 
-foreach ($registry->getWorkers() as $worker) {
+foreach ($registry->getWorkers() as $record) {
     printf("%s on %s (pid %d) - %d done, %d failed%s\n",
-        $worker->getName() ?? $worker->getId(),
-        $worker->getHost(),
-        $worker->getPid(),
-        $worker->getJobsProcessed(),
-        $worker->getJobsFailed(),
-        ($worker->getCurrentJobId() !== null)
-            ? " - running {$worker->getCurrentJobId()} for {$worker->getCurrentJobDuration()}s"
+        $record->getName() ?? $record->getId(),
+        $record->getHost(),
+        $record->getPid(),
+        $record->getJobsProcessed(),
+        $record->getJobsFailed(),
+        ($record->getCurrentJobId() !== null)
+            ? " - running {$record->getCurrentJobId()} for {$record->getCurrentJobDuration()}s"
             : ' - idle'
     );
 }
