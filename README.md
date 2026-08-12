@@ -87,10 +87,9 @@ Or, require it in your composer.json file
 `aws/aws-sdk-php` is **not** installed automatically — install it separately if you use the SQS
 adapter (see [AWS SQS](#aws-sqs)).
 
-Note that `proc_open()` is a new requirement for CLI command jobs as of 3.0. Earlier versions shelled
-out with `exec()`; 3.0 uses `Symfony\Process`, which needs `proc_open()`. Some shared hosts disable
-`proc_open()` while leaving `exec()` enabled — on those, CLI command jobs that previously worked will
-now throw. Every other job type is unaffected.
+`proc_open()` is new in 3.0: earlier versions shelled out with `exec()`, which some hosts allow while
+disabling `proc_open()`. If you're upgrading and use CLI command jobs, see
+[Upgrading to 3.0](#upgrading-to-30).
 
 [Top](#pop-queue)
 
@@ -1139,8 +1138,18 @@ foreach ($worker as $name => $queue) {
 ```
 
 Iteration and `getQueues()` both return queues in weight order (highest first), not insertion order.
-Note that when adding a queue via array or property access, the queue's own name is what registers it
-— the offset/property name you use is not what it's keyed by.
+
+**One gotcha when *setting* via array or property access:** the offset you write to is ignored — the
+queue registers under its own `getName()`. So this is not a rename:
+
+```php
+$queue = new Queue('pop-queue1', $adapter);
+
+$worker['some-other-name'] = $queue;
+
+isset($worker['some-other-name']); // false
+isset($worker['pop-queue1']);      // true - keyed by the queue's own name
+```
 
 If the worker was given an application object, it's available too:
 
@@ -1313,9 +1322,9 @@ This only affects adapters you wrote yourself. Note that `Queue::clearFailed()` 
 `Worker::clearFailed()` still exist and still work — they now delegate to the adapter's `clearDead()` —
 so application code calling those needs no change.
 
-The rewrite also gave every bundled adapter except SQS a reservation *lease*, so a job whose worker
-dies is reclaimed instead of being stranded. A custom adapter is responsible for its own lease
-handling.
+The rewrite also added a reservation *lease* to `Memory`, `File`, `Database` and `Redis`, so a job
+whose worker dies is reclaimed rather than stranded. (SQS needs none — AWS's own visibility timeout
+already does this server-side.) A custom adapter is responsible for its own lease handling.
 
 **2. `TaskAdapterInterface` gained `claimTaskRun()`.** Any adapter implementing that interface directly
 must now implement this method too. It's what lets multiple workers share one storage backend without
