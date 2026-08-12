@@ -5,6 +5,7 @@ vendor
 kettle
 .phpunit.result.cache
 .phpunit.cache
+tests/tmp/test.sqlite
 CLAUDE.md
 /docs
 /.superpowers
