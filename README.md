@@ -34,6 +34,7 @@ pop-queue
     - [Accessing the queues](#accessing-the-queues)
     - [Daemon mode](#daemon-mode)
     - [Clearing the queues](#clearing-the-queues)
+    - [Observability](#observability)
 * [Configuration](#configuration)
 * [Upgrading to 3.0](#upgrading-to-30)
 
@@ -1265,6 +1266,104 @@ You can clear the queues in a few different ways:
 - `$worker->clearAll()`                     // Clear completed jobs from all queues
 - `$worker->clearAllFailed()`               // Clear failed jobs from all queues
 - `$worker->clearAllTasks()`                // Clear tasks from all queues
+
+[Top](#pop-queue)
+
+#### Observability
+
+Two separate things answer "how are my workers doing": the **events** every queue already fires, and the
+**worker registry**.
+
+**Metrics come from events.** A `queue.job.post` listener has the finished job in hand, so duration,
+throughput, failure rate and retry pressure are all available with no extra machinery — point them at
+whatever you already run:
+
+```php
+use Pop\Event\Manager;
+
+$events = new Manager();
+
+$events->on('queue.job.post', function($job, $queue) {
+    StatsD::timing("queue.{$queue->getName()}.duration", $job->getDuration() * 1000);
+});
+
+$events->on('queue.job.failed', function($job, $queue, $exception) {
+    Log::warning("job {$job->getJobId()} failed: {$exception->getMessage()}");
+});
+
+$queue->setEvents($events);
+```
+
+`$job->getDuration()` returns the run time in seconds (or `null` unless the job both started and
+completed). See [Events](#events) for the full list and the positional-listener gotcha.
+
+**Liveness comes from the registry.** Events tell you about jobs that ran; they cannot tell you a worker
+has silently died, because a dead worker emits nothing. The registry gives each worker process an identity
+and a heartbeat, in storage every process can see:
+
+```php
+use Pop\Queue\Registry\WorkerRegistry;
+use Pop\Queue\Registry\Adapter\Redis as RegistryRedis;
+
+$registry = new WorkerRegistry(new RegistryRedis());
+
+$worker->setName('billing-worker-01'); // optional label
+$worker->setRegistry($registry);
+
+$worker->workLoop();
+```
+
+That is all a worker needs. It registers on start, heartbeats each pass, records what it is working on, and
+deregisters on a graceful stop. Cron-invoked workers are covered too — a single `work()`/`workAll()` call
+registers on entry and deregisters on exit, so a hung cron run shows up as a stale registration.
+
+The registry backend is configured **independently of the queue adapter** (`Memory`, `File`, `Database` and
+`Redis` are available under `Pop\Queue\Registry\Adapter`), so an SQS-backed queue can still have worker
+visibility, and workers on several different queue backends can report into one place.
+
+From anywhere else — a status command, a dashboard, a health check — query it:
+
+```php
+$registry = new WorkerRegistry(new RegistryRedis());
+
+foreach ($registry->getWorkers() as $worker) {
+    printf("%s on %s (pid %d) - %d done, %d failed%s\n",
+        $worker->getName() ?? $worker->getId(),
+        $worker->getHost(),
+        $worker->getPid(),
+        $worker->getJobsProcessed(),
+        $worker->getJobsFailed(),
+        ($worker->getCurrentJobId() !== null)
+            ? " - running {$worker->getCurrentJobId()} for {$worker->getCurrentJobDuration()}s"
+            : ' - idle'
+    );
+}
+
+$registry->countWorkers();
+$registry->getStaleWorkers();  // heartbeat has gone quiet
+$registry->getStuckWorkers();  // quiet AND holding a job past its own timeout
+$registry->prune();            // reap records from processes long gone
+```
+
+**Understanding "stale" vs "stuck".** A worker executing a job cannot heartbeat — PHP is synchronous here,
+so nothing runs while the job is on the stack. That means a worker legitimately grinding through a long job
+looks exactly like a wedged one, if you only look at silence. So the registry records *what a worker was
+last doing*, and the two queries mean different things:
+
+| Record state | Meaning |
+|---|---|
+| heartbeat fresh | Healthy |
+| quiet, no current job | Wedged idle — hung in the loop itself; appears in `getStaleWorkers()` |
+| quiet, current job started seconds ago | Almost certainly just working |
+| quiet, current job past its own `setTimeout()` | **Stuck** — appears in `getStuckWorkers()` |
+
+`getStuckWorkers()` is the one worth alerting on. Give long-running jobs a `setTimeout()` so the registry
+has a yardstick — without one it falls back to the staleness threshold.
+
+A worker killed with `SIGKILL` leaves its record behind; `prune()` reaps it. That residue is useful in
+itself — it is the evidence of what the process was doing when it died.
+
+Setting a registry is entirely optional: with none set, no registry code runs at all.
 
 [Top](#pop-queue)
 
