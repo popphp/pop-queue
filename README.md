@@ -80,7 +80,7 @@ Or, require it in your composer.json file
 
 | Requirement | Needed for | Without it |
 |---|---|---|
-| `ext-redis` | The [Redis](#redis) adapter | The other adapters work normally |
+| `ext-redis` | The [Redis](#redis) queue adapter, and the Redis [registry](#observability) backend | The other adapters and registry backends work normally |
 | `aws/aws-sdk-php` | The [AWS SQS](#aws-sqs) adapter | The other adapters work normally |
 | `proc_open()` | [CLI command](#cli-commands) jobs | `Symfony\Process` throws when the job runs |
 | `ext-pcntl` | Job [timeouts](#attempts) on callable/command jobs, and signal-based [graceful shutdown](#daemon-mode) | Jobs run untimed; loops end only via `stop()` |
@@ -1159,6 +1159,14 @@ $worker->getApplication(); // ?Application ($worker->application() is an alias)
 $worker->hasApplication(); // bool
 ```
 
+A worker can also carry an optional label and a registry, both used for
+[observability](#observability):
+
+```php
+$worker->setName('billing-worker-01'); // getName() / hasName()
+$worker->setRegistry($registry);       // getRegistry() / registry() / hasRegistry()
+```
+
 #### Daemon mode
 
 Instead of being triggered externally (e.g. from a cron job), a worker can service its queues
@@ -1345,7 +1353,7 @@ foreach ($registry->getWorkers() as $record) {
 $registry->countWorkers();
 $registry->getStaleWorkers();  // heartbeat has gone quiet
 $registry->getStuckWorkers();  // quiet AND holding a job past its own timeout
-$registry->prune();            // reap records from processes long gone
+$registry->prune();            // reap records untouched for an hour (pass seconds to change)
 ```
 
 **Understanding "stale" vs "stuck".** A worker executing a job cannot heartbeat — PHP is synchronous here,
