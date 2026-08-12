@@ -70,8 +70,10 @@ class File extends AbstractRegistry
      * Path of the file backing a given worker ID
      *
      * IDs contain ':' and hostnames may contain '.', so the filename is a
-     * sanitized form. Every ID carries a random suffix, so distinct IDs do
-     * not collide once sanitized.
+     * sanitized form. The sanitized form alone is not injective ('a.b' and
+     * 'a_b' both map to 'a_b'), so a short hash of the original ID is
+     * appended to keep distinct IDs in distinct files while the readable
+     * part stays useful for anyone browsing the folder.
      *
      * @param  string $id
      * @return string
@@ -79,7 +81,7 @@ class File extends AbstractRegistry
     protected function recordPath(string $id): string
     {
         return $this->folder . DIRECTORY_SEPARATOR . 'worker-' .
-            preg_replace('/[^A-Za-z0-9_\-]/', '_', $id) . '.json';
+            preg_replace('/[^A-Za-z0-9_\-]/', '_', $id) . '-' . substr(sha1($id), 0, 8) . '.json';
     }
 
     public function write(WorkerRecord $record): void
@@ -118,12 +120,14 @@ class File extends AbstractRegistry
         }
     }
 
-    public function prune(int $olderThanSeconds): int
+    protected function purgeUndecodable(): int
     {
         $removed = 0;
-        foreach ($this->all() as $id => $record) {
-            if ($this->isExpired($record, $olderThanSeconds)) {
-                $this->delete($id);
+
+        foreach ($this->recordFiles() as $file) {
+            $path = $this->folder . DIRECTORY_SEPARATOR . $file;
+            if ($this->decode(file_get_contents($path)) === null) {
+                unlink($path);
                 $removed++;
             }
         }

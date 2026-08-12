@@ -103,6 +103,50 @@ class DatabaseTest extends TestCase
         $this->assertNotNull($registry->read('fresh-aaa'));
     }
 
+    protected function insertJunkRow(Database $registry, string $id): void
+    {
+        $db  = $registry->getDb();
+        $sql = $db->createSql();
+        $sql->insert($registry->getTable())->values([
+            'id'           => ':id',
+            'last_seen_at' => ':last_seen_at',
+            'record'       => ':record'
+        ]);
+        $db->prepare($sql);
+        $db->bindParams([
+            'id'           => $id,
+            'last_seen_at' => time(),
+            'record'       => 'not valid json'
+        ]);
+        $db->execute();
+    }
+
+    public function testAllSkipsAnUndecodableEntry()
+    {
+        $registry = $this->registry();
+        $this->insertJunkRow($registry, 'junk');
+        $good = WorkerRecord::create('worker-a');
+        $registry->write($good);
+
+        $all = $registry->all();
+
+        $this->assertCount(1, $all);
+        $this->assertArrayHasKey($good->getId(), $all);
+    }
+
+    public function testPruneReapsUndecodableRecords()
+    {
+        $registry = $this->registry();
+        $this->insertJunkRow($registry, 'junk');
+        $registry->write(WorkerRecord::create('worker-a'));
+
+        // The good record is fresh, so only the undecodable one is reaped.
+        $removed = $registry->prune(3600);
+
+        $this->assertEquals(1, $removed);
+        $this->assertCount(1, $registry->all());
+    }
+
     public function testWriteStoresASnapshotNotAReferenceToTheCallersObject()
     {
         $registry = $this->registry();

@@ -146,6 +146,28 @@ class WorkerRecordTest extends TestCase
         $this->assertTrue($record->isLikelyStuck(90));
     }
 
+    public function testIsLikelyStuckIsFalseExactlyAtTheJobTimeoutBoundary()
+    {
+        $now    = time();
+        $record = new WorkerRecord('id', 'host', 123, $now - 600, $now - 200);
+        $record->setCurrentJob('job-abc', 'billing', 200);
+        $record->setCurrentJobStartedAt($now - 200);
+
+        // duration == timeout is NOT past it (strict >), matching isStale()
+        $this->assertFalse($record->isLikelyStuck(90));
+    }
+
+    public function testIsLikelyStuckIsFalseExactlyAtTheStaleThresholdWhenJobHasNoTimeout()
+    {
+        $now    = time();
+        $record = new WorkerRecord('id', 'host', 123, $now - 600, $now - 200);
+        $record->setCurrentJob('job-abc', 'billing', null);
+        $record->setCurrentJobStartedAt($now - 90);
+
+        // duration == staleSeconds is NOT past it
+        $this->assertFalse($record->isLikelyStuck(90));
+    }
+
     public function testToArrayFromArrayRoundTrip()
     {
         $record = WorkerRecord::create('billing-worker', ['billing', 'email'], WorkerRecord::MODE_DAEMON);

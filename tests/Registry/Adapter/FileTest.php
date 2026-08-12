@@ -106,6 +106,52 @@ class FileTest extends TestCase
         unlink($folder . '/worker-not-valid-json.json');
     }
 
+    public function testInvalidUtf8InANameDoesNotSilentlyDestroyTheRecord()
+    {
+        $registry = new File(__DIR__ . '/../../tmp/pop-registry');
+
+        // A lone continuation byte is invalid UTF-8 and makes a plain
+        // json_encode() return false.
+        $record = WorkerRecord::create("worker-\x80-bad");
+        $registry->write($record);
+
+        $stored = $registry->read($record->getId());
+
+        // The record must survive - the name may be substituted, but the
+        // worker must remain visible.
+        $this->assertNotNull($stored);
+        $this->assertEquals($record->getId(), $stored->getId());
+    }
+
+    public function testPruneReapsUndecodableRecords()
+    {
+        $folder = __DIR__ . '/../../tmp/pop-registry';
+        file_put_contents($folder . '/worker-unreadable-junk.json', 'not valid json at all');
+
+        $registry = new File($folder);
+        $registry->write(WorkerRecord::create('worker-a'));
+
+        // The good record is fresh, so only the undecodable one is reaped.
+        $removed = $registry->prune(3600);
+
+        $this->assertEquals(1, $removed);
+        $this->assertFileDoesNotExist($folder . '/worker-unreadable-junk.json');
+        $this->assertCount(1, $registry->all());
+    }
+
+    public function testIdsThatSanitizeIdenticallyDoNotCollide()
+    {
+        $registry = new File(__DIR__ . '/../../tmp/pop-registry');
+        $now      = time();
+
+        $registry->write(new WorkerRecord('web.1:20:aaaa', 'host', 1, $now, $now));
+        $registry->write(new WorkerRecord('web_1_20_aaaa', 'host', 2, $now, $now));
+
+        $this->assertCount(2, $registry->all());
+        $this->assertEquals('web.1:20:aaaa', $registry->read('web.1:20:aaaa')->getId());
+        $this->assertEquals('web_1_20_aaaa', $registry->read('web_1_20_aaaa')->getId());
+    }
+
     public function testWriteStoresASnapshotNotAReferenceToTheCallersObject()
     {
         $registry = new File(__DIR__ . '/../../tmp/pop-registry');

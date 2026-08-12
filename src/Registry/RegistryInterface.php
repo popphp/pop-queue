@@ -47,7 +47,7 @@ interface RegistryInterface
     public function read(string $id): ?WorkerRecord;
 
     /**
-     * Fetch every stored record
+     * Fetch every stored record, keyed by worker ID
      *
      * @return array
      */

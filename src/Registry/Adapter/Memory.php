@@ -67,17 +67,4 @@ class Memory extends AbstractRegistry
         unset($this->records[$id]);
     }
 
-    public function prune(int $olderThanSeconds): int
-    {
-        $removed = 0;
-        foreach ($this->all() as $id => $record) {
-            if ($this->isExpired($record, $olderThanSeconds)) {
-                $this->delete($id);
-                $removed++;
-            }
-        }
-
-        return $removed;
-    }
-
 }

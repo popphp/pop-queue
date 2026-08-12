@@ -21,7 +21,15 @@ use Pop\Queue\Registry\WorkerRecord;
  * Database registry class
  *
  * One row per worker: the ID as primary key, last_seen_at as its own column
- * so prune() is a single indexed DELETE, and the full record as JSON.
+ * so the table is directly queryable by an operator, and the full record as
+ * JSON.
+ *
+ * prune() is inherited as a read-filter-delete loop rather than overridden
+ * with a bulk DELETE: pop-db's string where() parser is only reliable for
+ * simple expressions and this codebase has no precedent for a string '<'
+ * comparison (src/Adapter/Database.php uses the lessThanOrEqualTo()
+ * predicate API wherever it needs one). A registry holds tens of rows, so
+ * this costs nothing real.
  *
  * @category   Pop
  * @package    Pop\Queue
@@ -142,22 +150,24 @@ class Database extends AbstractRegistry
         $this->db->execute();
     }
 
-    public function prune(int $olderThanSeconds): int
+    protected function purgeUndecodable(): int
     {
-        // Read-filter-delete, matching the other three backends. A raw
-        // "WHERE last_seen_at < ?" would be tempting here, but pop-db's
-        // string where() parser is only reliable for simple expressions and
-        // this codebase has no precedent for a string '<' - see the note in
-        // this task's brief.
-        $removed = 0;
-        foreach ($this->all() as $id => $record) {
-            if ($this->isExpired($record, $olderThanSeconds)) {
-                $this->delete($id);
-                $removed++;
+        $sql = $this->db->createSql();
+        $sql->select(['id', 'record'])->from($this->table);
+        $this->db->query($sql);
+
+        $bad = [];
+        foreach ($this->db->fetchAll() as $row) {
+            if ($this->decode($row['record'] ?? null) === null) {
+                $bad[] = (string)$row['id'];
             }
         }
 
-        return $removed;
+        foreach ($bad as $id) {
+            $this->delete($id);
+        }
+
+        return count($bad);
     }
 
     /**

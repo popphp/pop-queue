@@ -92,6 +92,32 @@ class RedisTest extends TestCase
         $this->assertNotNull($registry->read('fresh-aaa'));
     }
 
+    public function testAllSkipsAnUndecodableEntry()
+    {
+        $registry = $this->registry();
+        $registry->getRedis()->set('pop-registry:worker:junk', 'not valid json');
+        $good = WorkerRecord::create('worker-a');
+        $registry->write($good);
+
+        $all = $registry->all();
+
+        $this->assertCount(1, $all);
+        $this->assertArrayHasKey($good->getId(), $all);
+    }
+
+    public function testPruneReapsUndecodableRecords()
+    {
+        $registry = $this->registry();
+        $registry->getRedis()->set('pop-registry:worker:junk', 'not valid json');
+        $registry->write(WorkerRecord::create('worker-a'));
+
+        // The good record is fresh, so only the undecodable one is reaped.
+        $removed = $registry->prune(3600);
+
+        $this->assertEquals(1, $removed);
+        $this->assertCount(1, $registry->all());
+    }
+
     public function testWriteStoresASnapshotNotAReferenceToTheCallersObject()
     {
         $registry = $this->registry();

@@ -142,12 +142,14 @@ class Redis extends AbstractRegistry
         $this->redis->del($this->recordKey($id));
     }
 
-    public function prune(int $olderThanSeconds): int
+    protected function purgeUndecodable(): int
     {
         $removed = 0;
-        foreach ($this->all() as $id => $record) {
-            if ($this->isExpired($record, $olderThanSeconds)) {
-                $this->delete($id);
+
+        foreach ($this->redis->keys($this->prefix . ':worker:*') as $key) {
+            $value = $this->redis->get($key);
+            if (($value !== false) && ($this->decode($value) === null)) {
+                $this->redis->del($key);
                 $removed++;
             }
         }

@@ -156,8 +156,10 @@ class WorkerRecord
      */
     public static function create(?string $name = null, array $queues = [], string $mode = self::MODE_SINGLE_PASS): WorkerRecord
     {
-        $host = (gethostname() !== false) ? gethostname() : 'unknown';
+        $host = gethostname();
+        $host = ($host !== false) ? $host : 'unknown';
         $pid  = getmypid();
+        $pid  = ($pid !== false) ? $pid : 0;
         $now  = time();
         $id   = $host . ':' . $pid . ':' . bin2hex(random_bytes(6));
 
@@ -411,15 +413,14 @@ class WorkerRecord
         $record->setName($data['name'] ?? null);
         $record->setQueues($data['queues'] ?? []);
         $record->setMode((string)($data['mode'] ?? self::MODE_SINGLE_PASS));
-        $record->setCurrentJobStartedAt(
-            isset($data['currentJobStartedAt']) ? (int)$data['currentJobStartedAt'] : null
-        );
 
         if (!empty($data['currentJobId'])) {
-            $record->currentJobId      = (string)$data['currentJobId'];
-            $record->currentQueue      = $data['currentQueue'] ?? null;
-            $record->currentJobTimeout = isset($data['currentJobTimeout'])
+            $record->currentJobId        = (string)$data['currentJobId'];
+            $record->currentQueue        = $data['currentQueue'] ?? null;
+            $record->currentJobTimeout   = isset($data['currentJobTimeout'])
                 ? (int)$data['currentJobTimeout'] : null;
+            $record->currentJobStartedAt = isset($data['currentJobStartedAt'])
+                ? (int)$data['currentJobStartedAt'] : null;
         }
 
         $record->jobsProcessed = (int)($data['jobsProcessed'] ?? 0);
