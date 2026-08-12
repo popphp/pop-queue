@@ -379,4 +379,16 @@ class JobTest extends TestCase
         $this->assertGreaterThanOrEqual(0, $duration);
     }
 
+    public function testGetDurationIsNullWhenCompletedWithoutStarting()
+    {
+        $job = Job::create(function(){ return 1; });
+
+        // complete() has no guard requiring start() first, so this state is
+        // reachable - and a duration computed from a null start would be
+        // nonsense, so the contract is null.
+        $job->complete();
+
+        $this->assertNull($job->getDuration());
+    }
+
 }
