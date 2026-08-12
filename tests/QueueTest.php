@@ -41,7 +41,7 @@ class QueueTest extends TestCase
         $this->assertEquals(123, $job->getResults());
     }
 
-    public function testFakeWithCustomNameAndPriorityAndLease()
+    public function testFakeWithCustomNameAndPriority()
     {
         $queue = Queue::fake('test-queue', 'FILO', 30);
         $this->assertEquals('test-queue', $queue->getName());

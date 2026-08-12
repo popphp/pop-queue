@@ -44,6 +44,7 @@ executed. The available storage adapters for the queue component are:
 - Redis
 - Database
 - File
+- Memory
 - AWS SQS*
 
 The difference between jobs and tasks are that jobs are "one and done" (unless they fail) and pop off
@@ -66,7 +67,7 @@ Install `pop-queue` using Composer.
 Or, require it in your composer.json file
 
     "require": {
-        "popphp/pop-queue" : "^2.1.3"
+        "popphp/pop-queue" : "^3.0.0"
     }
 
 [Top](#pop-queue)
