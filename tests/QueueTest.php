@@ -307,6 +307,43 @@ class QueueTest extends TestCase
         $this->assertArrayHasKey($task2->getJobId(), $ran);
     }
 
+    public function testDefaultGracePeriodRunsTaskOnceRegardlessOfInvocationTiming()
+    {
+        // The guarantee behind the -1 default: a task added with no grace-period
+        // configuration is due whenever the worker is invoked during its minute,
+        // and the run claim still holds it to exactly one execution per window.
+        // Together these are what make repeated ./queue invocations safe.
+        $adapter = new File(__DIR__ . '/tmp/pop-queue');
+        $queue   = Queue::create('pop-queue', $adapter);
+
+        $task = Task::create(function(){
+            return 'ran' . PHP_EOL;
+        })->everyMinute();
+
+        $this->assertEquals(-1, $task->getGracePeriod());
+
+        $queue->addTask($task);
+
+        $window = intdiv(time(), 60);
+
+        $runs = 0;
+        for ($invocation = 0; $invocation < 5; $invocation++) {
+            $runs += count($queue->run());
+        }
+
+        // The claim is per minute-window, so a boundary crossed mid-loop would
+        // legitimately allow a second run and void the premise. The loop is
+        // sub-millisecond, so this effectively never trips.
+        if (intdiv(time(), 60) !== $window) {
+            $queue->clearTasks();
+            $this->markTestSkipped('Minute boundary crossed mid-loop.');
+        }
+
+        $this->assertEquals(1, $runs);
+
+        $queue->clearTasks();
+    }
+
     public function testEvaluateTasksOnceOnlySubMinuteSkipsCoarseTasks()
     {
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
@@ -316,7 +353,7 @@ class QueueTest extends TestCase
         })->everySecond();
         $coarseTask = Task::create(function(){
             return 'coarse' . PHP_EOL;
-        })->everyMinute()->setBuffer(-1);
+        })->everyMinute()->setGracePeriod(-1);
 
         $method = new \ReflectionMethod($queue, 'evaluateTasksOnce');
         $method->setAccessible(true);
@@ -420,7 +457,7 @@ class QueueTest extends TestCase
         })->everySecond();
         $coarseTask = Task::create(function(){
             return 'coarse' . PHP_EOL;
-        })->everyMinute()->setBuffer(-1);
+        })->everyMinute()->setGracePeriod(-1);
 
         $start = time();
 
@@ -452,7 +489,7 @@ class QueueTest extends TestCase
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
         $task  = Task::create(function(){
             return 'Task #1' . PHP_EOL;
-        })->everyMinute()->setBuffer(-1);
+        })->everyMinute()->setGracePeriod(-1);
 
         $queue->addTask($task);
 
@@ -475,7 +512,7 @@ class QueueTest extends TestCase
 
         $task = Task::create(function(){
             return 'Task #1' . PHP_EOL;
-        })->everyMinute()->setBuffer(-1);
+        })->everyMinute()->setGracePeriod(-1);
 
         $queue1->addTask($task);
 

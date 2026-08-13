@@ -165,5 +165,41 @@ class CronTest extends TestCase
         $this->assertTrue($cron->evaluate('BAD DATE'));
     }
 
+    public function testGracePeriodDefaultsToUnlimited()
+    {
+        $this->assertEquals(-1, (new Cron())->getGracePeriod());
+        $this->assertEquals(0, (new Cron('* * * * *', 0))->getGracePeriod());
+    }
+
+    public function testHasGracePeriodIsFalseOnlyWhenStrict()
+    {
+        $cron = new Cron('* * * * *');
+        $this->assertTrue($cron->hasGracePeriod());  // -1 is the loosest setting, not the absence of one
+
+        $this->assertTrue($cron->setGracePeriod(10)->hasGracePeriod());
+        $this->assertFalse($cron->setGracePeriod(0)->hasGracePeriod());
+    }
+
+    public function testTasksPersistedBeforeTheRenameStillDeserialize()
+    {
+        // A task scheduled by an older version was stored with the property
+        // named "buffer". Deserializing it must not fatal on the now-missing
+        // typed $gracePeriod - it falls back to the declared default.
+        $payload = 'O:22:"Pop\Queue\Process\Cron":8:{'
+            . 's:11:"' . "\0" . '*' . "\0" . 'schedule";s:9:"* * * * *";'
+            . 's:10:"' . "\0" . '*' . "\0" . 'seconds";a:0:{}'
+            . 's:10:"' . "\0" . '*' . "\0" . 'minutes";a:1:{i:0;s:1:"*";}'
+            . 's:8:"'  . "\0" . '*' . "\0" . 'hours";a:1:{i:0;s:1:"*";}'
+            . 's:17:"' . "\0" . '*' . "\0" . 'daysOfTheMonth";a:1:{i:0;s:1:"*";}'
+            . 's:9:"'  . "\0" . '*' . "\0" . 'months";a:1:{i:0;s:1:"*";}'
+            . 's:16:"' . "\0" . '*' . "\0" . 'daysOfTheWeek";a:1:{i:0;s:1:"*";}'
+            . 's:9:"'  . "\0" . '*' . "\0" . 'buffer";i:0;}';
+
+        $cron = @unserialize($payload);
+
+        $this->assertInstanceOf(Cron::class, $cron);
+        $this->assertEquals(-1, $cron->getGracePeriod());
+        $this->assertTrue($cron->evaluate(mktime(9, 35, 37)));
+    }
 
 }

@@ -149,37 +149,47 @@ class Task extends Job
     }
 
     /**
-     * Set time buffer
+     * Set grace period
      *
-     * @param  int $buffer
+     * @param  int $gracePeriod
      * @return Task
      */
-    public function setBuffer(int $buffer): Task
+    public function setGracePeriod(int $gracePeriod): Task
     {
-        $this->cron->setBuffer($buffer);
+        $this->cron->setGracePeriod($gracePeriod);
         return $this;
     }
 
     /**
-     * Set time buffer (alias)
+     * Set grace period (alias)
      *
-     * @param  int $buffer
+     * @param  int $gracePeriod
      * @return Task
      */
-    public function buffer(int $buffer): Task
+    public function gracePeriod(int $gracePeriod): Task
     {
-        $this->cron->setBuffer($buffer);
+        $this->cron->setGracePeriod($gracePeriod);
         return $this;
     }
 
     /**
-     * Get time buffer
+     * Get grace period
      *
      * @return int
      */
-    public function getBuffer(): int
+    public function getGracePeriod(): int
     {
-        return $this->cron->getBuffer();
+        return $this->cron->getGracePeriod();
+    }
+
+    /**
+     * Has grace period
+     *
+     * @return bool
+     */
+    public function hasGracePeriod(): bool
+    {
+        return $this->cron->hasGracePeriod();
     }
 
     /**

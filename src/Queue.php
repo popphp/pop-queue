@@ -267,16 +267,20 @@ class Queue extends AbstractQueue
      *
      * @param  Task $task
      * @param  ?int $maxAttempts
+     * @param  ?int $gracePeriod
      * @throws Exception
      * @return Queue
      */
-    public function addTask(Task $task, ?int $maxAttempts = null): Queue
+    public function addTask(Task $task, ?int $maxAttempts = null, ?int $gracePeriod = null): Queue
     {
         if (!($this->adapter instanceof TaskAdapterInterface)) {
             throw new Exception('Error: That queue adapter does not support scheduled tasks');
         }
         if ($maxAttempts !== null) {
             $task->setMaxAttempts($maxAttempts);
+        }
+        if ($gracePeriod !== null) {
+            $task->setGracePeriod($gracePeriod);
         }
 
         $this->adapter->schedule($task);
