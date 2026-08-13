@@ -18,7 +18,7 @@ pop-queue
 * [Tasks](#tasks)
     - [Scheduling](#scheduling)
     - [Run Until](#run-until)
-    - [Buffer](#buffer)
+    - [Grace period](#grace-period)
 * [Adapters](#adapters)
     - [Redis](#redis)
     - [Database](#database)
@@ -119,6 +119,7 @@ $queue->addJob($job);
 
 ```php
 use Pop\Queue\Queue;
+use Pop\Queue\Worker;
 use Pop\Queue\Adapter\File;
 
 // Call up the queue and pass it to a worker object
@@ -157,6 +158,7 @@ $queue->addTask($task);
 
 ```php
 use Pop\Queue\Queue;
+use Pop\Queue\Worker;
 use Pop\Queue\Adapter\File;
 
 // Call up the queue and pass it to a worker object
@@ -585,40 +587,54 @@ Also, the `isValid()` method will evaluate both the "run until" and max attempts
 
 [Top](#pop-queue)
 
-### Buffer
+### Grace period
 
-By default, a scheduled task's time evaluation is strict, which in most cases means that the
-execution time will happen on the `00` second of the timestamp. If, for some reason, there is
-a concern or possibility that the execution of a task would be delayed - and not be evaluated
-on a `00` second timestamp - you can set a time buffer to "soften" the strictness of the
-scheduled time evaluation.
+A worker only evaluates a task's schedule when something invokes it — a cron entry, a
+[daemon](#daemon-mode) loop, a manual run. The grace period decides **how late that evaluation may be
+and still count as due.**
 
-The below example gives a 10 second "cushion" to ensure that if there were any processing delay,
-the task's scheduled time evaluation should evaluate to `true` in the window of 0-10 seconds of the
-evaluated timestamp.
-
-```php
-use Pop\Queue\Process\Task;
-
-$task = Task::create(function() {
-    echo 'This is job #1' . PHP_EOL;
-});
-$task->every30Minutes()
-$task->setBuffer(10);
-```
-
-If you want to set it so that the task runs no matter what, as long as the evaluated timestamp
-is at or past the scheduled time, you can set the buffer to `-1`:
+By default it is `-1`, which disregards the seconds value entirely: a minute-granularity task is due
+for the whole of its matching minute. A task scheduled with `everyMinute()` runs whenever the worker
+is first invoked during that minute; one scheduled with `dailyAt('09:30')` runs on the first invocation
+during the 09:30 minute. This is almost always what you want, and it is why no configuration is needed
+for the common case:
 
 ```php
 use Pop\Queue\Process\Task;
 
 $task = Task::create(function() {
     echo 'This is job #1' . PHP_EOL;
-});
-$task->every30Minutes()
-$task->setBuffer(-1);
+})->every30Minutes();   // due for all of :00 and :30
 ```
+
+Running once per window is guaranteed separately, by the task-claiming described under
+[Tasks](#tasks) — so a wide grace period does not mean repeated runs. A task runs **at most once per
+scheduled window** no matter how many times a worker is invoked inside it.
+
+To bound how late a task may run, set a grace period in seconds. Here the task is due only within 10
+seconds of its scheduled time, and is skipped if the worker gets to it later than that:
+
+```php
+$task->setGracePeriod(10);   // $task->gracePeriod(10) is an alias
+```
+
+Setting `0` is the strictest possible setting: the task is due only on the exact `00` second. Be
+deliberate about this — it means a worker invoked at `09:30:01` will skip the run entirely:
+
+```php
+$task->setGracePeriod(0);
+```
+
+Two things worth knowing:
+
+- **There is no catch-up.** A window that passes without the worker being invoked is simply missed;
+  nothing re-runs it later. The grace period widens the window, it does not queue a backlog.
+- **It does not apply to sub-minute schedules.** A schedule with a seconds field (`everySecond()`,
+  `every15Seconds()`, `seconds()`) is always evaluated exactly.
+
+`getGracePeriod()` returns the current setting, and `hasGracePeriod()` reports whether any grace is
+granted at all — `false` only when it is exactly `0`, since `-1` is the loosest setting rather than
+the absence of one.
 
 [Top](#pop-queue)
 
@@ -1414,10 +1430,10 @@ relying on it.
 Upgrading to 3.0
 ----------------
 
-**If your application uses `Queue`, `Worker`, `Job` and `Task` in the documented way, 3.0 should be a
-drop-in upgrade.** Those public APIs only gained methods in 3.0 — nothing was removed or renamed. The
-breaking changes below affect custom adapters, custom `JobInterface` implementations, and CLI command
-jobs.
+**If your application uses `Queue`, `Worker`, `Job` and `Task` in the documented way, 3.0 is close to a
+drop-in upgrade** — with one exception: the task `buffer` was renamed and its default changed, covered
+in point 6 below. Everything else on those public APIs only gained methods. The remaining breaking
+changes affect custom adapters, custom `JobInterface` implementations, and CLI command jobs.
 
 **1. The adapter contract was rewritten.** This is the largest change. Jobs are no longer popped in a
 single step; they're reserved, then explicitly resolved. `AdapterInterface` changed as follows:
@@ -1462,6 +1478,35 @@ composer require aws/aws-sdk-php
 ```
 
 Everyone else gets a substantially smaller install.
+
+**6. The task "buffer" is now the "grace period", and it defaults to `-1` instead of `0`.** This is the
+one change that affects ordinary application code. Rename any calls:
+
+| 2.x | 3.0 |
+|---|---|
+| `$task->setBuffer(10)` | `$task->setGracePeriod(10)` |
+| `$task->buffer(10)` | `$task->gracePeriod(10)` |
+| `$task->getBuffer()` | `$task->getGracePeriod()` |
+| `$task->hasBuffer()` | `$task->hasGracePeriod()` |
+| `$cron->setBuffer(10)` / `getBuffer()` / `hasBuffer()` | `setGracePeriod()` / `getGracePeriod()` / `hasGracePeriod()` |
+| `new Cron($schedule, 10)` | unchanged positionally; the default is now `-1` |
+
+The default change matters more than the rename. In 2.x a minute-granularity task defaulted to a
+grace period of `0`, meaning it was due **only** on the `00` second — so a worker invoked even one
+second late silently skipped that run, with no error and no catch-up. Tasks now default to `-1`,
+meaning they are due for the whole of their matching minute. Combined with `claimTaskRun()`, which
+already guarantees a task runs at most once per scheduled window, the practical effect is that
+scheduled tasks fire reliably instead of depending on sub-second invocation timing. **If you were
+relying on the old strict behavior, set `setGracePeriod(0)` explicitly.**
+
+Two notes on upgrading:
+
+- `hasGracePeriod()` is not a rename-only change of `hasBuffer()`. It now returns `false` only for a
+  grace period of exactly `0`; `-1` is the loosest setting there is, not the absence of one.
+- Tasks already persisted in a `File`, `Database` or `Redis` queue were serialized under the old
+  property name. They deserialize fine and adopt the new `-1` default, but each will emit a
+  `Creation of dynamic property` deprecation notice until it is re-scheduled. Clearing and
+  re-scheduling your tasks after upgrading avoids the noise.
 
 [Top](#pop-queue)
 

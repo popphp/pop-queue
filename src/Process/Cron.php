@@ -71,10 +71,12 @@ class Cron
     protected array $daysOfTheWeek = [];
 
     /**
-     * Time buffer
+     * Grace period, in seconds, allowed between the scheduled time and the
+     * evaluation of it. Defaults to -1, i.e. the seconds value is disregarded
+     * and the schedule is due for the whole of its matching minute.
      * @var int
      */
-    protected int $buffer = 0;
+    protected int $gracePeriod = -1;
 
     /**
      * Constructor
@@ -82,14 +84,14 @@ class Cron
      * Instantiate the cron  object
      *
      * @param  ?string $schedule
-     * @param  int     $buffer
+     * @param  int     $gracePeriod
      */
-    public function __construct(?string $schedule = null, int $buffer = 0)
+    public function __construct(?string $schedule = null, int $gracePeriod = -1)
     {
         if ($schedule !== null) {
             $this->schedule($schedule);
         }
-        $this->setBuffer($buffer);
+        $this->setGracePeriod($gracePeriod);
     }
 
     /**
@@ -104,25 +106,39 @@ class Cron
     }
 
     /**
-     * Set buffer
+     * Set grace period
      *
-     * @param  int $buffer
+     * @param  int $gracePeriod
      * @return Cron
      */
-    public function setBuffer(int $buffer): Cron
+    public function setGracePeriod(int $gracePeriod): Cron
     {
-        $this->buffer = $buffer;
+        $this->gracePeriod = $gracePeriod;
         return $this;
     }
 
     /**
-     * Get buffer
+     * Get grace period
      *
      * @return int
      */
-    public function getBuffer(): int
+    public function getGracePeriod(): int
     {
-        return $this->buffer;
+        return $this->gracePeriod;
+    }
+
+    /**
+     * Has grace period
+     *
+     * Only a grace period of exactly 0 - strict evaluation to the 00 second -
+     * grants no grace. A negative value is the loosest setting there is, not
+     * the absence of one.
+     *
+     * @return bool
+     */
+    public function hasGracePeriod(): bool
+    {
+        return ($this->gracePeriod !== 0);
     }
 
     /**
@@ -602,7 +618,7 @@ class Cron
         if ($minutes !== null) {
             $this->minutes($minutes);
         } else {
-            $this->minutes = [0];            
+            $this->minutes = [0];
         }
 
         $this->hours          = ['*'];
@@ -881,16 +897,23 @@ class Cron
     /**
      * Evaluate the set cron schedule value against a time value
      *
-     * $buffer = 0;      strict evaluation to the 00 second
-     * $buffer = 1-59;   gives up to a minute buffer to account for any delay in processing
-     * $buffer = -1;     disregards the seconds value for a loose evaluation
+     * The grace period governs how late an evaluation may be and still count
+     * as due. It applies only to minute-granularity schedules; a schedule with
+     * a seconds field is always evaluated exactly.
+     *
+     * $gracePeriod = -1;    disregards the seconds value - due for the whole
+     *                       of the matching minute (the default)
+     * $gracePeriod = 1-59;  due within that many seconds of the scheduled time
+     * $gracePeriod = 0;     strict evaluation to the 00 second
+     *
+     * Note that a missed window is not made up later - there is no catch-up.
      *
      * @param  mixed $time
-     * @param  ?int  $buffer
+     * @param  ?int  $gracePeriod
      * @throws Exception
      * @return bool
      */
-    public function evaluate(mixed $time = null, ?int $buffer = null): bool
+    public function evaluate(mixed $time = null, ?int $gracePeriod = null): bool
     {
         if ($time === null) {
             $time = time();
@@ -901,8 +924,8 @@ class Cron
             }
         }
 
-        if ($buffer !== null) {
-            $this->setBuffer($buffer);
+        if ($gracePeriod !== null) {
+            $this->setGracePeriod($gracePeriod);
         }
 
         $second        = (int)date('s', $time);
@@ -947,7 +970,7 @@ class Cron
         } else {
             // Check every minute schedule
             if (($this->schedule == '* * * * *')) {
-                return (($this->buffer < 0) || ($second <= $this->buffer));
+                return (($this->gracePeriod < 0) || ($second <= $this->gracePeriod));
             // Validate the schedule
             } else {
                 return (($dowPassed) &&
@@ -955,7 +978,7 @@ class Cron
                     ($domPassed) &&
                     ($hoursPassed) &&
                     ($minutesPassed) &&
-                    (($this->buffer < 0) || ($second <= $this->buffer)));
+                    (($this->gracePeriod < 0) || ($second <= $this->gracePeriod)));
             }
         }
     }

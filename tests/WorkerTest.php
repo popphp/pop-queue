@@ -717,7 +717,7 @@ class WorkerTest extends TestCase
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
         $task  = Task::create(function(){
             return 'Task #1' . PHP_EOL;
-        })->everyMinute()->setBuffer(-1);
+        })->everyMinute()->setGracePeriod(-1);
         $queue->addTask($task);
 
         $worker = Worker::create($queue);
@@ -1016,7 +1016,7 @@ class WorkerTest extends TestCase
         $registry->register('w', ['billing'], WorkerRecord::MODE_DAEMON);
 
         $task = Task::create(function(){ return 1; })->everyMinute();
-        $task->getCron()->setBuffer(-1);   // always due, so the pass runs it
+        $task->getCron()->setGracePeriod(-1);   // always due, so the pass runs it
         $queue->addTask($task);
 
         $worker->runAll();

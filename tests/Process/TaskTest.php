@@ -33,13 +33,68 @@ class TaskTest extends TestCase
         $this->assertEquals(1, $task->getTaskId());
     }
 
-    public function testBuffer()
+    public function testGracePeriod()
     {
         $task = Task::create(function(){echo 1;});
-        $task->setBuffer(10);
-        $this->assertEquals(10, $task->getBuffer());
-        $task->buffer(15);
-        $this->assertEquals(15, $task->getBuffer());
+        $task->setGracePeriod(10);
+        $this->assertEquals(10, $task->getGracePeriod());
+        $task->gracePeriod(15);
+        $this->assertEquals(15, $task->getGracePeriod());
+    }
+
+    public function testGracePeriodDefaultsToUnlimited()
+    {
+        // -1 means "disregard the seconds value" - a minute-granularity task
+        // is due for the whole of its matching minute, not just the 00 second.
+        $task = Task::create(function(){echo 1;});
+        $this->assertEquals(-1, $task->getGracePeriod());
+    }
+
+    public function testHasGracePeriodIsFalseOnlyWhenStrict()
+    {
+        $task = Task::create(function(){echo 1;});
+        $this->assertTrue($task->hasGracePeriod());   // -1, the default
+
+        $task->setGracePeriod(10);
+        $this->assertTrue($task->hasGracePeriod());
+
+        // 0 is the one value that grants no grace at all.
+        $task->setGracePeriod(0);
+        $this->assertFalse($task->hasGracePeriod());
+    }
+
+    public function testDefaultGracePeriodMakesTaskDueAllMinute()
+    {
+        $task = Task::create(function(){echo 1;})->everyMinute();
+        $base = mktime(9, 35, 0);
+
+        // Due on every second of the minute under the default.
+        foreach ([0, 1, 17, 45, 59] as $second) {
+            $this->assertTrue($task->cron()->evaluate($base + $second));
+        }
+    }
+
+    public function testStrictGracePeriodOnlyMatchesTheZeroSecond()
+    {
+        $task = Task::create(function(){echo 1;})->everyMinute();
+        $task->setGracePeriod(0);
+        $base = mktime(9, 35, 0);
+
+        $this->assertTrue($task->cron()->evaluate($base));
+        foreach ([1, 17, 45, 59] as $second) {
+            $this->assertFalse($task->cron()->evaluate($base + $second));
+        }
+    }
+
+    public function testGracePeriodBoundsLatenessForNamedSchedules()
+    {
+        // Not just '* * * * *' - every minute-granularity schedule honors it.
+        $task = Task::create(function(){echo 1;})->schedule('35 9 * * *');
+        $task->setGracePeriod(10);
+        $base = mktime(9, 35, 0);
+
+        $this->assertTrue($task->cron()->evaluate($base + 10));
+        $this->assertFalse($task->cron()->evaluate($base + 11));
     }
 
     public function testEverySecond()
