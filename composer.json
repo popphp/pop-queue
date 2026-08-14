@@ -21,7 +21,7 @@
     ],
     "require": {
         "php": ">=8.4.0",
-        "popphp/popphp": "^5.0.0-beta.17",
+        "popphp/popphp": "^5.0.0-beta.20",
         "popphp/pop-db": "^7.0.0-beta.1",
         "popphp/pop-utils": "^3.0.0-beta.1",
         "laravel/serializable-closure": "^2.0.3",

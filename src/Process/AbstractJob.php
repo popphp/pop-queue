@@ -895,11 +895,11 @@ abstract class AbstractJob implements JobInterface
         // against route definition keys - matching by definition string
         // meant a real invocation ('greet Nick') could never be run, only
         // the literal route definition ('greet <name>') could.
-        if (($router === null) || !$router->hasController()) {
+        if (($router === null) || !$router->hasDispatchable()) {
             return false;
         }
 
-        $this->describeFromCommand($router->getController());
+        $this->describeFromCommand($router->getDispatchable());
 
         $this->results = array_values(array_filter(explode(PHP_EOL, $output), fn($line) => $line !== ''));
         return $this->results;
@@ -914,16 +914,16 @@ abstract class AbstractJob implements JobInterface
      * arrives transitively through popphp, and instanceof against a missing
      * class is simply false rather than an error.
      *
-     * @param  mixed $controller
+     * @param  mixed $dispatchable
      * @return void
      */
-    protected function describeFromCommand(mixed $controller): void
+    protected function describeFromCommand(mixed $dispatchable): void
     {
-        if ($this->hasJobDescription() || !($controller instanceof AbstractCommand)) {
+        if ($this->hasJobDescription() || !($dispatchable instanceof AbstractCommand)) {
             return;
         }
 
-        $description = $controller->getHelp() ?: $controller->getName();
+        $description = $dispatchable->getHelp() ?: $dispatchable->getName();
 
         if (!empty($description)) {
             $this->setJobDescription($description);
