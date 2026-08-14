@@ -12,6 +12,7 @@ pop-queue
 * [Quickstart](#quickstart)
 * [Jobs](#jobs)
     - [Callables](#callables)
+    - [Class-Based Jobs](#class-based-jobs)
     - [Application Commands](#application-commands)
     - [CLI Commands](#cli-commands)
     - [Attempts](#attempts)
@@ -273,6 +274,56 @@ Or, if you're working a queue directly without a worker, pass it to `work()` (or
 $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->work($application);
 ```
+
+[Top](#pop-queue)
+
+### Class-Based Jobs
+
+A closure is convenient, but work of any real size is usually better off as a class. A callable can
+be given as a class-string, which lets a job be an ordinary, testable class instead of a closure
+buried in a config file:
+
+```php
+use Pop\Queue\Process\Job;
+
+// Call an instance method - the class is instantiated when the job is worked
+$job1 = Job::create('MyApp\Service\DigestService->handle', ['nick@test.com']);
+
+// Call a static method
+$job2 = Job::create('MyApp\Service\DigestService::handleStatic', ['nick@test.com']);
+
+// Instantiate a class, passing the parameters to its constructor - the
+// constructed object becomes the job's results
+$job3 = Job::create('MyApp\Service\DigestService', ['nick@test.com']);
+```
+
+The application object is prepended to the parameters exactly as it is for a closure, so write the
+method to accept it first:
+
+```php
+namespace MyApp\Service;
+
+class DigestService
+{
+    public function handle($application, string $to): string
+    {
+        // Do the work; the returned value becomes the job's results
+        return 'sent to ' . $to;
+    }
+}
+```
+
+Two things make this the right default for non-trivial work:
+
+* **No route is required.** Unlike an application command, the class doesn't need to be registered
+  anywhere — it just has to be autoloadable in the worker process.
+* **The stored payload stays small.** Only the class name and the parameters are serialized, so a
+  job like the one above is well under 1KB. Queueing a rich object instead means serializing
+  everything it holds, which is why passing identifiers rather than whole objects is the safer habit.
+
+If the class needs constructor dependencies that can't be expressed as parameters, resolve them
+inside the method from the application's service locator rather than trying to store a
+pre-configured object on the job.
 
 [Top](#pop-queue)
 

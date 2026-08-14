@@ -114,6 +114,57 @@ class JobTest extends TestCase
         $this->assertInstanceOf('Closure', $job->getCallable()->getCallable());
     }
 
+    /**
+     * A plain class queued by 'Class->method' string - the class-based job
+     * form documented in the README. Needs no route, and unlike a Command
+     * object it stays small on the wire, so it must keep working.
+     */
+    public function testCallableInstanceMethodClassString()
+    {
+        $job    = Job::create('Pop\Queue\Test\TestAsset\DigestService->handle', ['nick@test.com']);
+        $result = $job->run(new Application(['foo' => 'bar']));
+
+        $this->assertEquals('sent to nick@test.com (app: yes)', $result);
+    }
+
+    public function testCallableStaticMethodClassString()
+    {
+        $job    = Job::create('Pop\Queue\Test\TestAsset\DigestService::handleStatic', ['nick@test.com']);
+        $result = $job->run(new Application(['foo' => 'bar']));
+
+        $this->assertEquals('static sent to nick@test.com', $result);
+    }
+
+    /**
+     * A bare class-string constructs the class with the parameters and the
+     * constructed object becomes the job's results.
+     */
+    public function testCallableBareClassStringCallsConstructor()
+    {
+        $job    = Job::create('Pop\Queue\Test\TestAsset\DigestService', ['nick@test.com']);
+        $result = $job->run(new Application(['foo' => 'bar']));
+
+        $this->assertInstanceOf('Pop\Queue\Test\TestAsset\DigestService', $result);
+        $this->assertEquals('nick@test.com', $result->constructedWith);
+    }
+
+    /**
+     * The reason to prefer a class-string over queueing a rich object: the
+     * stored payload stays tiny. A pop-console Command instance serializes
+     * to ~6KB because it carries a Console along with it.
+     */
+    public function testCallableClassStringJobSerializesToASmallPayload()
+    {
+        $job = Job::create('Pop\Queue\Test\TestAsset\DigestService->handle', ['nick@test.com']);
+
+        $revived = unserialize(serialize($job));
+        $this->assertLessThan(2048, strlen(serialize($job)));
+        $this->assertEquals(
+            'sent to nick@test.com (app: yes)',
+            $revived->run(new Application(['foo' => 'bar']))
+        );
+    }
+
     public function testCommand()
     {
         $job = Job::command('./app help');
