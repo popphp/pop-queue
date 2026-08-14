@@ -14,6 +14,7 @@
 namespace Pop\Queue\Process;
 
 use Pop\Application;
+use Pop\Console\Command\AbstractCommand;
 use Pop\Utils\CallableObject;
 use Laravel\SerializableClosure\SerializableClosure;
 use Symfony\Component\Process\Exception\ProcessFailedException;
@@ -52,10 +53,14 @@ abstract class AbstractJob implements JobInterface
     protected ?CallableObject $callable = null;
 
     /**
-     * Job application command
-     * @var ?string
+     * Job application command - an invocation string routed through the
+     * application (e.g. 'greet Nick'), or an argv-style array of already
+     * split segments (e.g. ['notify', 'Hello there, world']). The string
+     * form is split on whitespace by the router, so the array form is the
+     * only way to pass a value that itself contains spaces.
+     * @var string|array|null
      */
-    protected ?string $command = null;
+    protected string|array|null $command = null;
 
     /**
      * Job CLI executable command - a shell command string (runs via the
@@ -292,10 +297,10 @@ abstract class AbstractJob implements JobInterface
     /**
      * Set job application command
      *
-     * @param  string $command
+     * @param  string|array $command
      * @return AbstractJob
      */
-    public function setCommand(string $command): AbstractJob
+    public function setCommand(string|array $command): AbstractJob
     {
         $this->command = $command;
         return $this;
@@ -326,9 +331,9 @@ abstract class AbstractJob implements JobInterface
     /**
      * Get job application command
      *
-     * @return ?string
+     * @return string|array|null
      */
-    public function getCommand(): ?string
+    public function getCommand(): string|array|null
     {
         return $this->command;
     }
@@ -864,16 +869,65 @@ abstract class AbstractJob implements JobInterface
      */
     protected function runCommand(Application $application): mixed
     {
-        if (array_key_exists($this->command, $application->router()->getRouteMatch()->getRoutes())) {
-            ob_start();
-            $application->run(true, $this->command);
-            $output = ob_get_clean();
+        $router = $application->router();
+        $level  = ob_get_level();
+        $output = '';
 
-            $this->results = array_filter(explode(PHP_EOL, $output));
-            return $this->results;
+        ob_start();
+
+        try {
+            // run(false, ...) - never let an unresolved route call exit()
+            // and take the whole worker process down with it.
+            $application->run(false, $this->command);
+        } finally {
+            // Unwind to the level we started at, rather than closing exactly
+            // one buffer: the command may have thrown, or opened a buffer of
+            // its own and not closed it. Either way a leaked buffer is never
+            // reclaimed in a long-running worker - it grows without bound and
+            // silently swallows everything printed afterwards. Inner buffers
+            // hold the later output, so each unwind prepends to what we have.
+            while (ob_get_level() > $level) {
+                $output = ob_get_clean() . $output;
+            }
         }
 
-        return false;
+        // Whether the command resolved is the router's call, not a lookup
+        // against route definition keys - matching by definition string
+        // meant a real invocation ('greet Nick') could never be run, only
+        // the literal route definition ('greet <name>') could.
+        if (($router === null) || !$router->hasController()) {
+            return false;
+        }
+
+        $this->describeFromCommand($router->getController());
+
+        $this->results = array_values(array_filter(explode(PHP_EOL, $output), fn($line) => $line !== ''));
+        return $this->results;
+    }
+
+    /**
+     * Borrow a job description from the dispatched command, if it has one
+     * and the job was not given one explicitly. A command already documents
+     * itself, so a queued command job need not be anonymous in the registry.
+     *
+     * Guarded by instanceof rather than a hard dependency: pop-console
+     * arrives transitively through popphp, and instanceof against a missing
+     * class is simply false rather than an error.
+     *
+     * @param  mixed $controller
+     * @return void
+     */
+    protected function describeFromCommand(mixed $controller): void
+    {
+        if ($this->hasJobDescription() || !($controller instanceof AbstractCommand)) {
+            return;
+        }
+
+        $description = $controller->getHelp() ?: $controller->getName();
+
+        if (!empty($description)) {
+            $this->setJobDescription($description);
+        }
     }
 
     /**

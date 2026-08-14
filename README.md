@@ -278,9 +278,9 @@ $queue->work($application);
 
 ### Application Commands
 
-An application command can be registered with a job object as well. You would register
-the "route" portion of the command. For example, if the following application command
-route exists:
+An application command can be registered with a job object as well. You register the
+command exactly as you would type it, argument values and all. For example, if the
+following application command route exists:
 
 ```bash
 $ ./app hello world
@@ -299,6 +299,27 @@ $queue = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $queue->addJob($job);
 ```
 
+The command is resolved by the application's router, so a route that takes parameters is
+invoked with real values rather than with its route definition:
+
+```php
+// For the route 'greet <name>'
+$job = Job::command('greet Nick');
+```
+
+The string form is split on whitespace, so an argument value that itself contains spaces
+can't survive it. For that, pass an argv-style array of already split segments — the same
+pattern `Job::exec()` uses:
+
+```php
+$job = Job::command(['notify', 'Hello there, world']);
+```
+
+If the route resolves to a `Pop\Console\Command` object, the job borrows that command's
+help text (or its name) as its job description, so a queued command is identifiable in the
+registry without having to describe it by hand. An explicit `setJobDescription()` always
+wins.
+
 Again, the worker object would need to be aware of the application object to push down to
 the job object that requires it:
 
@@ -306,6 +327,9 @@ the job object that requires it:
 $queue  = new Queue('pop-queue', new File(__DIR__ . '/queue'));
 $worker = Worker::create($queue, $application);
 ```
+
+A command that can't be resolved to a route leaves the job's results as `false` rather than
+terminating the worker.
 
 [Top](#pop-queue)
 

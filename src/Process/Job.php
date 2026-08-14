@@ -40,13 +40,18 @@ class Job extends AbstractJob
     }
 
     /**
-     * Create a job object with an application command
+     * Create a job object with an application command - an invocation string
+     * routed through the application (e.g. Job::command('greet Nick')), or an
+     * argv-style array of already split segments (e.g.
+     * Job::command(['notify', 'Hello there, world'])). The router splits the
+     * string form on whitespace, so the array form is the only way to pass an
+     * argument value that itself contains spaces.
      *
-     * @param  string  $command
-     * @param  ?string $id
+     * @param  string|array $command
+     * @param  ?string      $id
      * @return static
      */
-    public static function command(string $command, ?string $id = null): static
+    public static function command(string|array $command, ?string $id = null): static
     {
         return (new static(null, null, $id))->setCommand($command);
     }

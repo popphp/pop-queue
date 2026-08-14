@@ -108,7 +108,7 @@ interface JobInterface
      * @param  string $command
      * @return JobInterface
      */
-    public function setCommand(string $command): JobInterface;
+    public function setCommand(string|array $command): JobInterface;
 
     /**
      * Set job CLI executable command
@@ -130,7 +130,7 @@ interface JobInterface
      *
      * @return ?string
      */
-    public function getCommand(): ?string;
+    public function getCommand(): string|array|null;
 
     /**
      * Get job CLI executable command
