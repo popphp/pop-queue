@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -91,9 +92,7 @@ class File extends AbstractRegistry
 
     public function read(string $id): ?WorkerRecord
     {
-        $path = $this->recordPath($id);
-
-        return file_exists($path) ? $this->decode(file_get_contents($path)) : null;
+        return $this->readRecord($this->recordPath($id));
     }
 
     public function all(): array
@@ -101,15 +100,44 @@ class File extends AbstractRegistry
         $records = [];
 
         foreach ($this->recordFiles() as $file) {
-            // decode() returns null for a corrupt/truncated file, which is
-            // skipped rather than allowed to derail enumeration.
-            $record = $this->decode(file_get_contents($this->folder . DIRECTORY_SEPARATOR . $file));
+            // readRecord() returns null for a corrupt/truncated/unreadable file,
+            // which is skipped rather than allowed to derail enumeration.
+            $record = $this->readRecord($this->folder . DIRECTORY_SEPARATOR . $file);
             if ($record !== null) {
                 $records[$record->getId()] = $record;
             }
         }
 
         return $records;
+    }
+
+    /**
+     * Read and decode a record file, or null if it is unreadable or unusable
+     *
+     * The false-check is what keeps an unreadable file on the same graceful
+     * path as an undecodable one. file_get_contents() returns false, not '',
+     * when the read itself fails - and a worker registry is read while other
+     * workers are pruning it, so a file that passes file_exists() and is then
+     * unlinked before the read lands is an ordinary race, not corruption.
+     * Under declare(strict_types=1) handing that false to decode(?string)
+     * would be a TypeError, turning a routine race into a crash that takes
+     * out enumeration for every other worker in the registry.
+     *
+     * @param  string $path
+     * @return ?WorkerRecord
+     */
+    protected function readRecord(string $path): ?WorkerRecord
+    {
+        if (!file_exists($path)) {
+            return null;
+        }
+
+        // Suppressed deliberately: a registry read losing a race to a concurrent
+        // prune is expected operation, not a fault worth emitting a warning for.
+        // The false return is what this method acts on.
+        $payload = @file_get_contents($path);
+
+        return ($payload !== false) ? $this->decode($payload) : null;
     }
 
     public function delete(string $id): void
@@ -126,8 +154,12 @@ class File extends AbstractRegistry
 
         foreach ($this->recordFiles() as $file) {
             $path = $this->folder . DIRECTORY_SEPARATOR . $file;
-            if ($this->decode(file_get_contents($path)) === null) {
-                unlink($path);
+
+            // Counting the unlink rather than the decode keeps the tally honest
+            // when another worker prunes the same registry concurrently: a file
+            // that vanished between the listing and here is already purged, and
+            // claiming it twice would overstate what this call actually did.
+            if (($this->readRecord($path) === null) && @unlink($path)) {
                 $removed++;
             }
         }

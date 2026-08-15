@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -53,7 +54,10 @@ class Job extends AbstractJob
      */
     public static function command(string|array $command, ?string $id = null): static
     {
-        return (new static(null, null, $id))->setCommand($command);
+        $job = new static(null, null, $id);
+        $job->setCommand($command);
+
+        return $job;
     }
 
     /**
@@ -70,7 +74,10 @@ class Job extends AbstractJob
      */
     public static function exec(string|array $command, ?string $id = null): static
     {
-        return (new static(null, null, $id))->setExec($command);
+        $job = new static(null, null, $id);
+        $job->setExec($command);
+
+        return $job;
     }
 
 }

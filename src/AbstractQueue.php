@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -79,9 +80,9 @@ abstract class AbstractQueue implements QueueInterface
      * Set adapter
      *
      * @param  AdapterInterface|TaskAdapterInterface $adapter
-     * @return Queue
+     * @return AbstractQueue
      */
-    public function setAdapter(AdapterInterface|TaskAdapterInterface $adapter): Queue
+    public function setAdapter(AdapterInterface|TaskAdapterInterface $adapter): AbstractQueue
     {
         $this->adapter = $adapter;
         return $this;

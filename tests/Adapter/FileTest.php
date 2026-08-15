@@ -689,4 +689,82 @@ class FileTest extends TestCase
         $this->assertFileDoesNotExist($orphanPath);
     }
 
+    /**
+     * A payload that exists but cannot be read is what a worker sees when a
+     * peer claims and unlinks it between the file_exists() check and the read.
+     * file_get_contents() reports that with false, and under
+     * declare(strict_types=1) false reaching PayloadSigner::verify(string) is a
+     * TypeError - so the adapter has to reject it before it gets that far.
+     *
+     * Mode 0000 is the portable way to force that false; note that a directory
+     * does NOT work, since file_get_contents() on one returns '' on Linux.
+     */
+    public function testGetTaskReturnsNullWhenThePayloadCannotBeRead()
+    {
+        $folder = __DIR__ . '/../tmp/pop-queue';
+        $path   = $folder . '/task-unreadable';
+
+        file_put_contents($path, 'irrelevant');
+        chmod($path, 0000);
+
+        if (is_readable($path)) {
+            @chmod($path, 0644);
+            @unlink($path);
+            $this->markTestSkipped('Running as a user that can read mode-0000 files.');
+        }
+
+        try {
+            $this->assertNull(File::create($folder)->getTask('unreadable'));
+        } finally {
+            @chmod($path, 0644);
+            @unlink($path);
+        }
+    }
+
+    public function testReserveSkipsAJobWhosePayloadCannotBeRead()
+    {
+        $folder  = __DIR__ . '/../tmp/pop-queue';
+        $adapter = File::create($folder);
+        $adapter->clear();
+
+        $pendingDir  = $folder . '/pending/1';
+        $payloadFile = $pendingDir . '/payload';
+        @mkdir($pendingDir, 0777, true);
+        file_put_contents($payloadFile, 'irrelevant');
+        chmod($payloadFile, 0000);
+
+        if (is_readable($payloadFile)) {
+            @chmod($payloadFile, 0644);
+            $adapter->clear();
+            $this->markTestSkipped('Running as a user that can read mode-0000 files.');
+        }
+
+        try {
+            $this->assertNull($adapter->reserve());
+        } finally {
+            @chmod($payloadFile, 0644);
+            $adapter->clear();
+        }
+    }
+
+    /**
+     * Separate from the unreadable case above: here the payload reads fine but
+     * doesn't unserialize. unserialize() answers false, and false returned from
+     * a ": ?Task" method is a TypeError in any mode - a corrupt task file has
+     * to read as "no such task" rather than crash the caller.
+     */
+    public function testGetTaskReturnsNullForACorruptPayload()
+    {
+        $folder = __DIR__ . '/../tmp/pop-queue';
+        $path   = $folder . '/task-corrupt';
+
+        file_put_contents($path, 'this is not a serialized task');
+
+        try {
+            $this->assertNull(File::create($folder)->getTask('corrupt'));
+        } finally {
+            @unlink($path);
+        }
+    }
+
 }

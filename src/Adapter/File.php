@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -146,6 +147,31 @@ class File extends AbstractTaskAdapter
     }
 
     /**
+     * Read a payload file and verify its signature, or false if it can't be read
+     *
+     * Every caller already treats a false return as "unusable payload, skip it",
+     * so an unreadable file joins the corrupt and tampered ones on that path.
+     * The explicit check matters because file_get_contents() signals failure
+     * with false rather than '', and under declare(strict_types=1) passing that
+     * to PayloadSigner::verify(string) is a TypeError - which would turn an
+     * everyday race (another worker claiming and unlinking the same payload
+     * between the file_exists() check and the read) into a crashed worker.
+     *
+     * @param  string $path
+     * @return string|false
+     */
+    protected function readVerifiedPayload(string $path): string|false
+    {
+        // Suppressed for the same reason as the @rename() in reclaimExpiredLeases():
+        // losing this read to a concurrent worker is expected operation, not a
+        // fault worth writing to the worker's stderr on every occurrence. The
+        // false return is what callers act on.
+        $payload = @file_get_contents($path);
+
+        return ($payload !== false) ? PayloadSigner::verify($payload) : false;
+    }
+
+    /**
      * Read a reserved job's lease expiry, if any
      *
      * @param  string $reservedDir
@@ -257,7 +283,7 @@ class File extends AbstractTaskAdapter
 
             $payloadFile = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
             if (file_exists($payloadFile)) {
-                $raw = PayloadSigner::verify(file_get_contents($payloadFile));
+                $raw = $this->readVerifiedPayload($payloadFile);
                 // Suppressed: a corrupt/tampered payload makes unserialize() emit
                 // a warning and return false, which the instanceof check below
                 // handles.
@@ -356,7 +382,7 @@ class File extends AbstractTaskAdapter
             // by something other than this application when a signing key is
             // configured) is treated identically - $raw is false, so
             // unserialize() is never called on it at all.
-            $raw = PayloadSigner::verify(file_get_contents($payloadFile));
+            $raw = $this->readVerifiedPayload($payloadFile);
             $job = ($raw !== false) ? @unserialize($raw) : false;
 
             if (!($job instanceof AbstractJob)) {
@@ -580,7 +606,15 @@ class File extends AbstractTaskAdapter
             return null;
         }
 
-        $payload = file_get_contents($path);
+        // Read once and share it with both branches rather than going through
+        // readVerifiedPayload(), which would re-read the file for the
+        // unserialize case. A failed read is reported the same way a missing
+        // file is, above - the job is unreadable either way.
+        $payload = @file_get_contents($path);
+        if ($payload === false) {
+            return null;
+        }
+
         if (!$unserialize) {
             return $payload;
         }
@@ -684,8 +718,15 @@ class File extends AbstractTaskAdapter
             return null;
         }
 
-        $raw = PayloadSigner::verify(file_get_contents($path));
-        return ($raw !== false) ? unserialize($raw) : null;
+        // Guarded with instanceof rather than returning unserialize()'s result
+        // directly, the same way reserve() does: a corrupt, truncated or
+        // tampered payload makes unserialize() return false, and false out of
+        // a ": ?Task" method is a TypeError, not a null. A bad task file should
+        // read as "no such task", never as a crash.
+        $raw  = $this->readVerifiedPayload($path);
+        $task = ($raw !== false) ? @unserialize($raw) : false;
+
+        return ($task instanceof Task) ? $task : null;
     }
 
     /**

@@ -530,4 +530,30 @@ class RedisTest extends TestCase
         $adapter->clear();
     }
 
+    /**
+     * unserialize() answers false for a corrupt or tampered payload, and false
+     * returned from a ": ?Task" method is a TypeError in any mode. A bad task
+     * value has to read as "no such task" rather than crash the caller.
+     */
+    public function testGetTaskReturnsNullForACorruptPayload()
+    {
+        $task = Task::create(function(){
+            echo 'Task #1' . PHP_EOL;
+        })->everyMinute();
+
+        $adapter = new Redis();
+        $adapter->clearTasks();
+        $adapter->schedule($task);
+
+        // Overwrite the stored payload in place - what a truncated write or a
+        // key rewritten by something other than this application looks like.
+        $adapter->redis()->set(
+            $adapter->getPrefix() . ':task-' . $task->getJobId(), 'not a serialized task'
+        );
+
+        $this->assertNull($adapter->getTask($task->getJobId()));
+
+        $adapter->clearTasks();
+    }
+
 }

@@ -171,4 +171,39 @@ class FileTest extends TestCase
         $this->assertNull($all[$record->getId()]->getCurrentJobId());
     }
 
+    /**
+     * A record that exists but cannot be read stands in for one unlinked by a
+     * concurrently pruning worker between the listing and the read. Enumeration
+     * has to skip it: under declare(strict_types=1) the false from
+     * file_get_contents() reaching decode(?string) would be a TypeError, taking
+     * out all() for every other worker in the registry over one raced file.
+     *
+     * Mode 0000 is the portable way to force that false; a directory does NOT
+     * work, since file_get_contents() on one returns '' on Linux.
+     */
+    public function testAllSkipsARecordFileThatCannotBeRead()
+    {
+        $folder = __DIR__ . '/../../tmp/pop-registry';
+        $path   = $folder . '/worker-unreadable.json';
+
+        file_put_contents($path, '{"id":"irrelevant"}');
+        chmod($path, 0000);
+
+        if (is_readable($path)) {
+            @chmod($path, 0644);
+            @unlink($path);
+            $this->markTestSkipped('Running as a user that can read mode-0000 files.');
+        }
+
+        $registry = new File($folder);
+        $registry->write(WorkerRecord::create('worker-a'));
+
+        try {
+            $this->assertCount(1, $registry->all());
+        } finally {
+            @chmod($path, 0644);
+            @unlink($path);
+        }
+    }
+
 }

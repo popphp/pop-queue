@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -56,8 +57,10 @@ abstract class AbstractRegistry implements RegistryInterface
         // JSON_INVALID_UTF8_SUBSTITUTE so a record with a stray invalid byte in
         // an operator-supplied name degrades to replacement characters rather
         // than vanishing: losing sight of a worker is worse than an ugly name.
-        // The false-check is belt-and-braces - without declare(strict_types=1)
-        // a false return would coerce to "" and silently destroy the record.
+        // The false-check still earns its place under declare(strict_types=1):
+        // returning false from a ": string" method now raises a TypeError, but
+        // one that names neither the record nor the encoding fault. Checking
+        // here trades that for a message carrying json_last_error_msg().
         $payload = json_encode($record->toArray(), JSON_INVALID_UTF8_SUBSTITUTE);
 
         if ($payload === false) {

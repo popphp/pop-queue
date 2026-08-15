@@ -350,6 +350,42 @@ class DatabaseTest extends TestCase
         $adapter->clearTasks();
     }
 
+    /**
+     * unserialize() answers false for a corrupt or tampered payload, and false
+     * returned from a ": ?Task" method is a TypeError in any mode. A bad task
+     * row has to read as "no such task" rather than crash the caller.
+     */
+    public function testGetTaskReturnsNullForACorruptPayload()
+    {
+        $task = Task::create(function(){
+            echo 'Task #1' . PHP_EOL;
+        })->everyMinute();
+
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+        $adapter = new Database($db);
+
+        $adapter->clearTasks();
+        $adapter->schedule($task);
+
+        // Overwrite the stored payload in place - what a truncated write or a
+        // row edited by something other than this application looks like.
+        $sql = $db->createSql();
+        $update = $sql->update($adapter->getTable());
+        $update->values(['payload' => base64_encode('not a serialized task')]);
+        $update->where("type = 'task'");
+        $update->andWhere('job_id = :job_id');
+
+        $db->prepare($sql);
+        $db->bindParams(['job_id' => $task->getJobId()]);
+        $db->execute();
+
+        $this->assertNull($adapter->getTask($task->getJobId()));
+
+        $adapter->clearTasks();
+    }
+
     public function testGetTask2()
     {
         $task = Task::create(function(){

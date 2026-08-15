@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -177,7 +178,7 @@ abstract class AbstractJob implements JobInterface
      */
     public function generateJobId(): string
     {
-        $this->id = sha1(uniqid(rand()) . time());
+        $this->id = sha1(uniqid((string)rand()) . time());
         return $this->id;
     }
 
@@ -637,6 +638,12 @@ abstract class AbstractJob implements JobInterface
     /**
      * Determine if the job is still valid
      *
+     * Impure on two counts: it reads $attempts, which failed() increments, and
+     * it compares $runUntil against the current time. The same job can answer
+     * true and then false without anything being reassigned, so callers must
+     * not have an earlier answer cached on their behalf.
+     *
+     * @phpstan-impure
      * @return bool
      */
     public function isValid(): bool

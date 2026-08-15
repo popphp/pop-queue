@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -309,8 +310,15 @@ class Database extends AbstractTaskAdapter
      */
     protected function getEndIndex(): int
     {
-        $sql = $this->db->createSql();
-        $sql->select('index')->from($this->table)->where('index IS NOT NULL')->orderBy('index', 'DESC')->limit(1);
+        $sql    = $this->db->createSql();
+        $select = $sql->select('index')->from($this->table);
+
+        // Kept off the where() chain on purpose - where() is declared to return
+        // AbstractPredicateClause, which has no orderBy()/limit(), so chaining
+        // past it loses the Select type even though the object really is one.
+        $select->where('index IS NOT NULL');
+        $select->orderBy('index', 'DESC')->limit(1);
+
         $this->db->query($sql);
 
         $rows = $this->db->fetchAll();
@@ -785,8 +793,14 @@ class Database extends AbstractTaskAdapter
             return null;
         }
 
-        $raw = PayloadSigner::verify(base64_decode($rows[0]['payload']));
-        return ($raw !== false) ? unserialize($raw) : null;
+        // Guarded with instanceof rather than returning unserialize()'s result
+        // directly, the same way reserve() does: a corrupt or tampered payload
+        // makes unserialize() return false, and false out of a ": ?Task" method
+        // is a TypeError, not a null.
+        $raw  = PayloadSigner::verify(base64_decode($rows[0]['payload']));
+        $task = ($raw !== false) ? @unserialize($raw) : false;
+
+        return ($task instanceof Task) ? $task : null;
     }
 
     /**

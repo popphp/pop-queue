@@ -1,4 +1,5 @@
 <?php
+declare(strict_types=1);
 /**
  * Pop PHP Framework (https://www.popphp.org/)
  *
@@ -556,8 +557,14 @@ LUA;
             return null;
         }
 
-        $raw = PayloadSigner::verify($value);
-        return ($raw !== false) ? unserialize($raw) : null;
+        // Guarded with instanceof rather than returning unserialize()'s result
+        // directly, the same way reserve() does: a corrupt or tampered payload
+        // makes unserialize() return false, and false out of a ": ?Task" method
+        // is a TypeError, not a null.
+        $raw  = PayloadSigner::verify($value);
+        $task = ($raw !== false) ? @unserialize($raw) : false;
+
+        return ($task instanceof Task) ? $task : null;
     }
 
     /**

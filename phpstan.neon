@@ -1,0 +1,12 @@
+parameters:
+    level: 5
+    paths:
+        - src
+    scanFiles:
+        # aws/aws-sdk-php is a "suggest", not a requirement, so it isn't in the
+        # vendor tree during analysis - see .phpstan/stubs/aws-sdk.php for why. scanFiles
+        # (not stubFiles) is the right hook here: stubFiles only retypes classes
+        # PHPStan can already find, it can't declare a missing one.
+        - .phpstan/stubs/aws-sdk.php
+    ignoreErrors:
+        - identifier: new.static
