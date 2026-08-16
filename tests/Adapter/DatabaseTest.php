@@ -968,6 +968,151 @@ class DatabaseTest extends TestCase
         $adapter->clear();
     }
 
+    /**
+     * reserve() scans in batches of RESERVE_BATCH_SIZE now rather than reading
+     * the entire eligible set into PHP to hand back one job. A batch that turns
+     * out to be entirely unclaimable therefore has to page forward, or a queue
+     * whose head is a long run of delayed jobs would report itself empty while
+     * holding runnable work right behind them.
+     */
+    public function testReservePagesPastAFullBatchOfUnavailableJobs()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        // Comfortably more than one batch, so the runnable job can only be
+        // reached by issuing a second query.
+        $batch = (new \ReflectionClassConstant(Database::class, 'RESERVE_BATCH_SIZE'))->getValue();
+
+        for ($i = 0; $i < ($batch + 10); $i++) {
+            $delayed = Job::create(function() { return 'delayed'; });
+            $delayed->delay(3600);
+            $adapter->push($delayed);
+        }
+
+        $adapter->push(Job::create(function() { return 'runnable'; }));
+
+        $reserved = $adapter->reserve();
+
+        $this->assertNotNull($reserved);
+        $this->assertEquals('runnable', $reserved->run());
+
+        $adapter->clear();
+    }
+
+    /**
+     * An entirely unavailable queue still has to come back null rather than
+     * paging forever.
+     */
+    public function testReserveReturnsNullWhenEveryJobIsUnavailable()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clear();
+
+        $batch = (new \ReflectionClassConstant(Database::class, 'RESERVE_BATCH_SIZE'))->getValue();
+
+        for ($i = 0; $i < ($batch + 5); $i++) {
+            $delayed = Job::create(function() { return 'delayed'; });
+            $delayed->delay(3600);
+            $adapter->push($delayed);
+        }
+
+        $this->assertNull($adapter->reserve());
+
+        $adapter->clear();
+    }
+
+    /**
+     * createTable() builds its indexes as separate statements because chaining
+     * them onto the create() renders DDL that never executes - the adapters pass
+     * the whole multi-statement string to one driver call, and SQLite runs only
+     * the first. That failure is silent, so assert the indexes are really there.
+     *
+     * The sqlite_master lookup is backend-specific, which is fine here: this
+     * suite runs on SQLite.
+     */
+    public function testCreateTableBuildsTheIndexesTheHotQueriesNeed()
+    {
+        $file = __DIR__ . '/../tmp/index-probe.sqlite';
+        @unlink($file);
+        touch($file);
+
+        try {
+            $db = PopDb::sqliteConnect(['database' => $file]);
+
+            // Constructing the adapter is what creates the missing table.
+            new Database($db, 'probe_queue');
+
+            $db->query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'probe_queue'");
+            $names = array_column($db->fetchAll(), 'name');
+
+            $this->assertContains('probe_queue_type_index_idx', $names);
+            $this->assertContains('probe_queue_type_job_id_idx', $names);
+
+            // And the ordering index is the one the planner actually picks for
+            // reserve()'s scan, which is the entire point of adding it.
+            $db->query(
+                'EXPLAIN QUERY PLAN SELECT id, "index", payload FROM probe_queue '
+                . "WHERE type = 'job' ORDER BY \"index\" ASC LIMIT 50"
+            );
+            $plan = implode(' ', array_column($db->fetchAll(), 'detail'));
+
+            $this->assertStringContainsString('probe_queue_type_index_idx', $plan);
+            $this->assertStringNotContainsString('TEMP B-TREE', $plan);
+        } finally {
+            @unlink($file);
+        }
+    }
+
+    /**
+     * getAllTasks() overrides the inherited "list the IDs, then SELECT each
+     * payload" loop with a single query. It has to agree with that loop exactly,
+     * including omitting anything that won't decode.
+     */
+    public function testGetAllTasksMatchesFetchingEachTaskIndividually()
+    {
+        $db = PopDb::sqliteConnect([
+            'database' => __DIR__ . '/../tmp/test.sqlite'
+        ]);
+
+        $adapter = new Database($db);
+        $adapter->clearTasks();
+
+        $taskA = Task::create(function() { return 'a'; })->everyMinute();
+        $taskB = Task::create(function() { return 'b'; })->hourly();
+        $adapter->schedule($taskA);
+        $adapter->schedule($taskB);
+
+        $all = $adapter->getAllTasks();
+
+        $this->assertCount(2, $all);
+        $this->assertArrayHasKey($taskA->getJobId(), $all);
+        $this->assertArrayHasKey($taskB->getJobId(), $all);
+        $this->assertInstanceOf(Task::class, $all[$taskA->getJobId()]);
+
+        // Same answer as the one-at-a-time path it replaced.
+        $individually = [];
+        foreach ($adapter->getTasks() as $taskId) {
+            $individually[$taskId] = $adapter->getTask($taskId);
+        }
+        $this->assertEquals(array_keys($individually), array_keys($all));
+        $this->assertEquals(
+            $all[$taskA->getJobId()]->cron()->render(),
+            $individually[$taskA->getJobId()]->cron()->render()
+        );
+
+        $adapter->clearTasks();
+        $this->assertSame([], $adapter->getAllTasks());
+    }
+
     public function testClear()
     {
         $db = PopDb::sqliteConnect([

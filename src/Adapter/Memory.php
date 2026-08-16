@@ -258,6 +258,13 @@ class Memory extends AbstractTaskAdapter
         return isset($this->tasks[$taskId]) ? clone $this->tasks[$taskId] : null;
     }
 
+    public function getAllTasks(): array
+    {
+        // Cloned per task for the same reason getTask() clones: callers must not
+        // get a handle on the stored object and mutate the queue by accident.
+        return array_map(fn(Task $task) => clone $task, $this->tasks);
+    }
+
     public function updateTask(Task $task): Memory
     {
         if ($task->isValid()) {

@@ -53,6 +53,23 @@ interface TaskAdapterInterface
     public function getTask(string $taskId): ?Task;
 
     /**
+     * Get every scheduled task, keyed by task ID.
+     *
+     * Exists so callers that want all of them - Queue::getScheduledTasks(), and
+     * through it every run() on every tick - can ask for them in one go instead
+     * of listing the IDs and then fetching each task individually. That pattern
+     * costs a round trip per scheduled task on every backend that has round
+     * trips, which is the definition of an N+1.
+     *
+     * Any task that can't be loaded (corrupt, tampered, or removed mid-read) is
+     * omitted rather than returned as null, matching what callers already did
+     * with getTask()'s null.
+     *
+     * @return array  taskId => Task
+     */
+    public function getAllTasks(): array;
+
+    /**
      * Update scheduled task
      *
      * @param  Task $task

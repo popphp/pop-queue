@@ -108,7 +108,14 @@ class RedisTest extends TestCase
     public function testPruneReapsUndecodableRecords()
     {
         $registry = $this->registry();
-        $registry->getRedis()->set('pop-registry:worker:junk', 'not valid json');
+
+        // Written through write() so it is indexed the way every real record is,
+        // then corrupted in place - which is how an undecodable record actually
+        // comes about, rather than a key appearing from nowhere.
+        $junk = WorkerRecord::create('worker-junk');
+        $registry->write($junk);
+        $registry->getRedis()->set('pop-registry:worker:' . $junk->getId(), 'not valid json');
+
         $registry->write(WorkerRecord::create('worker-a'));
 
         // The good record is fresh, so only the undecodable one is reaped.
@@ -116,6 +123,42 @@ class RedisTest extends TestCase
 
         $this->assertEquals(1, $removed);
         $this->assertCount(1, $registry->all());
+    }
+
+    /**
+     * Enumeration reads a worker index set now instead of running a KEYS scan.
+     * Records written before that set existed aren't in it, so the first
+     * enumeration against a given prefix reconciles them in - otherwise an
+     * upgrade would make every already-registered worker vanish from the
+     * stuck-worker sweep.
+     */
+    public function testFirstEnumerationAdoptsRecordsWrittenBeforeTheIndexSet()
+    {
+        // A prefix of its own, so this starts from the pre-migration state
+        // rather than whatever the shared one has already been migrated to.
+        $prefix   = 'pop-registry-legacy-' . uniqid();
+        $registry = new Redis(prefix: $prefix);
+        $redis    = $registry->getRedis();
+
+        $legacy = WorkerRecord::create('legacy-worker');
+        $redis->set($prefix . ':worker:' . $legacy->getId(), json_encode($legacy->toArray()));
+
+        try {
+            // Nothing has indexed that key, yet it still has to show up.
+            $all = $registry->all();
+
+            $this->assertCount(1, $all);
+            $this->assertArrayHasKey($legacy->getId(), $all);
+            $this->assertEquals('legacy-worker', $all[$legacy->getId()]->getName());
+
+            // And it is genuinely indexed now, not re-scanned every time.
+            $this->assertEquals(1, $redis->sCard($prefix . ':workers'));
+            $this->assertTrue((bool)$redis->exists($prefix . ':index-built'));
+        } finally {
+            foreach ($redis->keys($prefix . ':*') as $key) {
+                $redis->del($key);
+            }
+        }
     }
 
     public function testWriteStoresASnapshotNotAReferenceToTheCallersObject()

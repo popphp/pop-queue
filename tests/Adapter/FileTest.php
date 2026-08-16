@@ -767,4 +767,185 @@ class FileTest extends TestCase
         }
     }
 
+    /**
+     * getEndIndex() is cached per instance now, so push() derives its index from
+     * memory rather than re-scanning both directories every time. The cache is
+     * only ever a hint, and the property that has to survive it is the one
+     * everything else depends on: indices stay unique and strictly increasing,
+     * and FIFO order still comes out the way it went in.
+     */
+    public function testPushKeepsIndicesUniqueAndOrderedWithTheIndexCached()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        for ($i = 1; $i <= 12; $i++) {
+            $adapter->push(Job::create(function() use ($i) { return $i; }));
+        }
+
+        $indices = array_map('intval', $adapter->getFolders($adapter->getFolder() . '/pending'));
+        sort($indices, SORT_NUMERIC);
+
+        $this->assertCount(12, $indices);
+        $this->assertEquals($indices, array_unique($indices));
+        $this->assertEquals(range(1, 12), $indices);
+
+        $adapter->clear();
+    }
+
+    /**
+     * A cleared queue restarts its numbering from 1. Without resetting the
+     * cached high-water mark, clear() would leave push() counting on from
+     * wherever the old queue stopped.
+     */
+    public function testClearResetsTheCachedEndIndex()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $adapter->push(Job::create(function() { return 1; }));
+        $adapter->push(Job::create(function() { return 2; }));
+        $this->assertEquals([1, 2], $this->pendingIndices($adapter));
+
+        $adapter->clear();
+        $adapter->push(Job::create(function() { return 3; }));
+        $this->assertEquals([1], $this->pendingIndices($adapter));
+
+        $adapter->clear();
+    }
+
+    /**
+     * An index is taken if a directory bearing it exists in *either* pending/ or
+     * reserved/, but mkdir() only ever knows about pending/. With the end index
+     * cached, a stale hint can aim push() straight at an index that is currently
+     * sitting in reserved/ - so push() has to notice and move past it, or the
+     * two directories end up holding different jobs under the same index.
+     */
+    public function testPushSkipsAnIndexAlreadyHeldInReserved()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        // Put a job in reserved/ under index 1, the index a fresh queue's next
+        // push would otherwise take.
+        $adapter->push(Job::create(function() { return 1; }));
+        $this->assertNotNull($adapter->reserve());
+        $this->assertEquals([1], array_map('intval', $adapter->getFolders($adapter->getFolder() . '/reserved')));
+
+        // Force the hint back to "empty queue" the way a stale cache would read.
+        $reset = new \ReflectionProperty(File::class, 'endIndex');
+        $reset->setValue($adapter, 0);
+
+        $adapter->push(Job::create(function() { return 2; }));
+
+        $this->assertNotContains(1, $this->pendingIndices($adapter));
+        $this->assertCount(1, $this->pendingIndices($adapter));
+
+        $adapter->clear();
+    }
+
+    /**
+     * reserve() writes a 'job-id' sidecar so release()/delete()/bury() can find
+     * a reserved job without unserializing every reserved payload to read one
+     * string off each.
+     */
+    public function testReserveWritesAJobIdSidecarAndDeleteRemovesTheWholeDirectory()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $job = Job::create(function() { return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+
+        $dir = $adapter->getFolder() . '/reserved/1';
+        $this->assertFileExists($dir . '/job-id');
+        $this->assertEquals($reserved->getJobId(), file_get_contents($dir . '/job-id'));
+
+        // rmdir() fails on a non-empty directory, so the sidecar has to be
+        // cleaned up along with the payload and lease or delete() silently
+        // leaves the job behind.
+        $adapter->delete($reserved);
+        $this->assertDirectoryDoesNotExist($dir);
+        $this->assertEquals(0, $adapter->count());
+
+        $adapter->clear();
+    }
+
+    /**
+     * The sidecar is an optimization, never a source of truth: a directory
+     * written before it existed - or by a reserve() that died between its
+     * rename() and its sidecar write - still has to be findable by falling back
+     * to the payload.
+     */
+    public function testReleaseStillFindsAReservedJobWithNoSidecar()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $job = Job::create(function() { return 123; });
+        $adapter->push($job);
+
+        $reserved = $adapter->reserve();
+        $this->assertNotNull($reserved);
+
+        unlink($adapter->getFolder() . '/reserved/1/job-id');
+
+        $adapter->release($reserved, 0);
+
+        $this->assertEquals([1], $this->pendingIndices($adapter));
+        $this->assertEmpty($adapter->getFolders($adapter->getFolder() . '/reserved'));
+
+        $adapter->clear();
+    }
+
+    /**
+     * getFolders()/getFiles() moved off scandir() onto FilesystemIterator, which
+     * neither sorts nor returns the dot entries. The contract they have to keep
+     * is what they exclude: dots, '.empty', and entries of the wrong kind.
+     */
+    public function testDirectoryListingSeparatesFilesFromFoldersAndSkipsPlaceholders()
+    {
+        $adapter = File::create(__DIR__ . '/../tmp/pop-queue');
+        $adapter->clear();
+
+        $folder = $adapter->getFolder();
+        touch($folder . '/.empty');
+        file_put_contents($folder . '/listing-probe', 'x');
+
+        try {
+            $files   = $adapter->getFiles($folder);
+            $folders = $adapter->getFolders($folder);
+
+            $this->assertContains('listing-probe', $files);
+            $this->assertNotContains('.empty', $files);
+            $this->assertNotContains('.', $files);
+            $this->assertNotContains('..', $files);
+
+            $this->assertContains('pending', $folders);
+            $this->assertContains('reserved', $folders);
+            $this->assertNotContains('listing-probe', $folders);
+
+            // A missing directory reads as empty rather than raising.
+            $this->assertSame([], $adapter->getFiles($folder . '/does-not-exist'));
+            $this->assertSame([], $adapter->getFolders($folder . '/does-not-exist'));
+        } finally {
+            @unlink($folder . '/listing-probe');
+        }
+    }
+
+    /**
+     * Pending job indices, numerically sorted - the listing is unordered now
+     * that it no longer goes through scandir().
+     */
+    protected function pendingIndices(File $adapter): array
+    {
+        $indices = array_map('intval', $adapter->getFolders($adapter->getFolder() . '/pending'));
+        sort($indices, SORT_NUMERIC);
+
+        return $indices;
+    }
+
 }

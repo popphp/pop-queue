@@ -44,6 +44,15 @@ class File extends AbstractTaskAdapter
     protected int $leaseSeconds = 60;
 
     /**
+     * Highest job index this adapter instance knows to be taken, or null when
+     * it hasn't looked yet. Purely a starting hint for push() - never a source
+     * of truth. See getEndIndex() for why being wrong in either direction is
+     * safe.
+     * @var ?int
+     */
+    protected ?int $endIndex = null;
+
+    /**
      * Constructor
      *
      * Instantiate the file object
@@ -134,16 +143,34 @@ class File extends AbstractTaskAdapter
      * stay unique across both so a reclaimed reserved job can never collide
      * with a newly-pushed one)
      *
+     * Scans the directories once per adapter instance and then tracks the
+     * index forward in memory, because the scan is what made push() quadratic:
+     * it walked both directories on every single push, so the cost of pushing
+     * the Nth job grew with the number of jobs already queued.
+     *
+     * Caching it is safe precisely because push() never trusted this value in
+     * the first place - mkdir() is the real allocator, and push()'s retry loop
+     * already handles the index being taken. A cached value that is too low
+     * (another process pushed since the scan) costs one wasted mkdir() attempt
+     * per collision and the loop walks up; a cached value that is too high
+     * (jobs were cleared elsewhere) just leaves a gap in the numbering, which
+     * nothing depends on - indices only ever need to be unique and ordered,
+     * never contiguous.
+     *
      * @return int
      */
     protected function getEndIndex(): int
     {
-        $indices = array_merge(
-            array_map('intval', $this->getFolders($this->pendingPath())),
-            array_map('intval', $this->getFolders($this->reservedPath()))
-        );
+        if ($this->endIndex === null) {
+            $indices = array_merge(
+                array_map('intval', $this->getFolders($this->pendingPath())),
+                array_map('intval', $this->getFolders($this->reservedPath()))
+            );
 
-        return !empty($indices) ? max($indices) : 0;
+            $this->endIndex = !empty($indices) ? max($indices) : 0;
+        }
+
+        return $this->endIndex;
     }
 
     /**
@@ -218,6 +245,16 @@ class File extends AbstractTaskAdapter
      * Reclaimed jobs are eligible on this or a later reserve() call, not
      * necessarily returned by this one.
      *
+     * Deliberately not throttled to one sweep per second, which would otherwise
+     * look free: every input to the expiry decision has one-second resolution,
+     * so two sweeps within the same second agree whenever the only thing moving
+     * is the clock. That is not the only thing that can move. A lease can be
+     * expired by writing to it, and a caller that does so and then calls
+     * reserve() is entitled to see the reclaim happen on that call rather than
+     * on whichever one lands in the next second. The sweep is cheap in any case,
+     * because reserved/ only ever holds jobs currently in flight - it is bounded
+     * by the number of live workers, not by queue depth.
+     *
      * @return void
      */
     protected function reclaimExpiredLeases(): void
@@ -267,11 +304,25 @@ class File extends AbstractTaskAdapter
     /**
      * Find the reserved-job directory index holding a given job, if any
      *
+     * Called by release(), delete() and bury() - so once per job a worker
+     * finishes, whatever the outcome. It used to answer by reading and
+     * unserializing every reserved payload in turn, which meant reconstructing
+     * whole job objects (closures included) purely to read one string off each.
+     *
+     * reserve() now writes the claimed job's ID into a 'job-id' file beside the
+     * payload, so the common path compares a short string read against a string,
+     * and the payload is only unserialized for directories written before this
+     * file existed - or by a reserve() that died between its rename() and its
+     * sidecar write. Keeping that fallback is what makes the sidecar a pure
+     * optimization: its absence costs speed, never correctness.
+     *
      * @param  AbstractJob $job
      * @return ?int
      */
     protected function findReservedIndexForJob(AbstractJob $job): ?int
     {
+        $jobId = $job->getJobId();
+
         foreach ($this->getFolders($this->reservedPath()) as $index) {
             // Skip staging directories (e.g. "5.reclaim-1234-abcd") left behind
             // mid-reclaim - (int) casting one of those resolves to a path that
@@ -281,14 +332,26 @@ class File extends AbstractTaskAdapter
                 continue;
             }
 
-            $payloadFile = $this->reservedPath() . DIRECTORY_SEPARATOR . $index . DIRECTORY_SEPARATOR . 'payload';
+            $dir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
+
+            // Suppressed for the same reason as every other read on this path:
+            // losing the file to a concurrent reclaim is ordinary operation.
+            $storedId = @file_get_contents($dir . DIRECTORY_SEPARATOR . 'job-id');
+            if ($storedId !== false) {
+                if ($storedId === $jobId) {
+                    return (int)$index;
+                }
+                continue;
+            }
+
+            $payloadFile = $dir . DIRECTORY_SEPARATOR . 'payload';
             if (file_exists($payloadFile)) {
                 $raw = $this->readVerifiedPayload($payloadFile);
                 // Suppressed: a corrupt/tampered payload makes unserialize() emit
                 // a warning and return false, which the instanceof check below
                 // handles.
                 $stored = ($raw !== false) ? @unserialize($raw) : false;
-                if (($stored instanceof AbstractJob) && ($stored->getJobId() === $job->getJobId())) {
+                if (($stored instanceof AbstractJob) && ($stored->getJobId() === $jobId)) {
                     return (int)$index;
                 }
             }
@@ -334,16 +397,50 @@ class File extends AbstractTaskAdapter
         // failed mkdir() only means "keep trying" when the collision is with
         // an existing directory (someone else's job) - any other failure
         // (permissions, disk full, pending/ missing) must not spin forever.
-        $index = $this->getEndIndex() + 1;
-        $dir   = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+        //
+        // getEndIndex() is only a hint now that it's cached per instance, so
+        // this loop carries the two guards that hint can't provide on its own:
+        //
+        //  - A reserved/<index> check after the mkdir wins. An index is taken
+        //    if a directory bearing it exists in *either* pending/ or reserved/,
+        //    and mkdir() only knows about pending/. Checking after rather than
+        //    before also closes the race where another worker reserves that
+        //    index (moving it out of pending/ and into reserved/) in the gap
+        //    between the two calls. Backing out is safe: the directory we
+        //    created is still empty, and reserve() skips payload-less
+        //    directories, so nothing can have claimed it in between.
+        //
+        //  - A single re-scan on the first collision. A stale hint means the
+        //    real high-water mark has moved on, and walking up to it one
+        //    mkdir() at a time would reintroduce exactly the per-push cost the
+        //    cache exists to remove. Re-deriving it once jumps straight past
+        //    every taken index; only if that *also* collides does this fall
+        //    back to incrementing, which is the genuinely-contended case.
+        $index     = $this->getEndIndex() + 1;
+        $rescanned = false;
 
-        while (!@mkdir($dir)) {
-            if (!is_dir($dir)) {
+        while (true) {
+            $dir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+
+            if (@mkdir($dir)) {
+                if (!is_dir($this->reservedPath() . DIRECTORY_SEPARATOR . $index)) {
+                    break;
+                }
+                @rmdir($dir);
+            } else if (!is_dir($dir)) {
                 throw new Exception('Error: Unable to create a new job folder in ' . $this->pendingPath() . '.');
             }
-            $index++;
-            $dir = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
+
+            if (!$rescanned) {
+                $rescanned      = true;
+                $this->endIndex = null;
+                $index          = $this->getEndIndex() + 1;
+            } else {
+                $index++;
+            }
         }
+
+        $this->endIndex = $index;
 
         file_put_contents($dir . DIRECTORY_SEPARATOR . 'payload', PayloadSigner::sign(serialize(clone $job)));
 
@@ -363,10 +460,18 @@ class File extends AbstractTaskAdapter
     {
         $this->reclaimExpiredLeases();
 
+        // sort()/rsort() rather than usort() with a closure: the ordering is a
+        // property of the queue, not of any pair of indices, so re-asking
+        // isFifo() inside the comparator was doing O(n log n) method calls to
+        // re-derive one value that cannot change mid-sort. These also sort ints
+        // natively instead of calling back into PHP userland per comparison.
         $indices = array_map('intval', $this->getFolders($this->pendingPath()));
-        usort($indices, function($a, $b) {
-            return $this->isFifo() ? ($a <=> $b) : ($b <=> $a);
-        });
+
+        if ($this->isFifo()) {
+            sort($indices, SORT_NUMERIC);
+        } else {
+            rsort($indices, SORT_NUMERIC);
+        }
 
         foreach ($indices as $index) {
             $pendingDir  = $this->pendingPath() . DIRECTORY_SEPARATOR . $index;
@@ -424,6 +529,13 @@ class File extends AbstractTaskAdapter
             touch($reservedDir);
             file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'lease', (string)(time() + $this->leaseSeconds));
 
+            // Sidecar for findReservedIndexForJob(), which release()/delete()/
+            // bury() all go through when this job finishes. Written after the
+            // lease so it can never be the thing that makes a claim look
+            // complete before it is; a failure to write it costs nothing but
+            // the fast path, since that lookup falls back to the payload.
+            file_put_contents($reservedDir . DIRECTORY_SEPARATOR . 'job-id', $job->getJobId());
+
             return $job;
         }
 
@@ -469,16 +581,40 @@ class File extends AbstractTaskAdapter
             return $this;
         }
 
-        $dir = $this->reservedPath() . DIRECTORY_SEPARATOR . $index;
-        if (file_exists($dir . DIRECTORY_SEPARATOR . 'payload')) {
-            unlink($dir . DIRECTORY_SEPARATOR . 'payload');
-        }
-        if (file_exists($dir . DIRECTORY_SEPARATOR . 'lease')) {
-            unlink($dir . DIRECTORY_SEPARATOR . 'lease');
-        }
-        rmdir($dir);
+        $this->removeJobDir($this->reservedPath() . DIRECTORY_SEPARATOR . $index);
 
         return $this;
+    }
+
+    /**
+     * Empty and remove a job directory.
+     *
+     * Deliberately generic rather than unlinking 'payload' and 'lease' by name:
+     * rmdir() fails on a non-empty directory, so every file a job directory can
+     * hold has to be accounted for here, and naming them individually means any
+     * future addition silently turns delete() into a no-op that leaves the
+     * directory behind. Clearing whatever is actually in there cannot drift out
+     * of sync that way.
+     *
+     * @param  string $dir
+     * @return void
+     */
+    protected function removeJobDir(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        // Iterated raw rather than through getFiles(), which filters out
+        // '.empty' - anything left behind, whatever its name, keeps rmdir()
+        // from succeeding.
+        foreach (new \FilesystemIterator($dir, \FilesystemIterator::SKIP_DOTS) as $entry) {
+            if ($entry->isFile()) {
+                @unlink($entry->getPathname());
+            }
+        }
+
+        @rmdir($dir);
     }
 
     /**
@@ -525,16 +661,15 @@ class File extends AbstractTaskAdapter
     {
         foreach ([$this->pendingPath(), $this->reservedPath()] as $path) {
             foreach ($this->getFolders($path) as $index) {
-                $dir = $path . DIRECTORY_SEPARATOR . $index;
-                if (file_exists($dir . DIRECTORY_SEPARATOR . 'payload')) {
-                    unlink($dir . DIRECTORY_SEPARATOR . 'payload');
-                }
-                if (file_exists($dir . DIRECTORY_SEPARATOR . 'lease')) {
-                    unlink($dir . DIRECTORY_SEPARATOR . 'lease');
-                }
-                rmdir($dir);
+                $this->removeJobDir($path . DIRECTORY_SEPARATOR . $index);
             }
         }
+
+        // Both directories are empty now, so the cached high-water index is
+        // stale in the one direction worth correcting: leaving it set would
+        // keep numbering new jobs from wherever the cleared queue left off,
+        // where a fresh scan restarts from 1 the way it always has.
+        $this->endIndex = null;
 
         return $this;
     }
@@ -876,13 +1011,7 @@ class File extends AbstractTaskAdapter
      */
     public function getFolders(string $folder): array
     {
-        if (is_dir($folder)) {
-            return array_values(array_filter(scandir($folder), function($value) use ($folder) {
-                return (($value != '.') && ($value != '..') && ($value != '.empty') && is_dir($folder . '/' . $value));
-            }));
-        } else {
-            return [];
-        }
+        return $this->readDirectory($folder, true);
     }
 
     /**
@@ -893,13 +1022,53 @@ class File extends AbstractTaskAdapter
      */
     public function getFiles(string $folder): array
     {
-        if (is_dir($folder)) {
-            return array_values(array_filter(scandir($folder), function($value) use ($folder) {
-                return (($value != '.') && ($value != '..') && ($value != '.empty') && !is_dir($folder . '/' . $value));
-            }));
-        } else {
+        return $this->readDirectory($folder, false);
+    }
+
+    /**
+     * List the entries of a directory, keeping either the subdirectories or the
+     * plain files.
+     *
+     * Both public listers route through here rather than each running their own
+     * scandir(). Two things made that pairing expensive on the hot paths -
+     * reserve() and count() call it on every invocation, once per pending or
+     * reserved job:
+     *
+     *  - scandir() returns names only, so deciding what each entry *is* meant an
+     *    is_dir() stat syscall per entry. FilesystemIterator carries the type
+     *    along with the directory read, so isDir() answers from what the OS
+     *    already handed back.
+     *  - scandir() sorts alphabetically by default, and every caller here either
+     *    wants numeric order (reserve() re-sorts these index names itself) or no
+     *    order at all, so that sort was pure waste.
+     *
+     * A missing directory reads as empty rather than raising, matching the
+     * is_dir() guard both listers carried before.
+     *
+     * @param  string $folder
+     * @param  bool   $directories
+     * @return array
+     */
+    protected function readDirectory(string $folder, bool $directories): array
+    {
+        if (!is_dir($folder)) {
             return [];
         }
+
+        $entries = [];
+
+        // SKIP_DOTS drops '.' and '..'; '.empty' is a repo placeholder that is
+        // neither a job nor a task and has always been filtered out here.
+        $iterator = new \FilesystemIterator($folder, \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::CURRENT_AS_FILEINFO);
+
+        foreach ($iterator as $entry) {
+            $name = $entry->getFilename();
+            if (($name !== '.empty') && ($entry->isDir() === $directories)) {
+                $entries[] = $name;
+            }
+        }
+
+        return $entries;
     }
 
 }

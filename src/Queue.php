@@ -487,19 +487,16 @@ class Queue extends AbstractQueue
      */
     public function getScheduledTasks(): array
     {
-        if ((!($this->adapter instanceof TaskAdapterInterface)) || (!$this->adapter->hasTasks())) {
+        if (!($this->adapter instanceof TaskAdapterInterface)) {
             return [];
         }
 
-        $scheduledTasks = [];
-        foreach ($this->adapter->getTasks() as $taskId) {
-            $task = $this->adapter->getTask($taskId);
-            if ($task instanceof Task) {
-                $scheduledTasks[$taskId] = $task;
-            }
-        }
-
-        return $scheduledTasks;
+        // One call rather than a listing followed by a fetch per task. That
+        // pattern cost a round trip per scheduled task, and this runs on every
+        // run() - so once a minute per worker per queue, forever. The hasTasks()
+        // pre-check went with it: it was a second round trip asking a question
+        // this call already answers by coming back empty.
+        return $this->adapter->getAllTasks();
     }
 
     /**

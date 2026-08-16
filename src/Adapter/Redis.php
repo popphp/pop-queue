@@ -50,6 +50,14 @@ class Redis extends AbstractTaskAdapter
     protected int $leaseSeconds = 60;
 
     /**
+     * Whether this instance has already reconciled the task and dead-letter
+     * index sets against any keys written before those sets existed. See
+     * ensureIndexSets().
+     * @var bool
+     */
+    protected bool $indexSetsChecked = false;
+
+    /**
      * Constructor
      *
      * Instantiate the redis adapter
@@ -136,6 +144,68 @@ class Redis extends AbstractTaskAdapter
     public function getPrefix(): string
     {
         return $this->prefix;
+    }
+
+    /**
+     * Key of the set indexing scheduled task IDs
+     *
+     * @return string
+     */
+    protected function taskSetKey(): string
+    {
+        return $this->prefix . ':tasks';
+    }
+
+    /**
+     * Key of the set indexing dead-letter job IDs
+     *
+     * @return string
+     */
+    protected function deadSetKey(): string
+    {
+        return $this->prefix . ':dead';
+    }
+
+    /**
+     * Populate the task and dead-letter index sets from any keys written before
+     * those sets existed, once per adapter instance.
+     *
+     * Those two collections used to be enumerated with KEYS, which Redis
+     * evaluates against its entire keyspace while blocking every other client on
+     * the server - and this adapter reached for it constantly, including to
+     * answer questions as small as hasTasks(). Maintaining the membership in a
+     * set instead turns all of it into SMEMBERS/SCARD/SISMEMBER against one key.
+     *
+     * Which leaves the keys an older version already wrote and never indexed. A
+     * marker key records that the reconciliation has happened, so KEYS runs at
+     * most once per Redis database, ever, rather than never running and quietly
+     * orphaning every task and dead job that predates the upgrade. Two processes
+     * racing here is harmless: SADD is idempotent, so the worst case is the same
+     * work done twice.
+     *
+     * @return void
+     */
+    protected function ensureIndexSets(): void
+    {
+        if ($this->indexSetsChecked) {
+            return;
+        }
+        $this->indexSetsChecked = true;
+
+        if ($this->redis->exists($this->prefix . ':index-built')) {
+            return;
+        }
+
+        foreach ([':task-' => $this->taskSetKey(), ':dead-' => $this->deadSetKey()] as $marker => $setKey) {
+            foreach ($this->redis->keys($this->prefix . $marker . '*') as $key) {
+                $id = substr($key, (strrpos($key, $marker) + strlen($marker)));
+                if ($id !== '') {
+                    $this->redis->sAdd($setKey, $id);
+                }
+            }
+        }
+
+        $this->redis->set($this->prefix . ':index-built', '1');
     }
 
     /**
@@ -378,6 +448,7 @@ LUA;
     {
         $this->removeFromReserved($job->getJobId());
         $this->redis->set($this->prefix . ':dead-' . $job->getJobId(), PayloadSigner::sign(serialize(clone $job)));
+        $this->redis->sAdd($this->deadSetKey(), $job->getJobId());
 
         return $this;
     }
@@ -422,7 +493,7 @@ LUA;
      */
     public function hasDeadJobs(): bool
     {
-        return !empty($this->redis->keys($this->prefix . ':dead-*'));
+        return ($this->countDead() > 0);
     }
 
     /**
@@ -432,7 +503,9 @@ LUA;
      */
     public function countDead(): int
     {
-        return count($this->redis->keys($this->prefix . ':dead-*'));
+        $this->ensureIndexSets();
+
+        return $this->redis->sCard($this->deadSetKey());
     }
 
     /**
@@ -443,9 +516,10 @@ LUA;
      */
     public function getDeadJobs(bool $unserialize = true): array
     {
+        $this->ensureIndexSets();
+
         $jobs = [];
-        foreach ($this->redis->keys($this->prefix . ':dead-*') as $key) {
-            $jobId = substr($key, strrpos($key, ':dead-') + 6);
+        foreach ($this->redis->sMembers($this->deadSetKey()) as $jobId) {
             $jobs[$jobId] = $this->getDeadJob($jobId, $unserialize);
         }
 
@@ -500,6 +574,8 @@ LUA;
     public function deleteDeadJob(string $jobId): Redis
     {
         $this->redis->del($this->prefix . ':dead-' . $jobId);
+        $this->redis->sRem($this->deadSetKey(), $jobId);
+
         return $this;
     }
 
@@ -510,9 +586,13 @@ LUA;
      */
     public function clearDead(): Redis
     {
-        foreach ($this->redis->keys($this->prefix . ':dead-*') as $key) {
-            $this->redis->del($key);
+        $this->ensureIndexSets();
+
+        foreach ($this->redis->sMembers($this->deadSetKey()) as $jobId) {
+            $this->redis->del($this->prefix . ':dead-' . $jobId);
         }
+
+        $this->redis->del($this->deadSetKey());
 
         return $this;
     }
@@ -527,6 +607,7 @@ LUA;
     {
         if ($task->isValid()) {
             $this->redis->set($this->prefix . ':task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task)));
+            $this->redis->sAdd($this->taskSetKey(), $task->getJobId());
         }
         return $this;
     }
@@ -538,10 +619,9 @@ LUA;
      */
     public function getTasks(): array
     {
-        $taskIds = $this->redis->keys($this->prefix . ':task-*');
-        return array_map(function($value) {
-            return substr($value, (strpos($value, ':task-') + 6));
-        }, $taskIds);
+        $this->ensureIndexSets();
+
+        return $this->redis->sMembers($this->taskSetKey());
     }
 
     /**
@@ -568,6 +648,45 @@ LUA;
     }
 
     /**
+     * Get every scheduled task, keyed by task ID.
+     *
+     * One SMEMBERS plus one MGET, instead of the inherited "list the IDs, then
+     * GET each payload" - which is a round trip per scheduled task, paid on
+     * every Queue::run() and so on every tick of a worker's schedule loop.
+     *
+     * @return array  taskId => Task
+     */
+    public function getAllTasks(): array
+    {
+        // Repacked so the positional alignment with mGet()'s reply below rests
+        // on this call rather than on getTasks() happening to return a list.
+        $taskIds = array_values($this->getTasks());
+        if (empty($taskIds)) {
+            return [];
+        }
+
+        $values = $this->redis->mGet(array_map(fn($id) => $this->prefix . ':task-' . $id, $taskIds));
+        $tasks  = [];
+
+        foreach ($taskIds as $i => $taskId) {
+            // A member indexed but no longer stored comes back false from MGET,
+            // the same signal getTask() reads off a missing key.
+            if (!is_string($values[$i] ?? false)) {
+                continue;
+            }
+
+            $raw  = PayloadSigner::verify($values[$i]);
+            $task = ($raw !== false) ? @unserialize($raw) : false;
+
+            if ($task instanceof Task) {
+                $tasks[$taskId] = $task;
+            }
+        }
+
+        return $tasks;
+    }
+
+    /**
      * Update scheduled task
      *
      * @param  Task $task
@@ -577,6 +696,7 @@ LUA;
     {
         if ($task->isValid()) {
             $this->redis->set($this->prefix . ':task-' . $task->getJobId(), PayloadSigner::sign(serialize(clone $task)));
+            $this->redis->sAdd($this->taskSetKey(), $task->getJobId());
         } else {
             $this->removeTask($task->getJobId());
         }
@@ -593,6 +713,8 @@ LUA;
     {
         $this->redis->del($this->prefix . ':task-' . $taskId);
         $this->redis->del($this->prefix . ':claim-task-' . $taskId);
+        $this->redis->sRem($this->taskSetKey(), $taskId);
+
         return $this;
     }
 
@@ -603,10 +725,9 @@ LUA;
      */
     public function getTaskCount(): int
     {
-        $taskIds = $this->redis->keys($this->prefix . ':task-*');
-        return count(array_map(function($value) {
-            return substr($value, (strpos($value, ':task-') + 6));
-        }, $taskIds));
+        $this->ensureIndexSets();
+
+        return $this->redis->sCard($this->taskSetKey());
     }
 
     /**
@@ -616,10 +737,7 @@ LUA;
      */
     public function hasTasks(): bool
     {
-        $taskIds = $this->redis->keys($this->prefix . ':task-*');
-        return !empty(array_map(function($value) {
-            return substr($value, (strpos($value, ':task-') + 6));
-        }, $taskIds));
+        return ($this->getTaskCount() > 0);
     }
 
     /**
@@ -629,11 +747,14 @@ LUA;
      */
     public function clearTasks(): Redis
     {
-        $taskIds = $this->getTasks();
-
-        foreach ($taskIds as $taskId) {
+        foreach ($this->getTasks() as $taskId) {
             $this->removeTask($taskId);
         }
+
+        // removeTask() already SREMs each member, so the set is empty by now -
+        // deleted rather than left behind so an unused empty key doesn't linger.
+        $this->redis->del($this->taskSetKey());
+
         return $this;
     }
 

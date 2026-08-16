@@ -202,4 +202,77 @@ class CronTest extends TestCase
         $this->assertTrue($cron->evaluate(mktime(9, 35, 37)));
     }
 
+    /**
+     * evaluate() short-circuits on the first field that fails rather than
+     * testing all six, and it no longer carries a dedicated '* * * * *'
+     * branch (an all-wildcard schedule now passes every field test and lands
+     * on the shared grace-period answer). Both are meant to be invisible from
+     * the outside, so pin the answer for one representative time against every
+     * field position - if a rewrite ever drops a field from the chain, exactly
+     * one of these flips.
+     */
+    public function testEveryFieldIndependentlyRulesOutASchedule()
+    {
+        // Wed 2024-03-13 14:25:30
+        $time = mktime(14, 25, 30, 3, 13, 2024);
+
+        $this->assertTrue(Cron::create('25 14 13 3 3')->evaluate($time));
+
+        $this->assertFalse(Cron::create('26 14 13 3 3')->evaluate($time), 'minute');
+        $this->assertFalse(Cron::create('25 15 13 3 3')->evaluate($time), 'hour');
+        $this->assertFalse(Cron::create('25 14 14 3 3')->evaluate($time), 'day of month');
+        $this->assertFalse(Cron::create('25 14 13 4 3')->evaluate($time), 'month');
+        $this->assertFalse(Cron::create('25 14 13 3 4')->evaluate($time), 'day of week');
+
+        // The seconds field only participates when the schedule actually has one.
+        $this->assertTrue(Cron::create('30 25 14 13 3 3')->evaluate($time), 'seconds match');
+        $this->assertFalse(Cron::create('31 25 14 13 3 3')->evaluate($time), 'seconds mismatch');
+    }
+
+    /**
+     * The seconds field must stay out of the decision on a minute-granularity
+     * schedule - there the grace period governs the seconds instead. A
+     * five-field schedule is due for its whole minute by default, and only
+     * within the grace window once one is set.
+     */
+    public function testSecondsAreGovernedByGracePeriodOnMinuteSchedules()
+    {
+        $due = mktime(14, 25, 0, 3, 13, 2024);
+
+        // Default grace of -1: due for the entire minute.
+        $this->assertTrue(Cron::create('25 14 13 3 3')->evaluate($due + 59));
+
+        // Grace of 10: due only through the 10th second. Built with the
+        // constructor rather than create(), which takes no grace-period argument.
+        $this->assertTrue((new Cron('25 14 13 3 3', 10))->evaluate($due + 10));
+        $this->assertFalse((new Cron('25 14 13 3 3', 10))->evaluate($due + 11));
+
+        // Grace of 0: strict to the 00 second.
+        $this->assertTrue((new Cron('25 14 13 3 3', 0))->evaluate($due));
+        $this->assertFalse((new Cron('25 14 13 3 3', 0))->evaluate($due + 1));
+
+        // An all-wildcard schedule takes the same grace-period path now that it
+        // has no special case of its own.
+        $this->assertTrue((new Cron('* * * * *', 5))->evaluate($due + 5));
+        $this->assertFalse((new Cron('* * * * *', 5))->evaluate($due + 6));
+    }
+
+    /**
+     * Fields set through the fluent helpers hold ints, while fields parsed out
+     * of a schedule string hold strings. Both have to compare equal to the int
+     * pulled off the timestamp, which is why the field test uses a loose
+     * in_array().
+     */
+    public function testFluentIntFieldsAndParsedStringFieldsAgree()
+    {
+        $time = mktime(9, 0, 30, 3, 13, 2024);
+
+        $fluent = Cron::create()->daily(9);
+        $parsed = Cron::create($fluent->render());
+
+        $this->assertEquals($parsed->evaluate($time), $fluent->evaluate($time));
+        $this->assertTrue($fluent->evaluate($time));
+        $this->assertFalse($fluent->evaluate($time + 3600));
+    }
+
 }

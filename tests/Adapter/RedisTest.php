@@ -556,4 +556,136 @@ class RedisTest extends TestCase
         $adapter->clearTasks();
     }
 
+    /**
+     * Tasks and dead-letter jobs are enumerated from index sets now rather than
+     * by KEYS scans, so keys written before those sets existed aren't in them.
+     * The first enumeration against a given prefix has to adopt them, or an
+     * upgrade would silently orphan every already-scheduled task and every
+     * already-buried job.
+     */
+    public function testFirstEnumerationAdoptsTasksAndDeadJobsWrittenBeforeTheIndexSets()
+    {
+        // A prefix of its own, so this starts from the pre-migration state.
+        $prefix  = 'pop-queue-legacy-' . uniqid();
+        $adapter = new Redis(prefix: $prefix);
+        $redis   = $adapter->redis();
+
+        $task = Task::create(function(){ return 'legacy task'; })->everyMinute();
+        $job  = Job::create(function(){ return 'legacy dead job'; });
+
+        // Written straight to the keys an older version would have used, with
+        // nothing adding them to any set.
+        $redis->set($prefix . ':task-' . $task->getJobId(), PayloadSigner::sign(serialize($task)));
+        $redis->set($prefix . ':dead-' . $job->getJobId(), PayloadSigner::sign(serialize($job)));
+
+        try {
+            $this->assertEquals([$task->getJobId()], $adapter->getTasks());
+            $this->assertEquals(1, $adapter->getTaskCount());
+            $this->assertTrue($adapter->hasTasks());
+            $this->assertInstanceOf(Task::class, $adapter->getTask($task->getJobId()));
+
+            $this->assertEquals(1, $adapter->countDead());
+            $this->assertTrue($adapter->hasDeadJobs());
+            $this->assertArrayHasKey($job->getJobId(), $adapter->getDeadJobs());
+
+            // Indexed now, and the scan is marked done so it never repeats.
+            $this->assertEquals(1, $redis->sCard($prefix . ':tasks'));
+            $this->assertEquals(1, $redis->sCard($prefix . ':dead'));
+            $this->assertTrue((bool)$redis->exists($prefix . ':index-built'));
+        } finally {
+            foreach ($redis->keys($prefix . ':*') as $key) {
+                $redis->del($key);
+            }
+        }
+    }
+
+    /**
+     * getAllTasks() overrides the inherited fetch-per-task loop with one
+     * SMEMBERS plus one MGET. It has to agree with that loop exactly, including
+     * omitting a member whose payload is gone or won't decode.
+     */
+    public function testGetAllTasksMatchesFetchingEachTaskIndividually()
+    {
+        $prefix  = 'pop-queue-all-' . uniqid();
+        $adapter = new Redis(prefix: $prefix);
+        $redis   = $adapter->redis();
+
+        try {
+            $taskA = Task::create(function() { return 'a'; })->everyMinute();
+            $taskB = Task::create(function() { return 'b'; })->hourly();
+            $adapter->schedule($taskA);
+            $adapter->schedule($taskB);
+
+            $all = $adapter->getAllTasks();
+
+            $this->assertCount(2, $all);
+            $this->assertArrayHasKey($taskA->getJobId(), $all);
+            $this->assertArrayHasKey($taskB->getJobId(), $all);
+            $this->assertInstanceOf(Task::class, $all[$taskA->getJobId()]);
+
+            $individually = [];
+            foreach ($adapter->getTasks() as $taskId) {
+                $individually[$taskId] = $adapter->getTask($taskId);
+            }
+            $this->assertEquals(array_keys($individually), array_keys($all));
+
+            // A member left indexed after its payload vanished must drop out
+            // rather than land in the result as a null - MGET answers false for
+            // it, the same signal getTask() reads off a missing key.
+            $redis->del($prefix . ':task-' . $taskB->getJobId());
+            $reduced = $adapter->getAllTasks();
+            $this->assertCount(1, $reduced);
+            $this->assertArrayNotHasKey($taskB->getJobId(), $reduced);
+
+            // And a payload that is present but corrupt drops out too.
+            $redis->set($prefix . ':task-' . $taskA->getJobId(), 'not a serialized task');
+            $this->assertSame([], $adapter->getAllTasks());
+        } finally {
+            foreach ($redis->keys($prefix . ':*') as $key) {
+                $redis->del($key);
+            }
+        }
+    }
+
+    /**
+     * The index sets have to track every mutation, not just the initial write -
+     * a removed task or deleted dead job that stays in its set would be reported
+     * by the counters forever.
+     */
+    public function testIndexSetsStayInStepWithRemovals()
+    {
+        $prefix  = 'pop-queue-idx-' . uniqid();
+        $adapter = new Redis(prefix: $prefix);
+        $redis   = $adapter->redis();
+
+        try {
+            $taskA = Task::create(function(){ return 'a'; })->everyMinute();
+            $taskB = Task::create(function(){ return 'b'; })->everyMinute();
+            $adapter->schedule($taskA);
+            $adapter->schedule($taskB);
+            $this->assertEquals(2, $adapter->getTaskCount());
+
+            $adapter->removeTask($taskA->getJobId());
+            $this->assertEquals(1, $adapter->getTaskCount());
+            $this->assertEquals([$taskB->getJobId()], $adapter->getTasks());
+
+            $adapter->clearTasks();
+            $this->assertEquals(0, $adapter->getTaskCount());
+            $this->assertFalse($adapter->hasTasks());
+
+            $job = Job::create(function(){ return 'dead'; });
+            $adapter->push($job);
+            $adapter->bury($adapter->reserve());
+            $this->assertEquals(1, $adapter->countDead());
+
+            $adapter->deleteDeadJob($job->getJobId());
+            $this->assertEquals(0, $adapter->countDead());
+            $this->assertFalse($adapter->hasDeadJobs());
+        } finally {
+            foreach ($redis->keys($prefix . ':*') as $key) {
+                $redis->del($key);
+            }
+        }
+    }
+
 }

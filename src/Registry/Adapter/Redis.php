@@ -47,6 +47,13 @@ class Redis extends AbstractRegistry
     protected string $prefix = 'pop-registry';
 
     /**
+     * Whether this instance has already reconciled the worker index set against
+     * any record keys written without it. See ensureWorkerSet().
+     * @var bool
+     */
+    protected bool $workerSetChecked = false;
+
+    /**
      * Constructor
      *
      * @param  string     $host
@@ -108,9 +115,63 @@ class Redis extends AbstractRegistry
         return $this->prefix . ':worker:' . $id;
     }
 
+    /**
+     * Key of the set indexing registered worker IDs.
+     *
+     * Enumerating the registry used to mean a KEYS scan, which Redis runs
+     * against its whole keyspace while blocking every other client. all() is
+     * called by the stuck-worker sweep, so that scan landed on a live server on
+     * a routine schedule. Membership is tracked in a set instead, making the
+     * enumeration one SMEMBERS against a single key.
+     *
+     * @return string
+     */
+    protected function workerSetKey(): string
+    {
+        return $this->prefix . ':workers';
+    }
+
+    /**
+     * Bring the worker index set in line with any record keys that aren't in it,
+     * once per adapter instance.
+     *
+     * A record key can exist outside the set two ways: it was written by a
+     * version of this adapter that predates the set, or something wrote the key
+     * directly. Either way the set is now the only thing all() and
+     * purgeUndecodable() consult, so an unindexed record would be invisible to
+     * the stuck-worker sweep and to pruning - it would sit there forever,
+     * unreadable and unreapable.
+     *
+     * The reconciliation costs one KEYS scan per Redis database, guarded by a
+     * marker key, which is the one place this adapter still issues one.
+     *
+     * @return void
+     */
+    protected function ensureWorkerSet(): void
+    {
+        if ($this->workerSetChecked) {
+            return;
+        }
+        $this->workerSetChecked = true;
+
+        if ($this->redis->exists($this->prefix . ':index-built')) {
+            return;
+        }
+
+        foreach ($this->redis->keys($this->prefix . ':worker:*') as $key) {
+            $id = substr($key, (strrpos($key, ':worker:') + 8));
+            if ($id !== '') {
+                $this->redis->sAdd($this->workerSetKey(), $id);
+            }
+        }
+
+        $this->redis->set($this->prefix . ':index-built', '1');
+    }
+
     public function write(WorkerRecord $record): void
     {
         $this->redis->set($this->recordKey($record->getId()), $this->encode($record));
+        $this->redis->sAdd($this->workerSetKey(), $record->getId());
     }
 
     public function read(string $id): ?WorkerRecord
@@ -122,11 +183,17 @@ class Redis extends AbstractRegistry
 
     public function all(): array
     {
+        $this->ensureWorkerSet();
+
         $records = [];
 
-        foreach ($this->redis->keys($this->prefix . ':worker:*') as $key) {
-            $value = $this->redis->get($key);
+        foreach ($this->redis->sMembers($this->workerSetKey()) as $id) {
+            $value = $this->redis->get($this->recordKey($id));
             if ($value === false) {
+                // Indexed but gone - the record expired or was deleted out from
+                // under the set. Drop the stale member rather than carrying it
+                // forever; nothing else prunes it.
+                $this->redis->sRem($this->workerSetKey(), $id);
                 continue;
             }
             $record = $this->decode($value);
@@ -141,16 +208,19 @@ class Redis extends AbstractRegistry
     public function delete(string $id): void
     {
         $this->redis->del($this->recordKey($id));
+        $this->redis->sRem($this->workerSetKey(), $id);
     }
 
     protected function purgeUndecodable(): int
     {
+        $this->ensureWorkerSet();
+
         $removed = 0;
 
-        foreach ($this->redis->keys($this->prefix . ':worker:*') as $key) {
-            $value = $this->redis->get($key);
+        foreach ($this->redis->sMembers($this->workerSetKey()) as $id) {
+            $value = $this->redis->get($this->recordKey($id));
             if (($value !== false) && ($this->decode($value) === null)) {
-                $this->redis->del($key);
+                $this->delete($id);
                 $removed++;
             }
         }

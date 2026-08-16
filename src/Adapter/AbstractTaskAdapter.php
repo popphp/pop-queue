@@ -70,6 +70,31 @@ abstract class AbstractTaskAdapter extends AbstractAdapter implements TaskAdapte
     abstract public function getTask(string $taskId): ?Task;
 
     /**
+     * Get every scheduled task, keyed by task ID.
+     *
+     * Concrete, not abstract, so an adapter only overrides it if its storage can
+     * genuinely do better than one fetch per task - which the Database and Redis
+     * adapters both can, and do. This fallback is the loop it replaces, kept so
+     * that adding the method to TaskAdapterInterface doesn't oblige every
+     * adapter to reimplement it.
+     *
+     * @return array  taskId => Task
+     */
+    public function getAllTasks(): array
+    {
+        $tasks = [];
+
+        foreach ($this->getTasks() as $taskId) {
+            $task = $this->getTask($taskId);
+            if ($task !== null) {
+                $tasks[$taskId] = $task;
+            }
+        }
+
+        return $tasks;
+    }
+
+    /**
      * Update scheduled task
      *
      * @param  Task $task

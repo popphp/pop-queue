@@ -35,6 +35,24 @@ use Pop\Queue\Process\Task;
 class Database extends AbstractTaskAdapter
 {
     /**
+     * How many candidate rows reserve() pulls back per scan.
+     *
+     * reserve() returns a single job, but it has to look past any candidate it
+     * can't claim (delayed, backed off, corrupt, or won by another worker), so
+     * it needs more than one row in hand - and, when a whole batch turns out to
+     * be unclaimable, the freedom to page further back. Without a bound it read
+     * the entire eligible set into PHP to hand back one job, which made the cost
+     * of reserving grow with the depth of the queue: every worker paid for every
+     * queued job, on every job it ran.
+     *
+     * Sized to clear the ordinary case in one round trip - a run of delayed jobs
+     * at the head of the queue is the usual reason for a skip, and it is rarely
+     * dozens long - while staying small enough that the payloads fetched
+     * alongside them stay cheap.
+     */
+    protected const RESERVE_BATCH_SIZE = 50;
+
+    /**
      * Database adapter
      * @var ?DbAdapter
      */
@@ -392,6 +410,14 @@ class Database extends AbstractTaskAdapter
      * conditional UPDATE that writes a random claim token into reserved_by
      * alongside status/reserved_until - all in the same statement.
      *
+     * The scan runs in batches of RESERVE_BATCH_SIZE rather than over the whole
+     * eligible set at once, paging forward only when an entire batch turns out
+     * to be unclaimable. Paging is inherently approximate - rows claimed by
+     * other workers between batches shift the offset, so a candidate can slip
+     * past - but the scan was already racy by construction (that is what the
+     * read-back below exists to handle), and anything missed is simply picked up
+     * by the next reserve() call rather than lost.
+     *
      * Success is proven by re-reading reserved_by immediately after the
      * UPDATE and comparing it to the token this call generated, not by
      * inspecting the UPDATE's driver-reported affected-row count.
@@ -414,68 +440,88 @@ class Database extends AbstractTaskAdapter
      */
     public function reserve(): ?AbstractJob
     {
-        $now = time();
+        $now    = time();
+        $offset = 0;
 
-        $sql    = $this->db->createSql();
-        $select = $sql->select(['id', 'index', 'payload'])->from($this->table);
-        $select->where($this->buildEligibleWhere($select, $now));
-        $select->orderBy('index', ($this->isFifo()) ? 'ASC' : 'DESC');
-
-        $this->db->query($sql);
-        $rows = $this->db->fetchAll();
-
-        foreach ($rows as $row) {
-            // Suppressed: a corrupt/truncated payload makes unserialize() emit a
-            // warning and return false, and a payload whose class no longer
-            // exists (renamed/removed in a deploy) yields a
-            // __PHP_Incomplete_Class - the instanceof check below handles both.
-            // A payload that fails PayloadSigner::verify() (tampered, or written
-            // by something other than this application when a signing key is
-            // configured) is treated identically - $raw is false, so
-            // unserialize() is never called on it at all.
-            $raw = PayloadSigner::verify(base64_decode($row['payload']));
-            $job = ($raw !== false) ? @unserialize($raw) : false;
-
-            if (!($job instanceof AbstractJob)) {
-                // Corrupt/unloadable payload - skip rather than claim it and
-                // then blow up returning a non-AbstractJob. Claiming it would
-                // be worse than a one-shot crash now that leases exist: the
-                // claim would expire, get reclaimed back to eligible, and
-                // poison the next worker too, forever.
-                continue;
-            }
-
-            if (!$job->isAvailable()) {
-                continue;
-            }
-
-            $id    = (int)$row['id'];
-            $token = bin2hex(random_bytes(16));
-
+        while (true) {
             $sql    = $this->db->createSql();
-            $update = $sql->update($this->table)->values([
-                'status'         => ':status',
-                'reserved_until' => ':reserved_until',
-                'reserved_by'    => ':reserved_by'
-            ]);
-            $update->where($this->buildEligibleWhere($update, $now));
-            $update->andWhere('id = ' . $id);
-
-            $this->db->prepare($sql);
-            $this->db->bindParams([
-                'status'         => 0,
-                'reserved_until' => ($now + $this->leaseSeconds),
-                'reserved_by'    => $token
-            ]);
-            $this->db->execute();
-
-            if ($this->claimedBy($id) === $token) {
-                return $job;
+            $select = $sql->select(['id', 'index', 'payload'])->from($this->table);
+            $select->where($this->buildEligibleWhere($select, $now));
+            $select->orderBy('index', ($this->isFifo()) ? 'ASC' : 'DESC');
+            $select->limit(self::RESERVE_BATCH_SIZE);
+            if ($offset > 0) {
+                $select->offset($offset);
             }
-            // Lost the race to another worker between the scan and this UPDATE - try the next candidate.
-        }
 
-        return null;
+            $this->db->query($sql);
+            $rows = $this->db->fetchAll();
+
+            if (empty($rows)) {
+                return null;
+            }
+
+            foreach ($rows as $row) {
+                // Suppressed: a corrupt/truncated payload makes unserialize() emit a
+                // warning and return false, and a payload whose class no longer
+                // exists (renamed/removed in a deploy) yields a
+                // __PHP_Incomplete_Class - the instanceof check below handles both.
+                // A payload that fails PayloadSigner::verify() (tampered, or written
+                // by something other than this application when a signing key is
+                // configured) is treated identically - $raw is false, so
+                // unserialize() is never called on it at all.
+                $raw = PayloadSigner::verify(base64_decode($row['payload']));
+                $job = ($raw !== false) ? @unserialize($raw) : false;
+
+                if (!($job instanceof AbstractJob)) {
+                    // Corrupt/unloadable payload - skip rather than claim it and
+                    // then blow up returning a non-AbstractJob. Claiming it would
+                    // be worse than a one-shot crash now that leases exist: the
+                    // claim would expire, get reclaimed back to eligible, and
+                    // poison the next worker too, forever.
+                    continue;
+                }
+
+                if (!$job->isAvailable()) {
+                    continue;
+                }
+
+                $id    = (int)$row['id'];
+                $token = bin2hex(random_bytes(16));
+
+                $sql    = $this->db->createSql();
+                $update = $sql->update($this->table)->values([
+                    'status'         => ':status',
+                    'reserved_until' => ':reserved_until',
+                    'reserved_by'    => ':reserved_by'
+                ]);
+                $update->where($this->buildEligibleWhere($update, $now));
+                $update->andWhere('id = ' . $id);
+
+                $this->db->prepare($sql);
+                $this->db->bindParams([
+                    'status'         => 0,
+                    'reserved_until' => ($now + $this->leaseSeconds),
+                    'reserved_by'    => $token
+                ]);
+                $this->db->execute();
+
+                if ($this->claimedBy($id) === $token) {
+                    return $job;
+                }
+                // Lost the race to another worker between the scan and this UPDATE - try the next candidate.
+            }
+
+            // Nothing in this batch was claimable - every row was corrupt, not
+            // yet available, or lost to another worker. A short batch means
+            // there is nothing further back to look at; a full one means there
+            // might be, so page forward rather than give up. A queue whose head
+            // is a run of delayed jobs still has runnable ones behind them.
+            if (count($rows) < self::RESERVE_BATCH_SIZE) {
+                return null;
+            }
+
+            $offset += self::RESERVE_BATCH_SIZE;
+        }
     }
 
     /**
@@ -804,6 +850,37 @@ class Database extends AbstractTaskAdapter
     }
 
     /**
+     * Get every scheduled task, keyed by task ID.
+     *
+     * One query for the whole set, instead of the inherited "list the IDs, then
+     * SELECT each payload by ID" - which is a query per scheduled task, run on
+     * every Queue::run() and so on every tick of a worker's schedule loop. The
+     * payloads are decoded exactly as getTask() decodes its one, corrupt entries
+     * omitted rather than returned.
+     *
+     * @return array  taskId => Task
+     */
+    public function getAllTasks(): array
+    {
+        $sql = $this->db->createSql();
+        $sql->select(['job_id', 'payload'])->from($this->table)->where("type = 'task'");
+        $this->db->query($sql);
+
+        $tasks = [];
+
+        foreach ($this->db->fetchAll() as $row) {
+            $raw  = PayloadSigner::verify(base64_decode($row['payload']));
+            $task = ($raw !== false) ? @unserialize($raw) : false;
+
+            if ($task instanceof Task) {
+                $tasks[$row['job_id']] = $task;
+            }
+        }
+
+        return $tasks;
+    }
+
+    /**
      * Update scheduled task
      *
      * @param  Task $task
@@ -911,7 +988,55 @@ class Database extends AbstractTaskAdapter
 
         $this->db->query($schema);
 
+        $this->createIndexes($table);
+
         return $this;
+    }
+
+    /**
+     * Add the indexes the hot queries need to a table this adapter just created.
+     *
+     * Every query on the hot paths filters on type and then either orders by
+     * index (reserve(), getEndIndex()) or looks a row up by job_id (getTask(),
+     * claimedByTaskId(), the dead-letter accessors). Unindexed, all of those are
+     * full table scans, and reserve()'s is a scan plus a sort - paid by every
+     * worker on every job it runs, against a table whose whole purpose is to
+     * accumulate rows.
+     *
+     * Issued as separate statements, and separate schema objects, for two
+     * reasons that are easy to get wrong:
+     *
+     *  - Chaining index() onto the create() above renders valid DDL but does not
+     *    execute it. The rendered schema becomes several statements separated by
+     *    semicolons, and the adapters hand the whole string to one driver call -
+     *    SQLite3::query() runs the first statement and silently discards the
+     *    rest, so the table would appear and the indexes just wouldn't.
+     *  - Casting a schema object to string consumes it. Rendering one to inspect
+     *    it (or reusing one across two query() calls) leaves an empty builder
+     *    behind, which also fails silently.
+     *
+     * The index names are given explicitly because deriving them would involve
+     * the "index" column, a reserved word on every backend here.
+     *
+     * Only ever called for a table this adapter is creating from scratch. An
+     * existing table is left alone deliberately: building an index on a live
+     * queue table can hold a lock for as long as the table is large, which is a
+     * decision for whoever operates the database, not one a library should make
+     * on their behalf on first connect.
+     *
+     * @param  string $table
+     * @return void
+     */
+    protected function createIndexes(string $table): void
+    {
+        foreach ([
+            $table . '_type_index_idx'  => ['type', 'index'],
+            $table . '_type_job_id_idx' => ['type', 'job_id'],
+        ] as $name => $columns) {
+            $schema = $this->db->createSchema();
+            $schema->alter($table)->index($columns, $name);
+            $this->db->query($schema);
+        }
     }
 
 }

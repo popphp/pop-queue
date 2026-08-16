@@ -929,59 +929,79 @@ class Cron
             $this->setGracePeriod($gracePeriod);
         }
 
-        $second        = (int)date('s', $time);
-        $minute        = (int)date('i', $time);
-        $hour          = (int)date('G', $time);
-        $dayOfTheMonth = (int)date('j', $time);
-        $month         = (int)date('n', $time);
-        $dayOfTheWeek  = (int)date('w', $time);
-        $secondsPassed = (in_array($second, $this->seconds) || ($this->seconds == ['*']));
-        $minutesPassed = (in_array($minute, $this->minutes) || ($this->minutes == ['*']));
-        $hoursPassed   = (in_array($hour, $this->hours) || ($this->hours == ['*']));
-        $domPassed     = (in_array($dayOfTheMonth, $this->daysOfTheMonth) || ($this->daysOfTheMonth == ['*']));
-        $monthPassed   = (in_array($month, $this->months) || ($this->months == ['*']));
-        $dowPassed     = (in_array($dayOfTheWeek, $this->daysOfTheWeek) || ($this->daysOfTheWeek == ['*']));
+        // One getdate() rather than six separate date() calls: it returns every
+        // field this method needs from a single timestamp conversion. Queue::run()
+        // calls this once per task per second inside its sub-minute tick loop, so
+        // this is the hottest path in the component and the six-fold saving lands
+        // squarely on it.
+        $parts  = getdate($time);
+        $second = $parts['seconds'];
 
-        if ((!$secondsPassed) && (count($this->seconds) == 1) && is_string($this->seconds[0])) {
-            $secondsPassed = (($this->evaluateExpression($this->seconds[0], $second)));
-        }
-        if ((!$minutesPassed) && (count($this->minutes) == 1) && is_string($this->minutes[0])) {
-            $minutesPassed = (($this->evaluateExpression($this->minutes[0], $minute)));
-        }
-        if ((!$hoursPassed) && (count($this->hours) == 1) && is_string($this->hours[0])) {
-            $hoursPassed = (($this->evaluateExpression($this->hours[0], $hour)));
-        }
-        if ((!$domPassed) && (count($this->daysOfTheMonth) == 1) && is_string($this->daysOfTheMonth[0])) {
-            $domPassed = (($this->evaluateExpression($this->daysOfTheMonth[0], $dayOfTheMonth)));
-        }
-        if ((!$monthPassed) && (count($this->months) == 1) && is_string($this->months[0])) {
-            $monthPassed = (($this->evaluateExpression($this->months[0], $month)));
-        }
-        if ((!$dowPassed) && (count($this->daysOfTheWeek) == 1) && is_string($this->daysOfTheWeek[0])) {
-            $dowPassed = (($this->evaluateExpression($this->daysOfTheWeek[0], $dayOfTheWeek)));
+        // Short-circuited, coarsest field first. The result is an AND across every
+        // field, so stopping at the first failure cannot change the answer - and
+        // the coarse fields (day-of-week, month, day-of-month) are the ones that
+        // rule a schedule out most often, so testing them first means a task that
+        // isn't due today costs one field test instead of six.
+        //
+        // The seconds field is deliberately excluded from this chain: on a
+        // minute-granularity schedule it is not part of the decision at all (the
+        // grace period governs the seconds instead), which is why hasSeconds()
+        // gates it below rather than it being tested inline here.
+        if ((!$this->fieldPasses($this->daysOfTheWeek, $parts['wday'])) ||
+            (!$this->fieldPasses($this->months, $parts['mon'])) ||
+            (!$this->fieldPasses($this->daysOfTheMonth, $parts['mday'])) ||
+            (!$this->fieldPasses($this->hours, $parts['hours'])) ||
+            (!$this->fieldPasses($this->minutes, $parts['minutes']))) {
+            return false;
         }
 
         if ($this->hasSeconds()) {
-            return (($dowPassed) &&
-                ($monthPassed) &&
-                ($domPassed) &&
-                ($hoursPassed) &&
-                ($minutesPassed) &&
-                ($secondsPassed));
-        } else {
-            // Check every minute schedule
-            if (($this->schedule == '* * * * *')) {
-                return (($this->gracePeriod < 0) || ($second <= $this->gracePeriod));
-            // Validate the schedule
-            } else {
-                return (($dowPassed) &&
-                    ($monthPassed) &&
-                    ($domPassed) &&
-                    ($hoursPassed) &&
-                    ($minutesPassed) &&
-                    (($this->gracePeriod < 0) || ($second <= $this->gracePeriod)));
-            }
+            return $this->fieldPasses($this->seconds, $second);
         }
+
+        // Reached only when every minute-granularity field has already matched,
+        // which is exactly the condition the old explicit '* * * * *' special case
+        // tested for - an all-wildcard schedule passes every field above, so it
+        // arrives here and gets the same grace-period-only answer it always did,
+        // without needing its own branch.
+        return (($this->gracePeriod < 0) || ($second <= $this->gracePeriod));
+    }
+
+    /**
+     * Determine whether one schedule field matches the corresponding value from
+     * the time being evaluated.
+     *
+     * This is the per-field test that evaluate() used to inline six times over.
+     * The three cases, in the order the original checked them: the wildcard '*',
+     * a literal value present in the field, and - only for a single-element
+     * string field - a compound expression (a comma list, a step, or a range)
+     * handed off to evaluateExpression().
+     *
+     * The loose in_array() comparison is intentional and load-bearing: field
+     * values arrive as strings when parsed out of a schedule string but as ints
+     * when set through the fluent helpers (hourly(), daily(), and friends all
+     * assign ints), so both have to compare equal to the int taken from the
+     * timestamp.
+     *
+     * @param  array $field
+     * @param  int   $value
+     * @return bool
+     */
+    protected function fieldPasses(array $field, int $value): bool
+    {
+        // Checked before in_array() rather than after it, as the original did:
+        // the answer is identical either way (no integer is loosely equal to
+        // '*'), and the wildcard is overwhelmingly the most common field, so
+        // it is the one worth answering first.
+        if ($field == ['*']) {
+            return true;
+        }
+
+        if (in_array($value, $field)) {
+            return true;
+        }
+
+        return ((count($field) == 1) && is_string($field[0]) && $this->evaluateExpression($field[0], $value));
     }
 
     /**
