@@ -21,10 +21,10 @@
     ],
     "require": {
         "php": ">=8.4.0",
-        "popphp/popphp": "^5.0.0-beta.20",
-        "popphp/pop-console": "^5.0.0-beta.7",
-        "popphp/pop-db": "^7.0.0-beta.5",
-        "popphp/pop-utils": "^3.0.0-beta.4",
+        "popphp/popphp": "^5.0.0",
+        "popphp/pop-console": "^5.0.0",
+        "popphp/pop-db": "^7.0.0",
+        "popphp/pop-utils": "^3.0.0",
         "laravel/serializable-closure": "^2.0.3",
         "symfony/process": "^7.2|^8.0"
     },
