@@ -358,7 +358,6 @@ class RedisTest extends TestCase
         // race against: its lease already expired and self-healed, but it
         // doesn't know that yet.
         $reclaim = new \ReflectionMethod($adapter, 'reclaimExpiredLeases');
-        $reclaim->setAccessible(true);
         $reclaim->invoke($adapter);
 
         $this->assertEquals(1, $adapter->count(), 'Precondition: the reclaimed job should be the only copy, sitting in pending.');

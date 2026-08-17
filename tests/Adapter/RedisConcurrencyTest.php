@@ -88,7 +88,6 @@ class RedisConcurrencyTest extends ConcurrencyTestCase
         // Worker A now acts on its stale $value/$now pair via the adapter's
         // real atomic reclaim primitive (not a hand-rolled reimplementation).
         $atomicReclaim = new \ReflectionMethod($adapter, 'atomicReclaimIfStillExpired');
-        $atomicReclaim->setAccessible(true);
         $result = $atomicReclaim->invoke($adapter, $value, $now);
 
         $this->assertSame(0, $result, 'A stale-read-driven reclaim must not remove a freshly re-claimed entry.');

@@ -492,7 +492,6 @@ class WorkerTest extends TestCase
         $worker->setEvents($events);
 
         $method = new \ReflectionMethod($worker, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($worker, 'test.event', ['foo' => 'bar']);
 
         $this->assertEquals(['bar'], $fired);
@@ -512,7 +511,6 @@ class WorkerTest extends TestCase
         $worker = Worker::create($queue, $application);
 
         $method = new \ReflectionMethod($worker, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($worker, 'test.event', ['foo' => 'bar']);
 
         $this->assertEquals(['bar'], $fired);
@@ -539,7 +537,6 @@ class WorkerTest extends TestCase
         $application->registerEvents($appEvents);
 
         $method = new \ReflectionMethod($worker, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($worker, 'test.event', ['foo' => 'bar']);
 
         $this->assertEquals(['bar'], $workerFired);
@@ -552,7 +549,6 @@ class WorkerTest extends TestCase
         $worker = Worker::create($queue);
 
         $method = new \ReflectionMethod($worker, 'triggerEvent');
-        $method->setAccessible(true);
 
         // Must not throw.
         $method->invoke($worker, 'test.event', ['foo' => 'bar']);

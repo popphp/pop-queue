@@ -296,7 +296,6 @@ class QueueTest extends TestCase
         })->everySecond();
 
         $method = new \ReflectionMethod($queue, 'evaluateTasksOnce');
-        $method->setAccessible(true);
 
         $ran = $method->invoke($queue, [
             $task1->getJobId() => $task1,
@@ -356,7 +355,6 @@ class QueueTest extends TestCase
         })->everyMinute()->setGracePeriod(-1);
 
         $method = new \ReflectionMethod($queue, 'evaluateTasksOnce');
-        $method->setAccessible(true);
 
         $ran = $method->invoke($queue, [
             $subMinuteTask->getJobId() => $subMinuteTask,
@@ -380,7 +378,6 @@ class QueueTest extends TestCase
         $queue1->addTask($task);
 
         $method = new \ReflectionMethod($queue1, 'evaluateTasksOnce');
-        $method->setAccessible(true);
 
         $scheduledTasks = [$task->getJobId() => $adapter->getTask($task->getJobId())];
 
@@ -591,7 +588,6 @@ class QueueTest extends TestCase
         $queue->setEvents($events);
 
         $method = new \ReflectionMethod($queue, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($queue, 'test.event', ['foo' => 'bar']);
 
         $this->assertEquals(['bar'], $fired);
@@ -609,7 +605,6 @@ class QueueTest extends TestCase
         $application->registerEvents($events);
 
         $method = new \ReflectionMethod($queue, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
 
         $this->assertEquals(['bar'], $fired);
@@ -635,7 +630,6 @@ class QueueTest extends TestCase
         $application->registerEvents($appEvents);
 
         $method = new \ReflectionMethod($queue, 'triggerEvent');
-        $method->setAccessible(true);
         $method->invoke($queue, 'test.event', ['foo' => 'bar'], $application);
 
         $this->assertEquals(['bar'], $queueFired);
@@ -647,7 +641,6 @@ class QueueTest extends TestCase
         $queue = Queue::create('pop-queue', new File(__DIR__ . '/tmp/pop-queue'));
 
         $method = new \ReflectionMethod($queue, 'triggerEvent');
-        $method->setAccessible(true);
 
         // Must not throw.
         $method->invoke($queue, 'test.event', ['foo' => 'bar']);
@@ -660,7 +653,6 @@ class QueueTest extends TestCase
         $application = new Application();
 
         $method = new \ReflectionMethod($queue, 'triggerEvent');
-        $method->setAccessible(true);
 
         // Pop\Application::__construct() always calls bootstrap(), which
         // always registers a non-null (empty) Event\Manager if one wasn't

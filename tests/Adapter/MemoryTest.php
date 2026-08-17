@@ -323,7 +323,6 @@ class MemoryTest extends TestCase
         // Force the stored claim to look expired without a real 30-second
         // sleep, via the adapter's own internal state.
         $property = new \ReflectionProperty($adapter, 'taskClaims');
-        $property->setAccessible(true);
         $claims = $property->getValue($adapter);
         $claims[$task->getJobId()][1] = time() - 1;
         $property->setValue($adapter, $claims);

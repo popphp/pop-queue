@@ -558,7 +558,6 @@ class DatabaseTest extends TestCase
         ]);
 
         $buildEligibleWhere = new \ReflectionMethod($adapter, 'buildEligibleWhere');
-        $buildEligibleWhere->setAccessible(true);
         $update->where($buildEligibleWhere->invoke($adapter, $update, $now));
         $update->andWhere('job_id = :job_id');
 
@@ -576,7 +575,6 @@ class DatabaseTest extends TestCase
         // touched the already-claimed row: reserved_by must still be
         // whatever the winner's reserve() wrote, never the loser's token.
         $claimedBy = new \ReflectionMethod($adapter, 'claimedBy');
-        $claimedBy->setAccessible(true);
         $this->assertNotEquals($loserToken, $claimedBy->invoke($adapter, $rowId));
 
         $adapter->clear();
@@ -862,7 +860,6 @@ class DatabaseTest extends TestCase
         ]);
 
         $buildWhere = new \ReflectionMethod($adapter, 'buildTaskClaimEligibleWhere');
-        $buildWhere->setAccessible(true);
         $update->where($buildWhere->invoke($adapter, $update, $task->getJobId(), '100', $now));
 
         $db->prepare($sql);
@@ -876,7 +873,6 @@ class DatabaseTest extends TestCase
         // state at write time, so it must not have touched the
         // already-claimed row.
         $claimedBy = new \ReflectionMethod($adapter, 'claimedByTaskId');
-        $claimedBy->setAccessible(true);
         $this->assertNotEquals($loserToken, $claimedBy->invoke($adapter, $task->getJobId()));
 
         $adapter->clearTasks();
