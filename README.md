@@ -2,7 +2,7 @@ pop-queue
 =========
 
 [![Build Status](https://github.com/popphp/pop-queue/workflows/phpunit/badge.svg)](https://github.com/popphp/pop-queue/actions)
-[![Coverage Status](http://cc.popphp.org/coverage.php?comp=pop-queue)](http://cc.popphp.org/pop-queue/)
+[![Coverage Status](https://cc.popphp.org/coverage.php?comp=pop-queue)](https://cc.popphp.org/pop-queue/)
 
 [![Join the chat at https://discord.gg/TZjgT74U7E](https://media.popphp.org/img/discord.svg)](https://discord.gg/TZjgT74U7E)
 
