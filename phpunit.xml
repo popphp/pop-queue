@@ -15,6 +15,12 @@
     </testsuite>
   </testsuites>
   <logging/>
+  <php>
+    <env name="MYSQL_DB" value="test_popdb"/>
+    <env name="MYSQL_USER" value="root"/>
+    <env name="MYSQL_PASS" value=""/>
+    <env name="MYSQL_HOST" value="127.0.0.1"/>
+  </php>
   <source>
     <include>
       <directory suffix=".php">src</directory>

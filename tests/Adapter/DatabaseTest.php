@@ -56,6 +56,48 @@ class DatabaseTest extends TestCase
         $adapter->delete($reserved);
     }
 
+    public function testPushAndReserveOnMysql()
+    {
+        // push() once prepared its INSERT and then ran getEndIndex()'s SELECT
+        // before binding; pop-db's Mysql::query() discards the pending prepared
+        // statement, so the bind failed. SQLite keeps the statement and never
+        // showed the bug, hence a real MySQL connection here.
+        try {
+            $db = PopDb::mysqlConnect([
+                'database' => $_ENV['MYSQL_DB'],
+                'username' => $_ENV['MYSQL_USER'],
+                'password' => $_ENV['MYSQL_PASS'],
+                'host'     => $_ENV['MYSQL_HOST']
+            ]);
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('No MySQL connection available: ' . $e->getMessage());
+        }
+
+        $table = 'pop_queue_mysql_test';
+        if ($db->hasTable($table)) {
+            $db->query('DROP TABLE `' . $table . '`');
+        }
+
+        try {
+            $adapter = new Database($db, $table);
+            $adapter->push(Job::create(function(){
+                return 123;
+            }));
+            $adapter->push(Job::create(function(){
+                return 456;
+            }));
+            $this->assertEquals(2, $adapter->count());
+
+            $reserved = $adapter->reserve();
+            $this->assertEquals(123, $reserved->run());
+            $adapter->delete($reserved);
+            $this->assertEquals(1, $adapter->count());
+        } finally {
+            $db->query('DROP TABLE `' . $table . '`');
+            $db->disconnect();
+        }
+    }
+
     public function testReserveReturnsNullWhenEmpty()
     {
         $db = PopDb::sqliteConnect([

@@ -351,6 +351,10 @@ class Database extends AbstractTaskAdapter
      */
     public function push(AbstractJob $job): Database
     {
+        // Must run before prepare(): getEndIndex() issues its own query, which
+        // discards a pending prepared statement on some pop-db adapters (Mysql, Pdo)
+        $index = $this->getEndIndex() + 1;
+
         $sql = $this->db->createSql();
         $sql->insert($this->table)->values([
             'index'   => ':index',
@@ -362,7 +366,7 @@ class Database extends AbstractTaskAdapter
 
         $this->db->prepare($sql);
         $this->db->bindParams([
-            'index'   => ($this->getEndIndex() + 1),
+            'index'   => $index,
             'type'    => 'job',
             'job_id'  => $job->getJobId(),
             'payload' => base64_encode(PayloadSigner::sign(serialize(clone $job))),
